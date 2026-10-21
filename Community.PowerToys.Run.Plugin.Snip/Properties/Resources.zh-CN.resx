@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="plugin_name" xml:space="preserve">
+    <value>截图</value>
+  </data>
+  <data name="plugin_description" xml:space="preserve">
+    <value>区域或全屏截屏,支持标注</value>
+  </data>
+  <data name="cmd_region_title" xml:space="preserve">
+    <value>区域截屏</value>
+  </data>
+  <data name="cmd_region_subtitle" xml:space="preserve">
+    <value>拖拽框选区域,标注后复制或保存</value>
+  </data>
+  <data name="cmd_full_clipboard_title" xml:space="preserve">
+    <value>全屏截屏到剪贴板</value>
+  </data>
+  <data name="cmd_full_clipboard_subtitle" xml:space="preserve">
+    <value>截取光标所在屏幕并复制到剪贴板</value>
+  </data>
+  <data name="cmd_full_save_title" xml:space="preserve">
+    <value>全屏截屏并保存</value>
+  </data>
+  <data name="cmd_full_save_subtitle" xml:space="preserve">
+    <value>截取光标所在屏幕并保存为 PNG 文件</value>
+  </data>
+  <data name="opt_save_dir_label" xml:space="preserve">
+    <value>保存目录</value>
+  </data>
+  <data name="opt_save_dir_desc" xml:space="preserve">
+    <value>自动保存截屏的位置。留空则使用默认文件夹。</value>
+  </data>
+  <data name="opt_copy_label" xml:space="preserve">
+    <value>截屏后复制到剪贴板</value>
+  </data>
+  <data name="opt_autosave_label" xml:space="preserve">
+    <value>区域截屏后自动保存</value>
+  </data>
+  <data name="opt_delay_label" xml:space="preserve">
+    <value>截屏延迟(毫秒)</value>
+  </data>
+  <data name="opt_delay_desc" xml:space="preserve">
+    <value>等待 PowerToys Run 窗口隐藏后再截屏的时间。</value>
+  </data>
+  <data name="msg_copied" xml:space="preserve">
+    <value>截屏已复制到剪贴板</value>
+  </data>
+  <data name="msg_saved" xml:space="preserve">
+    <value>截屏已保存</value>
+  </data>
+  <data name="msg_full_copied" xml:space="preserve">
+    <value>全屏截屏已复制到剪贴板</value>
+  </data>
+  <data name="msg_full_saved" xml:space="preserve">
+    <value>全屏截屏已保存</value>
+  </data>
+  <data name="msg_failed" xml:space="preserve">
+    <value>截屏失败</value>
+  </data>
+  <data name="tip_select" xml:space="preserve">
+    <value>选择 / 移动 / 编辑</value>
+  </data>
+  <data name="tip_rect" xml:space="preserve">
+    <value>矩形</value>
+  </data>
+  <data name="tip_ellipse" xml:space="preserve">
+    <value>椭圆</value>
+  </data>
+  <data name="tip_arrow" xml:space="preserve">
+    <value>箭头</value>
+  </data>
+  <data name="tip_pen" xml:space="preserve">
+    <value>画笔</value>
+  </data>
+  <data name="tip_text" xml:space="preserve">
+    <value>文字</value>
+  </data>
+  <data name="tip_mosaic" xml:space="preserve">
+    <value>马赛克</value>
+  </data>
+  <data name="tip_undo" xml:space="preserve">
+    <value>撤销 (Ctrl+Z)</value>
+  </data>
+  <data name="tip_save" xml:space="preserve">
+    <value>保存 (Ctrl+S)</value>
+  </data>
+  <data name="tip_cancel" xml:space="preserve">
+    <value>取消 (Esc)</value>
+  </data>
+  <data name="tip_done" xml:space="preserve">
+    <value>完成 (Enter)</value>
+  </data>
+  <data name="save_dialog_title" xml:space="preserve">
+    <value>保存截屏</value>
+  </data>
+  <data name="save_dialog_filter" xml:space="preserve">
+    <value>PNG 图片 (*.png)|*.png</value>
+  </data>
+</root>

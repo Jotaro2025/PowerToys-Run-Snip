@@ -1,0 +1,37 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <RootNamespace>Community.PowerToys.Run.Plugin.Snip.UnitTests</RootNamespace>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <WarningLevel>4</WarningLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Install of the PowerToys build this plugin targets. -->
+    <PowerToysInstallDir Condition="'$(PowerToysInstallDir)' == ''">C:\Program Files\PowerToys</PowerToysInstallDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="Moq" Version="4.18.4" />
+    <PackageReference Include="MSTest" Version="3.8.3" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Wox.Plugin">
+      <HintPath>$(PowerToysInstallDir)\Wox.Plugin.dll</HintPath>
+    </Reference>
+    <Reference Include="PowerToys.ManagedCommon">
+      <HintPath>$(PowerToysInstallDir)\PowerToys.ManagedCommon.dll</HintPath>
+    </Reference>
+    <Reference Include="PowerToys.Settings.UI.Lib">
+      <HintPath>$(PowerToysInstallDir)\PowerToys.Settings.UI.Lib.dll</HintPath>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Community.PowerToys.Run.Plugin.Snip\Community.PowerToys.Run.Plugin.Snip.csproj" />
+  </ItemGroup>
+</Project>

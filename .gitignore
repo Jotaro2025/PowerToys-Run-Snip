@@ -1,0 +1,28 @@
+## .NET / Visual Studio build output
+bin/
+obj/
+out/
+artifacts/
+*.user
+*.suo
+.vs/
+
+## Build results
+[Dd]ebug/
+[Rr]elease/
+x64/
+arm64/
+
+## NuGet
+*.nupkg
+*.snupkg
+.nuget\
+
+## IDE
+.idea/
+*.swp
+*~
+
+## OS
+Thumbs.db
+Desktop.ini

@@ -1,0 +1,167 @@
+<?xml version="1.0" encoding="utf-8"?>
+<root>
+  <!--
+    Microsoft ResX Schema
+
+    Version 2.0
+
+    The primary goals of this format is to allow a simple XML format
+    that is mostly human readable. The generation and parsing of the
+    various data types are done through the TypeConverter classes
+    associated with the data types.
+  -->
+  <xsd:schema id="root" xmlns="" xmlns:xsd="http://www.w3.org/2001/XMLSchema" xmlns:msdata="urn:schemas-microsoft-com:xml-msdata">
+    <xsd:import namespace="http://www.w3.org/XML/1998/namespace" />
+    <xsd:element name="root" msdata:IsDataSet="true">
+      <xsd:complexType>
+        <xsd:choice maxOccurs="unbounded">
+          <xsd:element name="metadata">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" type="xsd:string" />
+              <xsd:attribute name="type" type="xsd:string" />
+              <xsd:attribute name="mimetype" type="xsd:string" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="assembly">
+            <xsd:complexType>
+              <xsd:attribute name="alias" type="xsd:string" />
+              <xsd:attribute name="name" type="xsd:string" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="data">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" msdata:Ordinal="1" />
+                <xsd:element name="comment" type="xsd:string" minOccurs="0" msdata:Ordinal="2" />
+              </xsd:sequence>
+              <xsd:attribute name="name" type="xsd:string" use="required" msdata:Ordinal="1" />
+              <xsd:attribute name="type" type="xsd:string" msdata:Ordinal="3" />
+              <xsd:attribute name="mimetype" type="xsd:string" msdata:Ordinal="4" />
+              <xsd:attribute ref="xml:space" />
+            </xsd:complexType>
+          </xsd:element>
+          <xsd:element name="resheader">
+            <xsd:complexType>
+              <xsd:sequence>
+                <xsd:element name="value" type="xsd:string" minOccurs="0" />
+              </xsd:sequence>
+              <xsd:attribute name="name" use="required" />
+            </xsd:complexType>
+          </xsd:element>
+        </xsd:choice>
+      </xsd:complexType>
+    </xsd:element>
+  </xsd:schema>
+  <resheader name="resmimetype">
+    <value>text/microsoft-resx</value>
+  </resheader>
+  <resheader name="version">
+    <value>2.0</value>
+  </resheader>
+  <resheader name="reader">
+    <value>System.Resources.ResXResourceReader, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <resheader name="writer">
+    <value>System.Resources.ResXResourceWriter, System.Windows.Forms, Version=4.0.0.0, Culture=neutral, PublicKeyToken=b77a5c561934e089</value>
+  </resheader>
+  <data name="plugin_name" xml:space="preserve">
+    <value>Snip</value>
+  </data>
+  <data name="plugin_description" xml:space="preserve">
+    <value>Capture a region or the full screen with annotations</value>
+  </data>
+  <data name="cmd_region_title" xml:space="preserve">
+    <value>Region snip</value>
+  </data>
+  <data name="cmd_region_subtitle" xml:space="preserve">
+    <value>Drag to select an area, annotate it, then copy or save</value>
+  </data>
+  <data name="cmd_full_clipboard_title" xml:space="preserve">
+    <value>Full screen to clipboard</value>
+  </data>
+  <data name="cmd_full_clipboard_subtitle" xml:space="preserve">
+    <value>Capture the screen under the cursor and copy it to the clipboard</value>
+  </data>
+  <data name="cmd_full_save_title" xml:space="preserve">
+    <value>Full screen and save</value>
+  </data>
+  <data name="cmd_full_save_subtitle" xml:space="preserve">
+    <value>Capture the screen under the cursor and save it as a PNG file</value>
+  </data>
+  <data name="opt_save_dir_label" xml:space="preserve">
+    <value>Save directory</value>
+  </data>
+  <data name="opt_save_dir_desc" xml:space="preserve">
+    <value>Where screenshots are saved automatically. Leave empty to use the default folder.</value>
+  </data>
+  <data name="opt_copy_label" xml:space="preserve">
+    <value>Copy to clipboard after capture</value>
+  </data>
+  <data name="opt_autosave_label" xml:space="preserve">
+    <value>Auto-save after region capture</value>
+  </data>
+  <data name="opt_delay_label" xml:space="preserve">
+    <value>Capture delay (ms)</value>
+  </data>
+  <data name="opt_delay_desc" xml:space="preserve">
+    <value>Time to wait for PowerToys Run to hide before the screen is captured.</value>
+  </data>
+  <data name="msg_copied" xml:space="preserve">
+    <value>Screenshot copied to clipboard</value>
+  </data>
+  <data name="msg_saved" xml:space="preserve">
+    <value>Screenshot saved</value>
+  </data>
+  <data name="msg_full_copied" xml:space="preserve">
+    <value>Full screen copied to clipboard</value>
+  </data>
+  <data name="msg_full_saved" xml:space="preserve">
+    <value>Full screen saved</value>
+  </data>
+  <data name="msg_failed" xml:space="preserve">
+    <value>Screenshot failed</value>
+  </data>
+  <data name="tip_select" xml:space="preserve">
+    <value>Select / move / edit</value>
+  </data>
+  <data name="tip_rect" xml:space="preserve">
+    <value>Rectangle</value>
+  </data>
+  <data name="tip_ellipse" xml:space="preserve">
+    <value>Ellipse</value>
+  </data>
+  <data name="tip_arrow" xml:space="preserve">
+    <value>Arrow</value>
+  </data>
+  <data name="tip_pen" xml:space="preserve">
+    <value>Pen</value>
+  </data>
+  <data name="tip_text" xml:space="preserve">
+    <value>Text</value>
+  </data>
+  <data name="tip_mosaic" xml:space="preserve">
+    <value>Mosaic</value>
+  </data>
+  <data name="tip_undo" xml:space="preserve">
+    <value>Undo (Ctrl+Z)</value>
+  </data>
+  <data name="tip_save" xml:space="preserve">
+    <value>Save (Ctrl+S)</value>
+  </data>
+  <data name="tip_cancel" xml:space="preserve">
+    <value>Cancel (Esc)</value>
+  </data>
+  <data name="tip_done" xml:space="preserve">
+    <value>Done (Enter)</value>
+  </data>
+  <data name="save_dialog_title" xml:space="preserve">
+    <value>Save Screenshot</value>
+  </data>
+  <data name="save_dialog_filter" xml:space="preserve">
+    <value>PNG image (*.png)|*.png</value>
+  </data>
+</root>

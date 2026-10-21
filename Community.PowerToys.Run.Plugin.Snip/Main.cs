@@ -1,0 +1,221 @@
+// Copyright (c) Microsoft Corporation
+// The Microsoft Corporation licenses this file to you under the MIT license.
+// See the LICENSE file in the project root for more information.
+
+using System;
+using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using System.Windows.Controls;
+
+using ManagedCommon;
+using Microsoft.PowerToys.Settings.UI.Library;
+using Wox.Plugin;
+using Wox.Plugin.Logger;
+
+namespace Community.PowerToys.Run.Plugin.Snip;
+
+/// <summary>
+/// PowerToys Run plugin that exposes the region screenshot editor and the
+/// full-screen capture actions ported from the TDS screenshot tool.
+/// </summary>
+public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
+{
+    // Option keys are persisted in PowerToys settings; keep them stable.
+    private const string OptionSaveDirectory = "SaveDirectory";
+    private const string OptionCopyAfterCapture = "CopyAfterCapture";
+    private const string OptionAutoSaveAfterCapture = "AutoSaveAfterCapture";
+    private const string OptionCaptureDelayMs = "CaptureDelayMs";
+
+    private PluginInitContext _context;
+    private string _iconPath;
+    private SnipSettings _settings = new SnipSettings();
+    private bool _disposed;
+
+    public string Name => Properties.Resources.plugin_name;
+
+    public string Description => Properties.Resources.plugin_description;
+
+    public static string PluginID => "7667E8C5E74948F7B2D6B5E7CED60783";
+
+    public IEnumerable<PluginAdditionalOption> AdditionalOptions => new List<PluginAdditionalOption>()
+    {
+        new PluginAdditionalOption()
+        {
+            Key = OptionSaveDirectory,
+            DisplayLabel = Properties.Resources.opt_save_dir_label,
+            DisplayDescription = Properties.Resources.opt_save_dir_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.SaveDirectory,
+            PlaceholderText = SnipSettings.DefaultSaveFolder,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionCopyAfterCapture,
+            DisplayLabel = Properties.Resources.opt_copy_label,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.CopyAfterCapture,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionAutoSaveAfterCapture,
+            DisplayLabel = Properties.Resources.opt_autosave_label,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.AutoSaveAfterCapture,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionCaptureDelayMs,
+            DisplayLabel = Properties.Resources.opt_delay_label,
+            DisplayDescription = Properties.Resources.opt_delay_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Numberbox,
+            NumberValue = _settings.CaptureDelayMs,
+            NumberBoxMin = 0,
+            NumberBoxMax = 2000,
+            NumberBoxSmallChange = 10,
+            NumberBoxLargeChange = 100,
+        },
+    };
+
+    public List<Result> Query(Query query)
+    {
+        ArgumentNullException.ThrowIfNull(query);
+
+        var commands = new List<Result>
+        {
+            CreateCommand(
+                Properties.Resources.cmd_region_title,
+                Properties.Resources.cmd_region_subtitle,
+                SnipMode.Region),
+            CreateCommand(
+                Properties.Resources.cmd_full_clipboard_title,
+                Properties.Resources.cmd_full_clipboard_subtitle,
+                SnipMode.FullScreenClipboard),
+            CreateCommand(
+                Properties.Resources.cmd_full_save_title,
+                Properties.Resources.cmd_full_save_subtitle,
+                SnipMode.FullScreenSave),
+        };
+
+        var search = query.Search?.Trim() ?? string.Empty;
+        if (string.IsNullOrEmpty(search))
+        {
+            return commands;
+        }
+
+        var filtered = commands
+            .Where(r => r.Title.Contains(search, StringComparison.OrdinalIgnoreCase)
+                        || (r.SubTitle?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false))
+            .ToList();
+        return filtered;
+    }
+
+    private Result CreateCommand(string title, string subtitle, SnipMode mode)
+    {
+        return new Result
+        {
+            Title = title,
+            SubTitle = subtitle,
+            IcoPath = _iconPath,
+            QueryTextDisplay = title,
+            Action = _ =>
+            {
+                SnipController.Start(mode, _settings, Notify);
+                return true;
+            },
+        };
+    }
+
+    public void Init(PluginInitContext context)
+    {
+        _context = context ?? throw new ArgumentNullException(nameof(context));
+        _context.API.ThemeChanged += OnThemeChanged;
+        UpdateIconPath(_context.API.GetCurrentTheme());
+    }
+
+    public string GetTranslatedPluginTitle() => Properties.Resources.plugin_name;
+
+    public string GetTranslatedPluginDescription() => Properties.Resources.plugin_description;
+
+    public Control CreateSettingPanel()
+    {
+        throw new NotImplementedException();
+    }
+
+    public void UpdateSettings(PowerLauncherPluginSettings settings)
+    {
+        var options = settings?.AdditionalOptions;
+        if (options == null)
+        {
+            return;
+        }
+
+        _settings.SaveDirectory = options.FirstOrDefault(x => x.Key == OptionSaveDirectory)?.TextValue ?? string.Empty;
+        _settings.CopyAfterCapture = options.FirstOrDefault(x => x.Key == OptionCopyAfterCapture)?.Value ?? true;
+        _settings.AutoSaveAfterCapture = options.FirstOrDefault(x => x.Key == OptionAutoSaveAfterCapture)?.Value ?? false;
+
+        var delay = options.FirstOrDefault(x => x.Key == OptionCaptureDelayMs)?.NumberValue;
+        if (delay.HasValue && delay.Value >= 0)
+        {
+            _settings.CaptureDelayMs = (int)Math.Min(2000, delay.Value);
+        }
+    }
+
+    public void ReloadData()
+    {
+        if (_context is null)
+        {
+            return;
+        }
+
+        UpdateIconPath(_context.API.GetCurrentTheme());
+    }
+
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
+    }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed && disposing)
+        {
+            if (_context != null && _context.API != null)
+            {
+                _context.API.ThemeChanged -= OnThemeChanged;
+            }
+
+            _disposed = true;
+        }
+    }
+
+    private void Notify(string message, string secondary)
+    {
+        if (string.IsNullOrEmpty(message))
+        {
+            return;
+        }
+
+        try
+        {
+            _context?.API.ShowNotification(message, secondary);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip notification failed: {ex.Message}", ex, GetType());
+        }
+    }
+
+    private void OnThemeChanged(Theme oldtheme, Theme newTheme)
+    {
+        UpdateIconPath(newTheme);
+    }
+
+    private void UpdateIconPath(Theme theme)
+    {
+        _iconPath = theme == Theme.Light || theme == Theme.HighContrastWhite
+            ? "Images/Snip.light.png"
+            : "Images/Snip.dark.png";
+    }
+}
