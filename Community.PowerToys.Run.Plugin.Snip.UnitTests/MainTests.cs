@@ -94,7 +94,6 @@ public class MainTests
                 new PluginAdditionalOption { Key = "CopyAfterCapture", Value = false },
                 new PluginAdditionalOption { Key = "AutoSaveAfterCapture", Value = true },
                 new PluginAdditionalOption { Key = "CaptureDelayMs", NumberValue = 300 },
-                new PluginAdditionalOption { Key = "WeChatDirectory", TextValue = @"D:\WeChat" },
             },
         };
 
@@ -105,7 +104,6 @@ public class MainTests
         Assert.IsFalse(current["CopyAfterCapture"].Value);
         Assert.IsTrue(current["AutoSaveAfterCapture"].Value);
         Assert.AreEqual(300, current["CaptureDelayMs"].NumberValue);
-        Assert.AreEqual(@"D:\WeChat", current["WeChatDirectory"].TextValue);
     }
 
     [TestMethod]
@@ -119,7 +117,6 @@ public class MainTests
         Assert.IsTrue(current["CopyAfterCapture"].Value, "copy after capture is on by default");
         Assert.IsFalse(current["AutoSaveAfterCapture"].Value);
         Assert.AreEqual(150, current["CaptureDelayMs"].NumberValue);
-        Assert.AreEqual(string.Empty, current["WeChatDirectory"].TextValue, "WeChat folder is detected automatically by default");
     }
 
     [TestMethod]
@@ -129,7 +126,7 @@ public class MainTests
 
         main.UpdateSettings(null);
 
-        Assert.HasCount(5, main.AdditionalOptions.ToList());
+        Assert.HasCount(4, main.AdditionalOptions.ToList());
     }
 
     [TestMethod]

@@ -27,7 +27,6 @@ public sealed class OcrResultWindow : Window
     private static readonly Color ErrorColor = Color.FromRgb(214, 48, 49);
 
     private readonly byte[] _png;
-    private readonly string _weChatDir;
     private readonly TextBox _textBox;
     private readonly Border _overlay;
     private readonly ProgressBar _progress;
@@ -37,13 +36,12 @@ public sealed class OcrResultWindow : Window
     private readonly Button _copyAllButton;
     private bool _closed;
 
-    public OcrResultWindow(BitmapSource image, byte[] png, string weChatDir)
+    public OcrResultWindow(BitmapSource image, byte[] png)
     {
         ArgumentNullException.ThrowIfNull(image);
         ArgumentNullException.ThrowIfNull(png);
 
         _png = png;
-        _weChatDir = weChatDir;
 
         Title = Properties.Resources.ocr_window_title;
         Width = 760;
@@ -189,7 +187,7 @@ public sealed class OcrResultWindow : Window
         SetBusy();
         try
         {
-            var text = await WeChatOcrService.RecognizeAsync(_png, _weChatDir);
+            var text = await WeChatOcrService.RecognizeAsync(_png);
             if (_closed)
             {
                 return;

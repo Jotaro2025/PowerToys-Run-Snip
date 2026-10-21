@@ -167,12 +167,6 @@
   <data name="tip_ocr" xml:space="preserve">
     <value>Extract text (OCR)</value>
   </data>
-  <data name="opt_wechat_dir_label" xml:space="preserve">
-    <value>WeChat install folder (text extraction)</value>
-  </data>
-  <data name="opt_wechat_dir_desc" xml:space="preserve">
-    <value>Leave empty to detect it automatically. Text extraction uses the OCR component of the locally installed WeChat for Windows (3.9.x).</value>
-  </data>
   <data name="ocr_window_title" xml:space="preserve">
     <value>Text Extraction</value>
   </data>
@@ -197,25 +191,16 @@
   <data name="ocr_no_text" xml:space="preserve">
     <value>No text was recognized.</value>
   </data>
-  <data name="ocr_err_wechat_not_found" xml:space="preserve">
-    <value>WeChat for Windows was not found. Text extraction needs WeChat (PC, 3.9.x) installed. If it is installed in a custom folder, set it in PowerToys Settings → PowerToys Run → Snip.</value>
-  </data>
-  <data name="ocr_err_custom_dir_invalid" xml:space="preserve">
-    <value>The WeChat install folder set in the plugin settings is not valid (mmmojo.dll not found):</value>
-  </data>
-  <data name="ocr_err_wechat4" xml:space="preserve">
-    <value>Only WeChat 4.x was found, which is not supported yet. Text extraction currently needs WeChat for Windows 3.9.x.</value>
-  </data>
-  <data name="ocr_err_component_not_found" xml:space="preserve">
-    <value>The WeChat OCR component (WeChatOCR.exe) was not found. Open WeChat, use "Extract text" on any image once so WeChat downloads the component, then try again.</value>
-  </data>
   <data name="ocr_err_arch" xml:space="preserve">
-    <value>Text extraction needs the x64 build of PowerToys (the WeChat OCR component is x64 only).</value>
+    <value>Text extraction needs the x64 build of PowerToys (the bundled OCR component is x64 only).</value>
   </data>
   <data name="ocr_err_timeout" xml:space="preserve">
-    <value>WeChat OCR did not respond in time. Make sure WeChat is up to date, then try again.</value>
+    <value>The OCR component did not respond in time. Please try again.</value>
   </data>
   <data name="ocr_err_failed" xml:space="preserve">
     <value>Text extraction failed:</value>
+  </data>
+  <data name="ocr_err_component_missing" xml:space="preserve">
+    <value>The bundled OCR component is incomplete; reinstall the plugin. Missing file:</value>
   </data>
 </root>

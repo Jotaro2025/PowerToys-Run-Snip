@@ -50,12 +50,11 @@
     </PackageReference>
 
     <!--
-      Text extraction (OCR) through the OCR component of the locally installed
-      WeChat for Windows. The package also bundles a copy of WeChat's own OCR
-      binaries as content files; exclude them so the plugin never redistributes
-      them and always uses the user's WeChat install instead.
+      Text extraction (OCR). The package ships its OCR component (WeChatOCR.exe,
+      mmmojo DLLs, model files) as content files that are copied to wco_data\
+      in the output folder; the plugin runs OCR from there.
     -->
-    <PackageReference Include="WeChatOcr" Version="1.0.5" ExcludeAssets="contentFiles" />
+    <PackageReference Include="WeChatOcr" Version="1.0.5" />
   </ItemGroup>
 
   <!--

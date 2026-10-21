@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 
 using Community.PowerToys.Run.Plugin.Snip.Services;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -15,54 +16,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.UnitTests;
 [TestClass]
 public class WeChatOcrServiceTests
 {
-    private string _root;
-
-    [TestInitialize]
-    public void Setup()
+    [TestMethod]
+    public void BundledOcrComponentIsCopiedNextToPlugin()
     {
-        _root = Path.Combine(Path.GetTempPath(), "snip-wechat-" + Guid.NewGuid().ToString("N"));
-        Directory.CreateDirectory(_root);
-    }
+        // The WeChatOcr package copies wco_data\ into the build output of the
+        // plugin (and of this test project, which references it).
+        var dataDirectory = WeChatOcrService.OcrDataDirectory;
 
-    [TestCleanup]
-    public void Cleanup()
-    {
-        Directory.Delete(_root, true);
-    }
-
-    private static string CreateWeChatVersionDir(string root, string name)
-    {
-        var dir = Path.Combine(root, name);
-        Directory.CreateDirectory(dir);
-        File.WriteAllBytes(Path.Combine(dir, "mmmojo.dll"), Array.Empty<byte>());
-        File.WriteAllBytes(Path.Combine(dir, "mmmojo_64.dll"), Array.Empty<byte>());
-        return dir;
+        Assert.IsTrue(Directory.Exists(dataDirectory), dataDirectory);
+        CollectionAssert.AreEqual(Array.Empty<string>(), WeChatOcrService.FindMissingFiles(dataDirectory).ToArray());
     }
 
     [TestMethod]
-    public void ResolveWeChatDirPicksNewestVersionFolder()
+    public void FindMissingFilesReportsIncompleteComponent()
     {
-        CreateWeChatVersionDir(_root, "[3.9.9.43]");
-        var newest = CreateWeChatVersionDir(_root, "[3.9.12.51]");
-        Directory.CreateDirectory(Path.Combine(_root, "[3.9.13.1]")); // no mmmojo: ignored
+        var missing = WeChatOcrService.FindMissingFiles(Path.Combine(Path.GetTempPath(), "snip-no-ocr-" + Guid.NewGuid().ToString("N"))).ToList();
 
-        Assert.AreEqual(newest, WeChatOcrService.ResolveWeChatDir(_root));
-    }
-
-    [TestMethod]
-    public void ResolveWeChatDirAcceptsVersionFolderItself()
-    {
-        var dir = CreateWeChatVersionDir(_root, "[3.9.12.51]");
-
-        Assert.AreEqual(dir, WeChatOcrService.ResolveWeChatDir("\"" + dir + Path.DirectorySeparatorChar + "\""));
-    }
-
-    [TestMethod]
-    public void ResolveWeChatDirRejectsFoldersWithoutWeChat()
-    {
-        Assert.IsNull(WeChatOcrService.ResolveWeChatDir(_root));
-        Assert.IsNull(WeChatOcrService.ResolveWeChatDir(Path.Combine(_root, "missing")));
-        Assert.IsNull(WeChatOcrService.ResolveWeChatDir("   "));
+        CollectionAssert.Contains(missing, "WeChatOCR.exe");
+        CollectionAssert.Contains(missing, "mmmojo_64.dll");
     }
 
     [TestMethod]

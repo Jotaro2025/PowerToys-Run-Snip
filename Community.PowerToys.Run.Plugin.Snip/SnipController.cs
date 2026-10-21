@@ -130,7 +130,7 @@ public static class SnipController
 
         if (result.Outcome == EditOutcome.ExtractText)
         {
-            ShowTextExtraction(result, settings, notify);
+            ShowTextExtraction(result, notify);
             return;
         }
 
@@ -183,11 +183,11 @@ public static class SnipController
     /// Opens the (modeless) text extraction window on this UI thread; it runs
     /// the OCR itself and stays open after this action returns.
     /// </summary>
-    private static void ShowTextExtraction(EditResult result, SnipSettings settings, Action<string, string> notify)
+    private static void ShowTextExtraction(EditResult result, Action<string, string> notify)
     {
         try
         {
-            var window = new OcrResultWindow(result.Result, result.PngBytes, settings.WeChatDirectory);
+            var window = new OcrResultWindow(result.Result, result.PngBytes);
             window.Show();
             window.Activate();
         }

@@ -11,7 +11,6 @@
 namespace Community.PowerToys.Run.Plugin.Snip.Properties {
     using System;
 
-
     /// <summary>
     ///   A strongly-typed resource class, for looking up localized strings, etc.
     /// </summary>
@@ -358,24 +357,6 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to WeChat install folder (text extraction).
-        /// </summary>
-        public static string opt_wechat_dir_label {
-            get {
-                return ResourceManager.GetString("opt_wechat_dir_label", resourceCulture);
-            }
-        }
-
-        /// <summary>
-        ///   Looks up a localized string similar to Leave empty to detect it automatically. Text extraction uses the OCR component of the locally installed WeChat for Windows (3.9.x)..
-        /// </summary>
-        public static string opt_wechat_dir_desc {
-            get {
-                return ResourceManager.GetString("opt_wechat_dir_desc", resourceCulture);
-            }
-        }
-
-        /// <summary>
         ///   Looks up a localized string similar to Text Extraction.
         /// </summary>
         public static string ocr_window_title {
@@ -448,43 +429,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to WeChat for Windows was not found. Text extraction needs WeChat (PC, 3.9.x) installed. If it is installed in a custom folder, set it in PowerToys Settings → PowerToys Run → Snip..
-        /// </summary>
-        public static string ocr_err_wechat_not_found {
-            get {
-                return ResourceManager.GetString("ocr_err_wechat_not_found", resourceCulture);
-            }
-        }
-
-        /// <summary>
-        ///   Looks up a localized string similar to The WeChat install folder set in the plugin settings is not valid (mmmojo.dll not found):.
-        /// </summary>
-        public static string ocr_err_custom_dir_invalid {
-            get {
-                return ResourceManager.GetString("ocr_err_custom_dir_invalid", resourceCulture);
-            }
-        }
-
-        /// <summary>
-        ///   Looks up a localized string similar to Only WeChat 4.x was found, which is not supported yet. Text extraction currently needs WeChat for Windows 3.9.x..
-        /// </summary>
-        public static string ocr_err_wechat4 {
-            get {
-                return ResourceManager.GetString("ocr_err_wechat4", resourceCulture);
-            }
-        }
-
-        /// <summary>
-        ///   Looks up a localized string similar to The WeChat OCR component (WeChatOCR.exe) was not found. Open WeChat, use "Extract text" on any image once so WeChat downloads the component, then try again..
-        /// </summary>
-        public static string ocr_err_component_not_found {
-            get {
-                return ResourceManager.GetString("ocr_err_component_not_found", resourceCulture);
-            }
-        }
-
-        /// <summary>
-        ///   Looks up a localized string similar to Text extraction needs the x64 build of PowerToys (the WeChat OCR component is x64 only)..
+        ///   Looks up a localized string similar to Text extraction needs the x64 build of PowerToys (the bundled OCR component is x64 only)..
         /// </summary>
         public static string ocr_err_arch {
             get {
@@ -493,7 +438,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to WeChat OCR did not respond in time. Make sure WeChat is up to date, then try again..
+        ///   Looks up a localized string similar to The OCR component did not respond in time. Please try again..
         /// </summary>
         public static string ocr_err_timeout {
             get {
@@ -507,6 +452,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string ocr_err_failed {
             get {
                 return ResourceManager.GetString("ocr_err_failed", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The bundled OCR component is incomplete; reinstall the plugin. Missing file:.
+        /// </summary>
+        public static string ocr_err_component_missing {
+            get {
+                return ResourceManager.GetString("ocr_err_component_missing", resourceCulture);
             }
         }
     }

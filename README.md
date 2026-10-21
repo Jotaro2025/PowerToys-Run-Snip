@@ -28,23 +28,18 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 截屏后复制到剪贴板（默认开）
 - 区域截屏后自动保存
 - 截屏延迟（毫秒，默认 150，给 PowerToys Run 隐藏窗口的时间）
-- 微信安装目录（文字提取用，留空自动检测）
 
 界面语言跟随 PowerToys（内置英文 + 简体中文）。
 
-### 文字提取的前提条件
+### 文字提取说明
 
-文字提取通过 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr) 调用**本机已安装的微信 PC 版**自带的 OCR 组件，
-插件本身不附带任何微信文件，也不联网：
+文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)，该包自带完整的 OCR 组件
+（`WeChatOCR.exe`、mmmojo DLL 和模型文件），随插件一起部署在插件目录的 `wco_data\` 下：
 
-- 需要安装微信 PC 版 **3.9.x**（微信 4.x 目录结构不同，暂不支持）；默认安装位置、注册表记录的位置会自动检测，
-  装在其他位置时在插件设置中填写微信安装目录（如 `D:\Tencent\WeChat`）
-- 需要微信已下载 OCR 组件（`%APPDATA%\Tencent\WeChat\XPlugin\Plugins\WeChatOCR\…\WeChatOCR.exe`）；
-  如果没有，在微信里对任意图片用一次「提取文字」即可
-- 仅支持 x64 版 PowerToys
-- 首次使用时会把微信的 `mmmojo.dll` / `mmmojo_64.dll` 复制到插件目录下的 `wco_data\`
-
-找不到微信或识别失败时，结果窗口会给出对应的提示。
+- **不需要安装微信**，离线识别，不联网
+- 插件体积因此增加约 61 MB（`wco_data\` 约 60 MB + 依赖 DLL 约 1.3 MB）
+- 仅支持 x64 版 PowerToys（OCR 组件只有 x64 版本）
+- OCR 组件缺失、超时、识别失败或没有识别到文字时，结果窗口会给出对应提示
 
 ## 构建
 
@@ -76,6 +71,7 @@ dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 ├── Images\Snip.dark.png
 ├── Images\Snip.light.png
 ├── WeChatOcr.dll、Google.Protobuf.dll、Newtonsoft.Json.dll         (文字提取依赖)
+├── wco_data\WeChatOCR.exe、mmmojo*.dll、x64.config、Model\*          (文字提取 OCR 组件)
 ├── Community.PowerToys.Run.Plugin.Snip.deps.json 等其余构建输出
 └── zh-CN\Community.PowerToys.Run.Plugin.Snip.resources.dll   (中文资源)
 ```
@@ -103,6 +99,7 @@ PowerToys 0.9x 及更早版本的插件目录是 `%LOCALAPPDATA%\Microsoft\Power
 
 - 截屏捕获、标注模型与编辑器逻辑移植自 TDS 的区域截屏模块（MIT）。
 - 插件框架（`Wox.Plugin`）来自 PowerToys（MIT）。
-- 文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)（MIT，仅以包引用，未复制其源码）；
-  OCR 能力来自用户本机安装的微信，微信相关文件版权归腾讯所有，本插件不分发。
+- 文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)（NuGet 标注 MIT 许可，仅以包引用，
+  未复制其源码）。该包的描述注明“Study only, do not use for commercial purposes”（仅供学习，勿用于商业用途）；
+  其自带的 OCR 组件（`WeChatOCR.exe`、mmmojo DLL、模型文件）来自腾讯微信，构建时由该包复制到输出目录。
 - 本仓库新增代码以 MIT 许可发布，见 [LICENSE](LICENSE)。
