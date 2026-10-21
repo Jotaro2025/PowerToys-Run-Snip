@@ -9,5 +9,6 @@
   "Website": "https://aka.ms/PowerToys",
   "ExecuteFileName": "Community.PowerToys.Run.Plugin.Snip.dll",
   "IcoPathDark": "Images\\Snip.dark.png",
-  "IcoPathLight": "Images\\Snip.light.png"
+  "IcoPathLight": "Images\\Snip.light.png",
+  "DynamicLoading": true
 }

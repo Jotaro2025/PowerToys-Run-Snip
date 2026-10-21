@@ -164,4 +164,43 @@
   <data name="save_dialog_filter" xml:space="preserve">
     <value>PNG image (*.png)|*.png</value>
   </data>
+  <data name="tip_ocr" xml:space="preserve">
+    <value>Extract text (OCR)</value>
+  </data>
+  <data name="ocr_window_title" xml:space="preserve">
+    <value>Text Extraction</value>
+  </data>
+  <data name="ocr_busy" xml:space="preserve">
+    <value>Recognizing text…</value>
+  </data>
+  <data name="ocr_copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="ocr_copy_all" xml:space="preserve">
+    <value>Copy all</value>
+  </data>
+  <data name="ocr_close" xml:space="preserve">
+    <value>Close</value>
+  </data>
+  <data name="ocr_copied" xml:space="preserve">
+    <value>Copied to the clipboard</value>
+  </data>
+  <data name="ocr_copy_failed" xml:space="preserve">
+    <value>Couldn't copy to the clipboard</value>
+  </data>
+  <data name="ocr_no_text" xml:space="preserve">
+    <value>No text was recognized.</value>
+  </data>
+  <data name="ocr_err_arch" xml:space="preserve">
+    <value>Text extraction needs the x64 build of PowerToys (the bundled OCR component is x64 only).</value>
+  </data>
+  <data name="ocr_err_timeout" xml:space="preserve">
+    <value>The OCR component did not respond in time. Please try again.</value>
+  </data>
+  <data name="ocr_err_failed" xml:space="preserve">
+    <value>Text extraction failed:</value>
+  </data>
+  <data name="ocr_err_component_missing" xml:space="preserve">
+    <value>The bundled OCR component is incomplete; reinstall the plugin. Missing file:</value>
+  </data>
 </root>

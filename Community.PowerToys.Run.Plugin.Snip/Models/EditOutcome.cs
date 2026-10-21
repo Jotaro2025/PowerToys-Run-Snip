@@ -13,4 +13,7 @@ public enum EditOutcome
     Saved,
     Copied,
     Confirmed,
+
+    /// <summary>The user asked to extract the text of the selection (OCR).</summary>
+    ExtractText,
 }

@@ -164,4 +164,43 @@
   <data name="save_dialog_filter" xml:space="preserve">
     <value>PNG 图片 (*.png)|*.png</value>
   </data>
+  <data name="tip_ocr" xml:space="preserve">
+    <value>文字提取</value>
+  </data>
+  <data name="ocr_window_title" xml:space="preserve">
+    <value>文字提取</value>
+  </data>
+  <data name="ocr_busy" xml:space="preserve">
+    <value>正在识别文字…</value>
+  </data>
+  <data name="ocr_copy" xml:space="preserve">
+    <value>复制</value>
+  </data>
+  <data name="ocr_copy_all" xml:space="preserve">
+    <value>全部复制</value>
+  </data>
+  <data name="ocr_close" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="ocr_copied" xml:space="preserve">
+    <value>已复制到剪贴板</value>
+  </data>
+  <data name="ocr_copy_failed" xml:space="preserve">
+    <value>复制失败，剪贴板可能被其他程序占用</value>
+  </data>
+  <data name="ocr_no_text" xml:space="preserve">
+    <value>未识别到文字。</value>
+  </data>
+  <data name="ocr_err_arch" xml:space="preserve">
+    <value>文字提取需要 x64 版 PowerToys（自带的 OCR 组件仅提供 x64 版本）。</value>
+  </data>
+  <data name="ocr_err_timeout" xml:space="preserve">
+    <value>OCR 组件无响应（超时），请重试。</value>
+  </data>
+  <data name="ocr_err_failed" xml:space="preserve">
+    <value>文字提取失败：</value>
+  </data>
+  <data name="ocr_err_component_missing" xml:space="preserve">
+    <value>插件自带的 OCR 组件不完整，请重新安装插件。缺少文件：</value>
+  </data>
 </root>

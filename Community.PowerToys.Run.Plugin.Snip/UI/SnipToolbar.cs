@@ -84,6 +84,8 @@ public sealed class SnipToolbar : Border
         _undoButton.Opacity = 0.38;
         _undoButton.Click += (sender, e) => UndoClicked?.Invoke(this, EventArgs.Empty);
 
+        AddIcon(actions, ToolIcons.Ocr, Properties.Resources.tip_ocr).Click += (sender, e) => ExtractTextClicked?.Invoke(this, EventArgs.Empty);
+
         if (ShowSaveButton)
         {
             AddIcon(actions, ToolIcons.Save, Properties.Resources.tip_save).Click += (sender, e) => SaveClicked?.Invoke(this, EventArgs.Empty);
@@ -106,6 +108,8 @@ public sealed class SnipToolbar : Border
     public event EventHandler UndoClicked;
 
     public event EventHandler SaveClicked;
+
+    public event EventHandler ExtractTextClicked;
 
     public event EventHandler CancelClicked;
 

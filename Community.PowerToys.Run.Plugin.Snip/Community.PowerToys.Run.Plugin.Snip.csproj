@@ -21,6 +21,13 @@
     <GenerateSatelliteAssembliesForCore>true</GenerateSatelliteAssembliesForCore>
     <NeutralLanguage>en-US</NeutralLanguage>
 
+    <!--
+      Copy NuGet dependencies (WeChatOcr, Google.Protobuf, Newtonsoft.Json) next to
+      the plugin and emit a .deps.json, so PowerToys Run can resolve them from the
+      plugin folder when plugin.json sets "DynamicLoading": true.
+    -->
+    <EnableDynamicLoading>true</EnableDynamicLoading>
+
     <!-- Same analyzer bar as the PowerToys repository build. -->
     <EnableNETAnalyzers>true</EnableNETAnalyzers>
     <AnalysisMode>Recommended</AnalysisMode>
@@ -41,20 +48,35 @@
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>
+
+    <!--
+      Text extraction (OCR). The package ships its OCR component (WeChatOCR.exe,
+      mmmojo DLLs, model files) as content files that are copied to wco_data\
+      in the output folder; the plugin runs OCR from there.
+    -->
+    <PackageReference Include="WeChatOcr" Version="1.0.5" />
   </ItemGroup>
 
+  <!--
+    Provided by PowerToys at runtime: do not copy them into the plugin folder, so
+    the plugin load context always binds to the host's copies.
+  -->
   <ItemGroup>
     <Reference Include="Wox.Plugin">
       <HintPath>$(PowerToysInstallDir)\Wox.Plugin.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="PowerToys.ManagedCommon">
       <HintPath>$(PowerToysInstallDir)\PowerToys.ManagedCommon.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="PowerToys.Common.UI">
       <HintPath>$(PowerToysInstallDir)\PowerToys.Common.UI.dll</HintPath>
+      <Private>false</Private>
     </Reference>
     <Reference Include="PowerToys.Settings.UI.Lib">
       <HintPath>$(PowerToysInstallDir)\PowerToys.Settings.UI.Lib.dll</HintPath>
+      <Private>false</Private>
     </Reference>
   </ItemGroup>
 

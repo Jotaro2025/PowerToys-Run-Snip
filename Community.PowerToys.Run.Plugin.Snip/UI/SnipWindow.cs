@@ -131,6 +131,7 @@ public sealed class SnipWindow : Window
         _toolbar.StrokeWidthChanged += (sender, w) => _annoCanvas.CurrentStrokeWidth = w;
         _toolbar.UndoClicked += (sender, e) => _annoCanvas.Undo();
         _toolbar.SaveClicked += async (sender, e) => await DoSaveAsync();
+        _toolbar.ExtractTextClicked += (sender, e) => DoExtractText();
         _toolbar.CancelClicked += (sender, e) => Cancel();
         _toolbar.ConfirmClicked += (sender, e) => DoConfirm();
 
@@ -591,6 +592,42 @@ public sealed class SnipWindow : Window
         catch (Exception ex)
         {
             Log.Exception($"SnipWindow DoCopy failed: {ex.Message}", ex, GetType());
+            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+        }
+
+        Close();
+    }
+
+    /// <summary>
+    /// Hands the selection (with annotations) over for text extraction; the
+    /// controller shows the result window once this overlay is closed.
+    /// </summary>
+    private void DoExtractText()
+    {
+        if (!_hasSelection)
+        {
+            return;
+        }
+
+        try
+        {
+            var bmp = BuildResultBitmap(_selection);
+
+            // Encode on this thread: the bitmap belongs to it, and WPF would
+            // reject cross-thread pixel access from a thread-pool worker.
+            var png = PngEncoder.Encode(bmp);
+            Result = new EditResult
+            {
+                Outcome = EditOutcome.ExtractText,
+                Selection = _selection,
+                Annotations = _annoCanvas.Items.ToArray(),
+                Result = bmp,
+                PngBytes = png,
+            };
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow DoExtractText failed: {ex.Message}", ex, GetType());
             Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
         }
 

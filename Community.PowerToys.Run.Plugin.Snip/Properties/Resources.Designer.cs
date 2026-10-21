@@ -11,7 +11,6 @@
 namespace Community.PowerToys.Run.Plugin.Snip.Properties {
     using System;
 
-
     /// <summary>
     ///   A strongly-typed resource class, for looking up localized strings, etc.
     /// </summary>
@@ -345,6 +344,123 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string plugin_description {
             get {
                 return ResourceManager.GetString("plugin_description", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Extract text (OCR).
+        /// </summary>
+        public static string tip_ocr {
+            get {
+                return ResourceManager.GetString("tip_ocr", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Text Extraction.
+        /// </summary>
+        public static string ocr_window_title {
+            get {
+                return ResourceManager.GetString("ocr_window_title", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Recognizing text….
+        /// </summary>
+        public static string ocr_busy {
+            get {
+                return ResourceManager.GetString("ocr_busy", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Copy.
+        /// </summary>
+        public static string ocr_copy {
+            get {
+                return ResourceManager.GetString("ocr_copy", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Copy all.
+        /// </summary>
+        public static string ocr_copy_all {
+            get {
+                return ResourceManager.GetString("ocr_copy_all", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Close.
+        /// </summary>
+        public static string ocr_close {
+            get {
+                return ResourceManager.GetString("ocr_close", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Copied to the clipboard.
+        /// </summary>
+        public static string ocr_copied {
+            get {
+                return ResourceManager.GetString("ocr_copied", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Couldn't copy to the clipboard.
+        /// </summary>
+        public static string ocr_copy_failed {
+            get {
+                return ResourceManager.GetString("ocr_copy_failed", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to No text was recognized..
+        /// </summary>
+        public static string ocr_no_text {
+            get {
+                return ResourceManager.GetString("ocr_no_text", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Text extraction needs the x64 build of PowerToys (the bundled OCR component is x64 only)..
+        /// </summary>
+        public static string ocr_err_arch {
+            get {
+                return ResourceManager.GetString("ocr_err_arch", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The OCR component did not respond in time. Please try again..
+        /// </summary>
+        public static string ocr_err_timeout {
+            get {
+                return ResourceManager.GetString("ocr_err_timeout", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Text extraction failed:.
+        /// </summary>
+        public static string ocr_err_failed {
+            get {
+                return ResourceManager.GetString("ocr_err_failed", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The bundled OCR component is incomplete; reinstall the plugin. Missing file:.
+        /// </summary>
+        public static string ocr_err_component_missing {
+            get {
+                return ResourceManager.GetString("ocr_err_component_missing", resourceCulture);
             }
         }
     }

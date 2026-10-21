@@ -128,6 +128,12 @@ public static class SnipController
             return;
         }
 
+        if (result.Outcome == EditOutcome.ExtractText)
+        {
+            ShowTextExtraction(result, notify);
+            return;
+        }
+
         if (result.Outcome == EditOutcome.Copied)
         {
             // The editor already copied to the clipboard.
@@ -170,6 +176,25 @@ public static class SnipController
         if (settings.CopyAfterCapture)
         {
             notify(Properties.Resources.msg_copied, string.Empty);
+        }
+    }
+
+    /// <summary>
+    /// Opens the (modeless) text extraction window on this UI thread; it runs
+    /// the OCR itself and stays open after this action returns.
+    /// </summary>
+    private static void ShowTextExtraction(EditResult result, Action<string, string> notify)
+    {
+        try
+        {
+            var window = new OcrResultWindow(result.Result, result.PngBytes);
+            window.Show();
+            window.Activate();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip text extraction window failed: {ex.Message}", ex, typeof(SnipController));
+            notify(Properties.Resources.ocr_window_title, ex.Message);
         }
     }
 
