@@ -26,6 +26,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionCopyAfterCapture = "CopyAfterCapture";
     private const string OptionAutoSaveAfterCapture = "AutoSaveAfterCapture";
     private const string OptionCaptureDelayMs = "CaptureDelayMs";
+    private const string OptionWeChatDirectory = "WeChatDirectory";
 
     private PluginInitContext _context;
     private string _iconPath;
@@ -74,6 +75,15 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             NumberBoxMax = 2000,
             NumberBoxSmallChange = 10,
             NumberBoxLargeChange = 100,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionWeChatDirectory,
+            DisplayLabel = Properties.Resources.opt_wechat_dir_label,
+            DisplayDescription = Properties.Resources.opt_wechat_dir_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.WeChatDirectory,
+            PlaceholderText = @"C:\Program Files\Tencent\WeChat",
         },
     };
 
@@ -153,6 +163,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         _settings.SaveDirectory = options.FirstOrDefault(x => x.Key == OptionSaveDirectory)?.TextValue ?? string.Empty;
         _settings.CopyAfterCapture = options.FirstOrDefault(x => x.Key == OptionCopyAfterCapture)?.Value ?? true;
         _settings.AutoSaveAfterCapture = options.FirstOrDefault(x => x.Key == OptionAutoSaveAfterCapture)?.Value ?? false;
+        _settings.WeChatDirectory = options.FirstOrDefault(x => x.Key == OptionWeChatDirectory)?.TextValue ?? string.Empty;
 
         var delay = options.FirstOrDefault(x => x.Key == OptionCaptureDelayMs)?.NumberValue;
         if (delay.HasValue && delay.Value >= 0)

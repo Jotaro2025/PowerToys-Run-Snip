@@ -25,6 +25,9 @@ public sealed class SnipSettings
     /// <summary>Delay before the capture starts, giving PowerToys Run time to hide.</summary>
     public int CaptureDelayMs { get; set; } = 150;
 
+    /// <summary>WeChat install folder used for text extraction. Empty = detect automatically.</summary>
+    public string WeChatDirectory { get; set; } = string.Empty;
+
     /// <summary>Fallback directory when <see cref="SaveDirectory"/> is not set.</summary>
     public static string DefaultSaveFolder
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Snip");

@@ -18,6 +18,8 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 标注工具：矩形、椭圆、箭头、画笔、文字、马赛克
 - 7 色颜色板 + 4 档笔画粗细、撤销（Ctrl+Z）
 - 快捷键：Enter 完成、Esc 取消、Ctrl+C 复制、Ctrl+S 保存、Delete 删除选中标注
+- **文字提取（OCR）**：工具栏上的「文字提取」按钮，仿微信截图：识别选区（含标注）中的文字，
+  在结果窗口中显示，可编辑/选中，支持「复制」（有选中时复制选中部分）和「全部复制」
 - 多显示器 + 高 DPI 正确适配（取光标所在屏幕，按物理像素捕获）
 
 插件设置（PowerToys 设置 → PowerToys Run → Snip）：
@@ -26,8 +28,23 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 截屏后复制到剪贴板（默认开）
 - 区域截屏后自动保存
 - 截屏延迟（毫秒，默认 150，给 PowerToys Run 隐藏窗口的时间）
+- 微信安装目录（文字提取用，留空自动检测）
 
 界面语言跟随 PowerToys（内置英文 + 简体中文）。
+
+### 文字提取的前提条件
+
+文字提取通过 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr) 调用**本机已安装的微信 PC 版**自带的 OCR 组件，
+插件本身不附带任何微信文件，也不联网：
+
+- 需要安装微信 PC 版 **3.9.x**（微信 4.x 目录结构不同，暂不支持）；默认安装位置、注册表记录的位置会自动检测，
+  装在其他位置时在插件设置中填写微信安装目录（如 `D:\Tencent\WeChat`）
+- 需要微信已下载 OCR 组件（`%APPDATA%\Tencent\WeChat\XPlugin\Plugins\WeChatOCR\…\WeChatOCR.exe`）；
+  如果没有，在微信里对任意图片用一次「提取文字」即可
+- 仅支持 x64 版 PowerToys
+- 首次使用时会把微信的 `mmmojo.dll` / `mmmojo_64.dll` 复制到插件目录下的 `wco_data\`
+
+找不到微信或识别失败时，结果窗口会给出对应的提示。
 
 ## 构建
 
@@ -58,10 +75,13 @@ dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 ├── plugin.json
 ├── Images\Snip.dark.png
 ├── Images\Snip.light.png
+├── WeChatOcr.dll、Google.Protobuf.dll、Newtonsoft.Json.dll         (文字提取依赖)
+├── Community.PowerToys.Run.Plugin.Snip.deps.json 等其余构建输出
 └── zh-CN\Community.PowerToys.Run.Plugin.Snip.resources.dll   (中文资源)
 ```
 
-即 `Community.PowerToys.Run.Plugin.Snip\bin\Debug\net10.0-windows10.0.26100.0\` 下的全部内容。
+即 `Community.PowerToys.Run.Plugin.Snip\bin\Debug\` 下的全部内容。插件以 `DynamicLoading` 方式加载，
+依赖从插件自己的目录解析；PowerToys 自带的 `Wox.Plugin` 等程序集不会复制到输出目录。
 PowerToys 0.9x 及更早版本的插件目录是 `%LOCALAPPDATA%\Microsoft\PowerToys\RunPlugins\`。
 
 ## 在 PowerToys 源码树内开发
@@ -83,4 +103,6 @@ PowerToys 0.9x 及更早版本的插件目录是 `%LOCALAPPDATA%\Microsoft\Power
 
 - 截屏捕获、标注模型与编辑器逻辑移植自 TDS 的区域截屏模块（MIT）。
 - 插件框架（`Wox.Plugin`）来自 PowerToys（MIT）。
+- 文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)（MIT，仅以包引用，未复制其源码）；
+  OCR 能力来自用户本机安装的微信，微信相关文件版权归腾讯所有，本插件不分发。
 - 本仓库新增代码以 MIT 许可发布，见 [LICENSE](LICENSE)。

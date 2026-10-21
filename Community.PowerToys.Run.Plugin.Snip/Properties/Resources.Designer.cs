@@ -347,5 +347,167 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("plugin_description", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Extract text (OCR).
+        /// </summary>
+        public static string tip_ocr {
+            get {
+                return ResourceManager.GetString("tip_ocr", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to WeChat install folder (text extraction).
+        /// </summary>
+        public static string opt_wechat_dir_label {
+            get {
+                return ResourceManager.GetString("opt_wechat_dir_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Leave empty to detect it automatically. Text extraction uses the OCR component of the locally installed WeChat for Windows (3.9.x)..
+        /// </summary>
+        public static string opt_wechat_dir_desc {
+            get {
+                return ResourceManager.GetString("opt_wechat_dir_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Text Extraction.
+        /// </summary>
+        public static string ocr_window_title {
+            get {
+                return ResourceManager.GetString("ocr_window_title", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Recognizing text….
+        /// </summary>
+        public static string ocr_busy {
+            get {
+                return ResourceManager.GetString("ocr_busy", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Copy.
+        /// </summary>
+        public static string ocr_copy {
+            get {
+                return ResourceManager.GetString("ocr_copy", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Copy all.
+        /// </summary>
+        public static string ocr_copy_all {
+            get {
+                return ResourceManager.GetString("ocr_copy_all", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Close.
+        /// </summary>
+        public static string ocr_close {
+            get {
+                return ResourceManager.GetString("ocr_close", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Copied to the clipboard.
+        /// </summary>
+        public static string ocr_copied {
+            get {
+                return ResourceManager.GetString("ocr_copied", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Couldn't copy to the clipboard.
+        /// </summary>
+        public static string ocr_copy_failed {
+            get {
+                return ResourceManager.GetString("ocr_copy_failed", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to No text was recognized..
+        /// </summary>
+        public static string ocr_no_text {
+            get {
+                return ResourceManager.GetString("ocr_no_text", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to WeChat for Windows was not found. Text extraction needs WeChat (PC, 3.9.x) installed. If it is installed in a custom folder, set it in PowerToys Settings → PowerToys Run → Snip..
+        /// </summary>
+        public static string ocr_err_wechat_not_found {
+            get {
+                return ResourceManager.GetString("ocr_err_wechat_not_found", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The WeChat install folder set in the plugin settings is not valid (mmmojo.dll not found):.
+        /// </summary>
+        public static string ocr_err_custom_dir_invalid {
+            get {
+                return ResourceManager.GetString("ocr_err_custom_dir_invalid", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Only WeChat 4.x was found, which is not supported yet. Text extraction currently needs WeChat for Windows 3.9.x..
+        /// </summary>
+        public static string ocr_err_wechat4 {
+            get {
+                return ResourceManager.GetString("ocr_err_wechat4", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The WeChat OCR component (WeChatOCR.exe) was not found. Open WeChat, use "Extract text" on any image once so WeChat downloads the component, then try again..
+        /// </summary>
+        public static string ocr_err_component_not_found {
+            get {
+                return ResourceManager.GetString("ocr_err_component_not_found", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Text extraction needs the x64 build of PowerToys (the WeChat OCR component is x64 only)..
+        /// </summary>
+        public static string ocr_err_arch {
+            get {
+                return ResourceManager.GetString("ocr_err_arch", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to WeChat OCR did not respond in time. Make sure WeChat is up to date, then try again..
+        /// </summary>
+        public static string ocr_err_timeout {
+            get {
+                return ResourceManager.GetString("ocr_err_timeout", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Text extraction failed:.
+        /// </summary>
+        public static string ocr_err_failed {
+            get {
+                return ResourceManager.GetString("ocr_err_failed", resourceCulture);
+            }
+        }
     }
 }
