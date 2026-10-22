@@ -4,6 +4,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Threading;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
@@ -22,10 +23,9 @@ namespace Community.PowerToys.Run.Plugin.Snip;
 /// editor or copies/saves directly.
 /// </summary>
 /// <remarks>
-/// Everything WPF (capture bitmap, overlay window, toolbar, clipboard) happens
-/// on this one thread, mirroring how a single-UI-thread app hosts the editor.
-/// Sharing brushes, cursors or bitmaps across several short-lived threads makes
-/// WPF throw cross-thread Freezable/DependencyObject exceptions.
+/// Heavy GDI capture and PNG encode run on the thread pool; WPF bitmaps,
+/// overlay window, toolbar and clipboard stay on this one STA thread so
+/// Freezable/DependencyObject affinity is preserved.
 /// </remarks>
 public static class SnipController
 {
@@ -41,7 +41,7 @@ public static class SnipController
         ArgumentNullException.ThrowIfNull(settings);
 
         Dispatcher dispatcher = EnsureUiDispatcher();
-        dispatcher.BeginInvoke(new Action(() => Run(mode, settings, notify)), DispatcherPriority.Normal);
+        dispatcher.BeginInvoke(new Action(() => _ = RunAsync(mode, settings, notify)), DispatcherPriority.Normal);
     }
 
     private static Dispatcher EnsureUiDispatcher()
@@ -74,7 +74,7 @@ public static class SnipController
         }
     }
 
-    private static void Run(SnipMode mode, SnipSettings settings, Action<string, string> notify)
+    private static async Task RunAsync(SnipMode mode, SnipSettings settings, Action<string, string> notify)
     {
         System.Windows.Media.Imaging.WriteableBitmap bitmap = null;
         try
@@ -82,13 +82,16 @@ public static class SnipController
             // Give PowerToys Run time to hide its window before the capture.
             if (settings.CaptureDelayMs > 0)
             {
-                Thread.Sleep(settings.CaptureDelayMs);
+                await Task.Delay(settings.CaptureDelayMs).ConfigureAwait(true);
             }
 
             var capture = CaptureFactory.Create();
             var screens = capture.GetScreens();
             var screen = Win32CaptureService.GetScreenAtCursor(screens);
-            bitmap = capture.CaptureScreen(screen);
+
+            // GDI BitBlt / GetDIBits off the UI STA; WriteableBitmap on this thread.
+            var frame = await Task.Run(() => capture.CaptureScreenPixels(screen)).ConfigureAwait(true);
+            bitmap = frame.ToWriteableBitmap();
 
             switch (mode)
             {
@@ -102,7 +105,7 @@ public static class SnipController
                     return;
 
                 case SnipMode.FullScreenSave:
-                    RunFullScreenSave(bitmap, settings, notify);
+                    await RunFullScreenSaveAsync(bitmap, settings, notify).ConfigureAwait(true);
                     return;
             }
         }
@@ -244,16 +247,16 @@ public static class SnipController
         }
     }
 
-    private static void RunFullScreenSave(
+    private static async Task RunFullScreenSaveAsync(
         System.Windows.Media.Imaging.WriteableBitmap bitmap,
         SnipSettings settings,
         Action<string, string> notify)
     {
-        var png = PngEncoder.Encode(bitmap);
-        var (ok, path, error) = ScreenshotFileSaver.SavePngAsync(
+        var png = await PngEncoder.EncodeAsync(bitmap).ConfigureAwait(true);
+        var (ok, path, error) = await ScreenshotFileSaver.SavePngAsync(
             png,
             settings.SaveDirectory,
-            SnipSettings.DefaultSaveFolder).GetAwaiter().GetResult();
+            SnipSettings.DefaultSaveFolder).ConfigureAwait(true);
         if (ok)
         {
             notify(Properties.Resources.msg_full_saved, path);
