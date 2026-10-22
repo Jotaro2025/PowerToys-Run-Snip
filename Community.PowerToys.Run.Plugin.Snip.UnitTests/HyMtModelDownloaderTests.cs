@@ -69,4 +69,14 @@ public class HyMtModelDownloaderTests
         });
         Assert.IsFalse(string.IsNullOrWhiteSpace(error));
     }
+
+    [TestMethod]
+    public void DownloadUrlPrefersModelScope()
+    {
+        StringAssert.Contains(HyMtModelDownloader.DownloadUrl, "modelscope.cn");
+        StringAssert.Contains(HyMtModelDownloader.ModelScopeUrl, "modelscope.cn");
+        StringAssert.Contains(HyMtModelDownloader.HfMirrorUrl, "hf-mirror.com");
+        StringAssert.Contains(HyMtModelDownloader.HuggingFaceUrl, "huggingface.co");
+        Assert.AreEqual(HyMtModelDownloader.ModelScopeUrl, HyMtModelDownloader.DownloadUrl);
+    }
 }

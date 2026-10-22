@@ -330,22 +330,22 @@
     <value>下载推荐的 2Bit 模型</value>
   </data>
   <data name="opt_tr_hymt_download_desc" xml:space="preserve">
-    <value>勾选并保存后，将从 Hugging Face 下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 缓存并自动填入 GGUF 路径；缓存已存在且完整时会跳过。插件不捆绑权重。</value>
+    <value>勾选并保存后，将下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 缓存并自动填入 GGUF 路径；默认优先魔搭 ModelScope，失败再试 hf-mirror / Hugging Face；缓存已存在且完整时会跳过。插件不捆绑权重。</value>
   </data>
     <data name="tr_download_title" xml:space="preserve">
     <value>下载 Hy-MT2 模型</value>
   </data>
   <data name="tr_download_body" xml:space="preserve">
-    <value>正在从 Hugging Face 下载推荐的 Hy-MT2 2Bit GGUF（约 573MB）到本地缓存，请保持窗口打开。</value>
+    <value>正在下载推荐的 Hy-MT2 2Bit GGUF（约 573MB）到本地缓存。默认优先魔搭 ModelScope，失败依次尝试 hf-mirror、Hugging Face。请保持窗口打开。</value>
   </data>
   <data name="tr_download_starting" xml:space="preserve">
     <value>开始下载…</value>
   </data>
   <data name="tr_download_progress" xml:space="preserve">
-    <value>已下载 {0} MB / {1} MB</value>
+    <value>[{2}] 已下载 {0} MB / {1} MB</value>
   </data>
   <data name="tr_download_progress_unknown" xml:space="preserve">
-    <value>已下载 {0} MB…</value>
+    <value>[{1}] 已下载 {0} MB…</value>
   </data>
   <data name="tr_download_done" xml:space="preserve">
     <value>下载完成，已写入 GGUF 路径。</value>
@@ -354,7 +354,7 @@
     <value>取消</value>
   </data>
   <data name="tr_download_prompt" xml:space="preserve">
-    <value>HyMT2Sharp 需要本地 GGUF 文件（约 573MB）。是否立即从 Hugging Face 下载推荐的 Hy-MT2 2Bit 模型到本地缓存？</value>
+    <value>HyMT2Sharp 需要本地 GGUF 文件（约 573MB）。是否立即下载推荐的 Hy-MT2 2Bit 模型？（优先魔搭 ModelScope，其次 hf-mirror / Hugging Face）</value>
   </data>
   <data name="tr_download_settings_ok" xml:space="preserve">
     <value>Hy-MT2 2Bit GGUF 已就绪：</value>
@@ -370,5 +370,8 @@
   </data>
   <data name="tr_err_download_cancelled" xml:space="preserve">
     <value>已取消下载。</value>
+  </data>
+  <data name="tr_err_download_all_sources" xml:space="preserve">
+    <value>所有下载源均失败（魔搭 ModelScope / hf-mirror / Hugging Face）。请检查网络，或手动从魔搭下载。</value>
   </data>
 </root>

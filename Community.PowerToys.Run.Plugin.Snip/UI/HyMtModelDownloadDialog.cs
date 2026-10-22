@@ -125,19 +125,22 @@ public sealed class HyMtModelDownloadDialog : Window, IDisposable
     {
         var progress = new Progress<HyMtDownloadProgress>(p =>
         {
+            string source = string.IsNullOrWhiteSpace(p.SourceName) ? "…" : p.SourceName;
             if (p.TotalBytes is > 0)
             {
                 _bar.IsIndeterminate = false;
                 _bar.Value = p.Percent;
                 _status.Text = Properties.Resources.tr_download_progress
                     .Replace("{0}", FormatMb(p.DownloadedBytes), StringComparison.Ordinal)
-                    .Replace("{1}", FormatMb(p.TotalBytes.Value), StringComparison.Ordinal);
+                    .Replace("{1}", FormatMb(p.TotalBytes.Value), StringComparison.Ordinal)
+                    .Replace("{2}", source, StringComparison.Ordinal);
             }
             else
             {
                 _bar.IsIndeterminate = true;
                 _status.Text = Properties.Resources.tr_download_progress_unknown
-                    .Replace("{0}", FormatMb(p.DownloadedBytes), StringComparison.Ordinal);
+                    .Replace("{0}", FormatMb(p.DownloadedBytes), StringComparison.Ordinal)
+                    .Replace("{1}", source, StringComparison.Ordinal);
             }
         });
 

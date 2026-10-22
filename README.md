@@ -63,7 +63,11 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
    （Apache-2.0，与 `Sdcb.GgufWeights.Hy-MT2-1.8B-2Bit` 同源，约 573MB / 600,534,880 字节）：
    - **设置**：勾选「下载推荐的 2Bit 模型」并保存，或首次点击「图片翻译」时按提示下载
    - **缓存目录**：`%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\models\Hy-MT2-1.8B-2Bit.gguf`
-   - **下载地址**：`https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
+   - **下载源（按顺序尝试，国内优先）**：
+     1. **魔搭 ModelScope**（默认）：`https://www.modelscope.cn/api/v1/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF/repo?Revision=master&FilePath=Hy-MT2-1.8B-2Bit.gguf`
+     2. **hf-mirror**：`https://hf-mirror.com/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
+     3. **Hugging Face**（兜底）：`https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
+   - 某一源中途失败会自动换下一个；全部失败时提示检查网络 / 魔搭
    - 下载成功后会自动填入 `HyMtGgufPath`；缓存已存在且体积看起来完整时会跳过重复下载
    - 也可手动下载后在设置里填写任意 GGUF 路径
    - 后端可选自动 / CPU / Vulkan（Vulkan 约需 4GB 显存）。模型首次使用时懒加载，推理串行排队（模型非线程安全）
@@ -133,7 +137,8 @@ PowerToys 0.9x 及更早版本的插件目录是 `%LOCALAPPDATA%\Microsoft\Power
   未复制其源码）。该包的描述注明“Study only, do not use for commercial purposes”（仅供学习，勿用于商业用途）；
   其自带的 OCR 组件（`WeChatOCR.exe`、mmmojo DLL、模型文件）来自腾讯微信，构建时由该包复制到输出目录。
 - 图片翻译可选引用 [Sdcb.HyMT2Sharp](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)（Apache-2.0）；
-  **不**引用 `Sdcb.GgufWeights.*`。推荐权重来自 Hugging Face
-  [tencent/Hy-MT2-1.8B-2Bit-GGUF](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)（Apache-2.0），
-  可由插件下载到 LocalAppData 缓存，或由用户手动配置路径。
+  **不**引用 `Sdcb.GgufWeights.*`。推荐权重与官方 2Bit GGUF 同源（Apache-2.0）；
+  插件默认从 [魔搭 ModelScope](https://www.modelscope.cn/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF)
+  下载到 LocalAppData（便于国内访问），失败再回退 hf-mirror / [Hugging Face](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)，
+  也可由用户手动配置路径。
 - 本仓库新增代码以 MIT 许可发布，见 [LICENSE](LICENSE)。

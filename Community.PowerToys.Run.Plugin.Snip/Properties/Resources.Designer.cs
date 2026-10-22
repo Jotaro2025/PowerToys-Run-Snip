@@ -817,7 +817,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
-        ///   Looks up a localized string similar to Downloading the recommended Hy-MT2 2Bit GGUF.
+        ///   Looks up a localized string similar to Downloading the recommended Hy-MT2 2Bit GGUF (ModelScope first).
         /// </summary>
         public static string tr_download_body {
             get {
@@ -833,7 +833,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
-        ///   Looks up a localized string similar to Downloaded {0} MB / {1} MB.
+        ///   Looks up a localized string similar to [{2}] Downloaded {0} MB / {1} MB.
         /// </summary>
         public static string tr_download_progress {
             get {
@@ -841,7 +841,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
-        ///   Looks up a localized string similar to Downloaded {0} MB….
+        ///   Looks up a localized string similar to [{1}] Downloaded {0} MB….
         /// </summary>
         public static string tr_download_progress_unknown {
             get {
@@ -910,6 +910,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string tr_err_download_cancelled {
             get {
                 return ResourceManager.GetString("tr_err_download_cancelled", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Download failed from all sources.
+        /// </summary>
+        public static string tr_err_download_all_sources {
+            get {
+                return ResourceManager.GetString("tr_err_download_all_sources", resourceCulture);
             }
         }
 

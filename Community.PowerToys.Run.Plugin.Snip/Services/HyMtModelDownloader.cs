@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Net.Http;
 using System.Security.Cryptography;
@@ -15,18 +16,29 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
 /// Downloads the recommended Hy-MT2 2Bit GGUF into a LocalAppData cache.
-/// Weights are never shipped with the plugin; this helper fetches them on demand
-/// from Hugging Face (same bytes as Sdcb.GgufWeights.Hy-MT2-1.8B-2Bit).
+/// Weights are never shipped with the plugin. Sources are tried in order
+/// (ModelScope → hf-mirror → Hugging Face) so mainland China can fetch without HF.
 /// </summary>
 public static class HyMtModelDownloader
 {
-    /// <summary>Official Tencent 2Bit GGUF on Hugging Face.</summary>
-    public const string DownloadUrl =
+    /// <summary>Primary: ModelScope (魔搭) — preferred in mainland China.</summary>
+    public const string ModelScopeUrl =
+        "https://www.modelscope.cn/api/v1/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF/repo?Revision=master&FilePath=Hy-MT2-1.8B-2Bit.gguf";
+
+    /// <summary>Fallback: Hugging Face China mirror.</summary>
+    public const string HfMirrorUrl =
+        "https://hf-mirror.com/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf";
+
+    /// <summary>Last resort: official Hugging Face.</summary>
+    public const string HuggingFaceUrl =
         "https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf";
+
+    /// <summary>Kept for callers/docs; equals <see cref="ModelScopeUrl"/> (China-first default).</summary>
+    public const string DownloadUrl = ModelScopeUrl;
 
     public const string FileName = "Hy-MT2-1.8B-2Bit.gguf";
 
-    /// <summary>Exact size published by Hugging Face / Sdcb.GgufWeights (600,534,880 bytes).</summary>
+    /// <summary>Exact size published by ModelScope / Hugging Face / Sdcb.GgufWeights (600,534,880 bytes).</summary>
     public const long ExpectedSizeBytes = 600_534_880L;
 
     /// <summary>Size floor used for idempotent skip (incomplete downloads are below this).</summary>
@@ -36,6 +48,13 @@ public static class HyMtModelDownloader
     public const string ExpectedSha256 = "dcc33bbae9b28d923c8c76a64f6157840841d26f8774f3dfd770d5fabeeb1cd7";
 
     private static readonly HttpClient Http = CreateClient();
+
+    private static readonly (string Name, string Url)[] DownloadSources =
+    {
+        ("ModelScope", ModelScopeUrl),
+        ("hf-mirror", HfMirrorUrl),
+        ("Hugging Face", HuggingFaceUrl),
+    };
 
     /// <summary>
     /// <c>%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\models\Hy-MT2-1.8B-2Bit.gguf</c>
@@ -92,7 +111,8 @@ public static class HyMtModelDownloader
 
     /// <summary>
     /// Ensures the recommended GGUF is present in the cache. Skips the network when a valid
-    /// file already exists unless <paramref name="force"/> is set.
+    /// file already exists unless <paramref name="force"/> is set. Tries ModelScope, then
+    /// hf-mirror, then Hugging Face; a mid-download failure moves to the next source.
     /// </summary>
     /// <returns><c>(ok, path, error)</c>; <c>error</c> is localized Chinese/English on failure.</returns>
     public static async Task<(bool Ok, string Path, string Error)> EnsureDownloadedAsync(
@@ -103,33 +123,120 @@ public static class HyMtModelDownloader
         var target = DefaultCachePath;
         if (!force && IsValidCachedFile(target))
         {
-            progress?.Report(new HyMtDownloadProgress(ExpectedSizeBytes, ExpectedSizeBytes, done: true));
+            progress?.Report(new HyMtDownloadProgress(ExpectedSizeBytes, ExpectedSizeBytes, done: true, sourceName: null));
             return (true, target, null);
         }
 
         string directory = Path.GetDirectoryName(target);
-        string tempPath = target + ".downloading";
-
-        try
+        if (!string.IsNullOrEmpty(directory))
         {
-            if (!string.IsNullOrEmpty(directory))
+            try
             {
                 Directory.CreateDirectory(directory);
             }
-
-            if (File.Exists(tempPath))
+            catch (IOException ex) when (IsDiskFull(ex))
             {
-                File.Delete(tempPath);
+                return (false, null, Properties.Resources.tr_err_download_disk_full);
+            }
+            catch (IOException ex)
+            {
+                return (false, null, FormatNetworkError(ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return (false, null, FormatNetworkError(ex.Message));
+            }
+        }
+
+        string tempPath = target + ".downloading";
+        var failures = new List<string>();
+
+        try
+        {
+            foreach (var (name, url) in DownloadSources)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                TryDelete(tempPath);
+
+                progress?.Report(new HyMtDownloadProgress(0, ExpectedSizeBytes, done: false, sourceName: name));
+
+                try
+                {
+                    var (ok, error, fatal) = await TryDownloadFromSourceAsync(
+                        url,
+                        name,
+                        tempPath,
+                        progress,
+                        cancellationToken).ConfigureAwait(false);
+
+                    if (ok)
+                    {
+                        if (File.Exists(target))
+                        {
+                            File.Delete(target);
+                        }
+
+                        File.Move(tempPath, target);
+                        var length = new FileInfo(target).Length;
+                        progress?.Report(new HyMtDownloadProgress(length, ExpectedSizeBytes, done: true, sourceName: name));
+                        Log.Info($"Snip Hy-MT2 GGUF downloaded from {name} → {target}", typeof(HyMtModelDownloader));
+                        return (true, target, null);
+                    }
+
+                    TryDelete(tempPath);
+
+                    if (fatal)
+                    {
+                        // Disk full / cancelled: do not burn through remaining mirrors.
+                        return (false, null, error);
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(error))
+                    {
+                        failures.Add($"{name}: {error}");
+                        Log.Warn($"Snip Hy-MT2 download from {name} failed: {error}", typeof(HyMtModelDownloader));
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    TryDelete(tempPath);
+                    return (false, null, Properties.Resources.tr_err_download_cancelled);
+                }
             }
 
+            TryDelete(tempPath);
+            string detail = failures.Count > 0
+                ? string.Join("; ", failures)
+                : string.Empty;
+            return (false, null, FormatAllSourcesFailed(detail));
+        }
+        catch (OperationCanceledException)
+        {
+            TryDelete(tempPath);
+            return (false, null, Properties.Resources.tr_err_download_cancelled);
+        }
+    }
+
+    /// <summary>
+    /// Attempts one URL. Returns <c>fatal=true</c> for cancel / disk-full (stop trying sources).
+    /// </summary>
+    private static async Task<(bool Ok, string Error, bool Fatal)> TryDownloadFromSourceAsync(
+        string url,
+        string sourceName,
+        string tempPath,
+        IProgress<HyMtDownloadProgress> progress,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
             using var response = await Http.GetAsync(
-                DownloadUrl,
+                url,
                 HttpCompletionOption.ResponseHeadersRead,
                 cancellationToken).ConfigureAwait(false);
 
             if (!response.IsSuccessStatusCode)
             {
-                return (false, null, FormatNetworkError($"{(int)response.StatusCode} {response.ReasonPhrase}"));
+                return (false, $"{(int)response.StatusCode} {response.ReasonPhrase}", Fatal: false);
             }
 
             long? total = response.Content.Headers.ContentLength;
@@ -154,7 +261,7 @@ public static class HyMtModelDownloader
                 {
                     await local.WriteAsync(buffer.AsMemory(0, read), cancellationToken).ConfigureAwait(false);
                     downloaded += read;
-                    progress?.Report(new HyMtDownloadProgress(downloaded, total, done: false));
+                    progress?.Report(new HyMtDownloadProgress(downloaded, total, done: false, sourceName: sourceName));
                 }
 
                 await local.FlushAsync(cancellationToken).ConfigureAwait(false);
@@ -163,69 +270,50 @@ public static class HyMtModelDownloader
             var info = new FileInfo(tempPath);
             if (info.Length < MinValidSizeBytes)
             {
-                TryDelete(tempPath);
-                return (false, null, Properties.Resources.tr_err_download_incomplete);
+                return (false, Properties.Resources.tr_err_download_incomplete, Fatal: false);
             }
 
-            // Soft SHA check: warn via log but still accept size-valid files if hash tooling fails.
             try
             {
                 string hash = await ComputeSha256HexAsync(tempPath, cancellationToken).ConfigureAwait(false);
                 if (!string.Equals(hash, ExpectedSha256, StringComparison.OrdinalIgnoreCase))
                 {
                     Log.Warn(
-                        $"Snip Hy-MT2 GGUF SHA-256 mismatch (got {hash}, expected {ExpectedSha256}); keeping file because size looks complete.",
+                        $"Snip Hy-MT2 GGUF SHA-256 mismatch from {sourceName} (got {hash}, expected {ExpectedSha256}); keeping file because size looks complete.",
                         typeof(HyMtModelDownloader));
                 }
             }
             catch (Exception ex)
             {
-                Log.Exception($"Snip Hy-MT2 GGUF hash skipped: {ex.Message}", ex, typeof(HyMtModelDownloader));
+                Log.Exception($"Snip Hy-MT2 GGUF hash skipped ({sourceName}): {ex.Message}", ex, typeof(HyMtModelDownloader));
             }
 
-            if (File.Exists(target))
-            {
-                File.Delete(target);
-            }
-
-            File.Move(tempPath, target);
-            progress?.Report(new HyMtDownloadProgress(info.Length, total, done: true));
-            return (true, target, null);
+            return (true, null, Fatal: false);
         }
         catch (OperationCanceledException)
         {
-            TryDelete(tempPath);
-            return (false, null, Properties.Resources.tr_err_download_cancelled);
+            return (false, Properties.Resources.tr_err_download_cancelled, Fatal: true);
         }
         catch (HttpRequestException ex)
         {
-            TryDelete(tempPath);
-            Log.Exception($"Snip Hy-MT2 download network failed: {ex.Message}", ex, typeof(HyMtModelDownloader));
-            return (false, null, FormatNetworkError(ex.Message));
+            return (false, ex.Message, Fatal: false);
         }
         catch (IOException ex) when (IsDiskFull(ex))
         {
-            TryDelete(tempPath);
-            Log.Exception($"Snip Hy-MT2 download disk full: {ex.Message}", ex, typeof(HyMtModelDownloader));
-            return (false, null, Properties.Resources.tr_err_download_disk_full);
+            return (false, Properties.Resources.tr_err_download_disk_full, Fatal: true);
         }
         catch (IOException ex)
         {
-            TryDelete(tempPath);
-            Log.Exception($"Snip Hy-MT2 download IO failed: {ex.Message}", ex, typeof(HyMtModelDownloader));
-            return (false, null, FormatNetworkError(ex.Message));
+            // Broken connection mid-stream → try next mirror.
+            return (false, ex.Message, Fatal: false);
         }
         catch (UnauthorizedAccessException ex)
         {
-            TryDelete(tempPath);
-            Log.Exception($"Snip Hy-MT2 download access denied: {ex.Message}", ex, typeof(HyMtModelDownloader));
-            return (false, null, FormatNetworkError(ex.Message));
+            return (false, ex.Message, Fatal: true);
         }
         catch (Exception ex)
         {
-            TryDelete(tempPath);
-            Log.Exception($"Snip Hy-MT2 download failed: {ex.Message}", ex, typeof(HyMtModelDownloader));
-            return (false, null, FormatNetworkError(ex.Message));
+            return (false, ex.Message, Fatal: false);
         }
     }
 
@@ -241,6 +329,12 @@ public static class HyMtModelDownloader
 
     private static string FormatNetworkError(string detail)
         => $"{Properties.Resources.tr_err_download_network} {detail}".Trim();
+
+    private static string FormatAllSourcesFailed(string detail)
+    {
+        string baseMsg = Properties.Resources.tr_err_download_all_sources;
+        return string.IsNullOrWhiteSpace(detail) ? baseMsg : $"{baseMsg} {detail}".Trim();
+    }
 
     private static bool IsDiskFull(IOException ex)
     {
@@ -285,11 +379,12 @@ public static class HyMtModelDownloader
 /// <summary>Progress snapshot for <see cref="HyMtModelDownloader.EnsureDownloadedAsync"/>.</summary>
 public readonly struct HyMtDownloadProgress
 {
-    public HyMtDownloadProgress(long downloadedBytes, long? totalBytes, bool done)
+    public HyMtDownloadProgress(long downloadedBytes, long? totalBytes, bool done, string sourceName = null)
     {
         DownloadedBytes = downloadedBytes;
         TotalBytes = totalBytes;
         Done = done;
+        SourceName = sourceName;
     }
 
     public long DownloadedBytes { get; }
@@ -297,6 +392,9 @@ public readonly struct HyMtDownloadProgress
     public long? TotalBytes { get; }
 
     public bool Done { get; }
+
+    /// <summary>Current mirror label (ModelScope / hf-mirror / Hugging Face), if known.</summary>
+    public string SourceName { get; }
 
     public double Percent
         => TotalBytes is > 0 ? Math.Clamp(100.0 * DownloadedBytes / TotalBytes.Value, 0, 100) : 0;
