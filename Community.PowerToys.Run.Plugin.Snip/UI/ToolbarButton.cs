@@ -24,9 +24,6 @@ public sealed class ToolbarButton : Border
     private readonly Path _icon;
     private bool _pressed;
     private bool _hover;
-    private string _geometry;
-    private bool _isActive;
-    private bool _isAccent;
 
     public ToolbarButton()
     {
@@ -64,30 +61,30 @@ public sealed class ToolbarButton : Border
     /// <summary>SVG-style path geometry data for the icon. Empty clears the icon.</summary>
     public string Geometry
     {
-        get => _geometry;
+        get => field;
         set
         {
-            _geometry = value;
+            field = value;
             RebuildIcon();
         }
     }
 
     public bool IsActive
     {
-        get => _isActive;
+        get => field;
         set
         {
-            _isActive = value;
+            field = value;
             UpdateChrome();
         }
     }
 
     public bool IsAccent
     {
-        get => _isAccent;
+        get => field;
         set
         {
-            _isAccent = value;
+            field = value;
             UpdateChrome();
         }
     }
@@ -133,12 +130,12 @@ public sealed class ToolbarButton : Border
 
     private void RebuildIcon()
     {
-        if (string.IsNullOrEmpty(_geometry) || _icon == null)
+        if (string.IsNullOrEmpty(Geometry) || _icon == null)
         {
             return;
         }
 
-        _icon.Data = System.Windows.Media.Geometry.Parse(_geometry);
+        _icon.Data = System.Windows.Media.Geometry.Parse(Geometry);
         UpdateChrome();
     }
 
@@ -149,7 +146,7 @@ public sealed class ToolbarButton : Border
             return;
         }
 
-        if (_isAccent)
+        if (IsAccent)
         {
             Background = new SolidColorBrush(_pressed ? AccentDark : Accent);
             BorderBrush = Brushes.Transparent;
@@ -159,7 +156,7 @@ public sealed class ToolbarButton : Border
             return;
         }
 
-        if (_isActive)
+        if (IsActive)
         {
             Background = new SolidColorBrush(Color.FromArgb(48, 72, 210, 110));
             BorderBrush = new SolidColorBrush(Color.FromArgb(150, 72, 210, 110));
