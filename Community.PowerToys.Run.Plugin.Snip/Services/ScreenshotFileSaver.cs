@@ -17,6 +17,9 @@ public static class ScreenshotFileSaver
 {
     public const string FileNamePrefix = "snapshot";
 
+    /// <summary>File name prefix for translated images saved from the result window.</summary>
+    public const string TranslatedFileNamePrefix = "translate";
+
     public static string ResolveDirectory(string configured, string fallbackDirectory)
     {
         if (string.IsNullOrWhiteSpace(configured))
@@ -29,6 +32,10 @@ public static class ScreenshotFileSaver
 
     public static string BuildFileName()
         => string.Format(CultureInfo.InvariantCulture, "{0}_{1:yyyyMMdd_HHmmss_fff}.png", FileNamePrefix, DateTime.Now);
+
+    /// <summary>Suggested PNG file name for a translated image (Save File dialog default).</summary>
+    public static string BuildTranslatedFileName()
+        => string.Format(CultureInfo.InvariantCulture, "{0}_{1:yyyyMMdd_HHmmss_fff}.png", TranslatedFileNamePrefix, DateTime.Now);
 
     public static string BuildUniquePath(string directory)
     {

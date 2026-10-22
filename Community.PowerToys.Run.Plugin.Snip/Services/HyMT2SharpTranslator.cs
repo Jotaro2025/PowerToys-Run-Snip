@@ -21,7 +21,9 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// In-process HyMT2Sharp translator. The GGUF is loaded lazily on first use and
 /// guarded by a single-flight gate (the model is not thread-safe). Weights are
 /// never bundled: the user points <see cref="SnipSettings.HyMtGgufPath"/> at a
-/// local GGUF file. Multiple OCR lines are batched into numbered prompts in
+/// local GGUF file. Prefer obtaining instances via
+/// <see cref="HyMT2SharpTranslatorCache"/> so the ~multi-GB model is not reloaded
+/// after every translation. Multiple OCR lines are batched into numbered prompts in
 /// small chunks to cut Generate round-trips (no multi-segment API in HyMT2Sharp).
 /// </summary>
 public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
@@ -40,6 +42,9 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         _backendKind = backendKind;
     }
 
+    /// <summary>True when another TranslateAsync call currently holds the single-flight gate.</summary>
+    public bool IsBusy => _gate.CurrentCount == 0;
+
     public async Task<IReadOnlyList<string>> TranslateAsync(
         IReadOnlyList<string> texts,
         string targetLanguage,
@@ -53,7 +58,12 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Prefer a zero-timeout try so callers can show a busy hint before we queue.
+        if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         try
         {
             EnsureModelLoaded();
