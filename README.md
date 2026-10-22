@@ -149,6 +149,7 @@ PowerToys 设置 → PowerToys Run → Snip 的 **AdditionalOptions** 仍可用�
 
 1. **HTTP（OpenAI 兼容）**  
    指向任意 `POST /v1/chat/completions` 服务，例如 [HyMT2Sharp.Server](https://github.com/sdcb/HyMT2Sharp)：`http://127.0.0.1:8080/v1`。可选 API Key 与模型名。
+   API Key 以 Windows DPAPI（当前用户）加密后写入 PowerToys Run 的 `settings.json`（形如 `dpapi:v1:…`；旧版明文会在首次读取时自动改为加密存储）。因此**在另一台电脑或另一个 Windows 账户上恢复 / 同步该设置后，API Key 无法解密，需要重新填写**。PowerToys 设置页里该文本框显示的是密文，直接输入新的明文 Key 即可（下次读取时自动加密）。
 
 2. **HyMT2Sharp（进程内）**  
    引用 [`Sdcb.HyMT2Sharp`](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)，**不**捆绑 GGUF。推荐官方 [Hy-MT2-1.8B-2Bit.gguf](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)（约 573 MB）：

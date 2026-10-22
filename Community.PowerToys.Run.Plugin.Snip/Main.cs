@@ -199,7 +199,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayLabel = Properties.Resources.opt_tr_http_key_label,
             DisplayDescription = Properties.Resources.opt_tr_http_key_desc,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
-            TextValue = _settings.HttpApiKey,
+            TextValue = SecretProtector.Protect(_settings.HttpApiKey),
         },
         new PluginAdditionalOption()
         {
@@ -280,6 +280,30 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
                         || (r.SubTitle?.Contains(search, StringComparison.OrdinalIgnoreCase) ?? false))
             .ToList();
         return filtered;
+    }
+
+    /// <summary>
+    /// Re-saves a legacy plaintext HTTP API key encrypted (DPAPI CurrentUser). Runs off the
+    /// calling thread; the resulting settings.json change re-enters UpdateSettings with the
+    /// protected value, which needs no further migration.
+    /// </summary>
+    private static void MigrateApiKeyToProtected(string plainApiKey)
+    {
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var patch = SnipSettingsPersister.OptionPatch.Text(OptionHttpApiKey, SecretProtector.Protect(plainApiKey));
+                if (SnipSettingsPersister.Persist([patch]))
+                {
+                    Log.Info("Snip: migrated plaintext HTTP API key to DPAPI-protected storage.", typeof(Main));
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Exception($"Snip: API key migration failed: {ex.Message}", ex, typeof(Main));
+            }
+        });
     }
 
     private Result CreateRegionCommand(string title, string subtitle)
@@ -407,7 +431,13 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
         _settings.HttpBaseUrl = options.FirstOrDefault(x => x.Key == OptionHttpBaseUrl)?.TextValue
             ?? _settings.HttpBaseUrl;
-        _settings.HttpApiKey = options.FirstOrDefault(x => x.Key == OptionHttpApiKey)?.TextValue ?? string.Empty;
+        var storedApiKey = options.FirstOrDefault(x => x.Key == OptionHttpApiKey)?.TextValue ?? string.Empty;
+        _settings.HttpApiKey = SecretProtector.Unprotect(storedApiKey);
+        if (SecretProtector.NeedsMigration(storedApiKey))
+        {
+            MigrateApiKeyToProtected(_settings.HttpApiKey);
+        }
+
         _settings.HttpModel = options.FirstOrDefault(x => x.Key == OptionHttpModel)?.TextValue
             ?? _settings.HttpModel;
         _settings.HyMtGgufPath = options.FirstOrDefault(x => x.Key == OptionHyMtGgufPath)?.TextValue ?? string.Empty;
