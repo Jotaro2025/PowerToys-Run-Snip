@@ -70,21 +70,54 @@ public static class SnipController
     }
 
     /// <summary>
-    /// Shows the dedicated settings window on the STA UI thread.
-    /// When the user saves, <paramref name="onSaved"/> runs on that same thread.
+    /// Shows the dedicated settings window on PowerToys Run's WPF dispatcher.
+    /// When the user saves, <paramref name="onSaved"/> runs on that same dispatcher
+    /// (hotkey re-registration still marshals to the snip STA via <see cref="InvokeOnUiThread"/>).
     /// </summary>
+    /// <remarks>
+    /// Settings must NOT use the dedicated snip capture STA. That thread owns overlay /
+    /// clipboard Freezables; creating a settings <see cref="System.Windows.Window"/> there
+    /// while Run's mouse/input runs on <c>Application.Current.Dispatcher</c> causes
+    /// <see cref="System.InvalidOperationException"/> (Freezable/style seal) during mouse-over.
+    /// Screenshot / editor flow stays on the dedicated STA via <see cref="Start"/>.
+    /// </remarks>
     public static void ShowSettingsWindow(SnipSettings settings, Action onSaved)
     {
         ArgumentNullException.ThrowIfNull(settings);
-        InvokeOnUiThread(() =>
+
+        // Prefer the host (PowerToys Run) dispatcher so styles/Freezables share affinity
+        // with Run's mouse input. BeginInvoke so Result.Action can return and Run can hide.
+        var host = System.Windows.Application.Current?.Dispatcher;
+        if (host != null)
         {
-            var window = new SnipSettingsWindow(settings);
-            var ok = window.ShowDialog() == true;
-            if (ok)
+            host.BeginInvoke(
+                new Action(() => ShowSettingsWindowCore(settings, onSaved, setOwner: true)),
+                DispatcherPriority.Normal);
+            return;
+        }
+
+        // Unit tests / headless: no WPF Application — fall back to dedicated STA.
+        InvokeOnUiThread(() => ShowSettingsWindowCore(settings, onSaved, setOwner: false));
+    }
+
+    private static void ShowSettingsWindowCore(SnipSettings settings, Action onSaved, bool setOwner)
+    {
+        var window = new SnipSettingsWindow(settings);
+        if (setOwner)
+        {
+            // Only set Owner on the same thread as MainWindow (never cross-dispatcher).
+            var main = System.Windows.Application.Current?.MainWindow;
+            if (main != null && main.Dispatcher.CheckAccess())
             {
-                onSaved?.Invoke();
+                window.Owner = main;
             }
-        });
+        }
+
+        var ok = window.ShowDialog() == true;
+        if (ok)
+        {
+            onSaved?.Invoke();
+        }
     }
 
     private static Dispatcher EnsureUiDispatcher()

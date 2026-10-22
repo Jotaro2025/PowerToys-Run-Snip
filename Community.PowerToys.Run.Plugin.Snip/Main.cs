@@ -379,39 +379,52 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
     private void TryDownloadRecommendedModel(IEnumerable<PluginAdditionalOption> options)
     {
-        try
+        // UpdateSettings may run off the WPF UI thread; dialogs/MessageBox need the host dispatcher.
+        void Run()
         {
-            var (ok, path, error) = HyMtModelDownloadDialog.ShowDialogAndDownload(
-                customDownloadUrl: _settings.HyMtCustomDownloadUrl);
-            if (ok && !string.IsNullOrWhiteSpace(path))
+            try
             {
-                ApplyGgufPath(options, path);
-                MessageBox.Show(
-                    $"{Properties.Resources.tr_download_settings_ok} {path}",
-                    Properties.Resources.tr_download_title,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Information);
-                return;
-            }
+                var (ok, path, error) = HyMtModelDownloadDialog.ShowDialogAndDownload(
+                    customDownloadUrl: _settings.HyMtCustomDownloadUrl);
+                if (ok && !string.IsNullOrWhiteSpace(path))
+                {
+                    ApplyGgufPath(options, path);
+                    MessageBox.Show(
+                        $"{Properties.Resources.tr_download_settings_ok} {path}",
+                        Properties.Resources.tr_download_title,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                    return;
+                }
 
-            if (!string.IsNullOrWhiteSpace(error))
+                if (!string.IsNullOrWhiteSpace(error))
+                {
+                    MessageBox.Show(
+                        error,
+                        Properties.Resources.tr_download_title,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Warning);
+                }
+            }
+            catch (Exception ex)
             {
+                Log.Exception($"Snip recommended Hy-MT2 download failed: {ex.Message}", ex, GetType());
                 MessageBox.Show(
-                    error,
+                    $"{Properties.Resources.tr_err_download_network} {ex.Message}",
                     Properties.Resources.tr_download_title,
                     MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
+                    MessageBoxImage.Error);
             }
         }
-        catch (Exception ex)
+
+        var dispatcher = Application.Current?.Dispatcher;
+        if (dispatcher != null && !dispatcher.CheckAccess())
         {
-            Log.Exception($"Snip recommended Hy-MT2 download failed: {ex.Message}", ex, GetType());
-            MessageBox.Show(
-                $"{Properties.Resources.tr_err_download_network} {ex.Message}",
-                Properties.Resources.tr_download_title,
-                MessageBoxButton.OK,
-                MessageBoxImage.Error);
+            dispatcher.BeginInvoke(new Action(Run));
+            return;
         }
+
+        Run();
     }
 
     private void ApplyGgufPath(IEnumerable<PluginAdditionalOption> options, string path)
