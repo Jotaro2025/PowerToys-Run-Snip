@@ -543,6 +543,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("tr_busy_render", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Loading model….
+        /// </summary>
+        public static string tr_busy_loading_model {
+            get {
+                return ResourceManager.GetString("tr_busy_loading_model", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to Copy all.
         /// </summary>

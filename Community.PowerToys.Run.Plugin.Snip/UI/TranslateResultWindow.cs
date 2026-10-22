@@ -224,9 +224,13 @@ public sealed class TranslateResultWindow : Window, IDisposable
 
             SetBusy(Properties.Resources.tr_busy_translate);
             translator = TranslatorFactory.Create(_settings);
-            if (translator is HyMT2SharpTranslator hymt && hymt.IsBusy)
+            if (translator is HyMT2SharpTranslator hymt)
             {
-                SetBusy(Properties.Resources.tr_busy_hymt_wait);
+                hymt.ModelLoading += OnModelLoading;
+                if (hymt.IsBusy)
+                {
+                    SetBusy(Properties.Resources.tr_busy_hymt_wait);
+                }
             }
 
             var sources = _lines.Select(l => l.Text).ToList();
@@ -366,6 +370,12 @@ public sealed class TranslateResultWindow : Window, IDisposable
 
     private string JoinTranslations()
         => string.Join(Environment.NewLine, CollectTranslations());
+
+    private void OnModelLoading(object sender, EventArgs e)
+    {
+        // Never block the loader thread with Dispatcher.Invoke (UI may be awaiting TranslateAsync).
+        _ = Dispatcher.BeginInvoke(new Action(() => SetBusy(Properties.Resources.tr_busy_loading_model)));
+    }
 
     private void SetBusy(string message)
     {

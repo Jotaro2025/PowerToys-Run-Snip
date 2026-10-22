@@ -16,12 +16,16 @@ using Community.PowerToys.Run.Plugin.Snip.Models;
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
-/// WeChat-style image translate rendering: sample background near each OCR box
-/// (multi-ring median), fill a slightly expanded rectangle, pick contrasting text,
-/// and draw the translation with wrapping + adaptive font size.
+/// WeChat-style image translate rendering: sample background near each OCR
+/// region (multi-ring median), cover the original text (axis-aligned box or
+/// corner quad), pick a contrasting text color, and draw the translation with
+/// wrapping + adaptive font size. Quad path uses a pure WPF affine transform — no OpenCV.
 /// </summary>
 public static class ImageTranslateRenderer
 {
+    private const double MinQuadArea = 8.0;
+    private const double MinEdgeLength = 2.0;
+
     private static readonly Typeface Typeface = new Typeface(
         new FontFamily("Microsoft YaHei UI, Segoe UI, Arial"),
         FontStyles.Normal,
@@ -97,27 +101,14 @@ public static class ImageTranslateRenderer
                         continue;
                     }
 
-                    var raw = Clamp(lines[i].Box, width, height);
-                    if (raw.Width < 2 || raw.Height < 2)
+                    if (TryGetUsableQuad(lines[i], width, height, out var quad, out double localW, out double localH))
                     {
-                        continue;
+                        DrawQuad(dc, pixels, stride, width, height, quad, localW, localH, text);
                     }
-
-                    // Sample against the original OCR box so rings sit in real background.
-                    var bg = SampleBackground(pixels, stride, width, height, raw);
-                    var fg = ContrastingText(bg);
-
-                    var paintBox = ExpandBox(raw, BoxExpandX, BoxExpandY, width, height);
-                    dc.DrawRectangle(new SolidColorBrush(bg), null, paintBox);
-
-                    double contentWidth = Math.Max(1, paintBox.Width - (TextPaddingX * 2));
-                    double contentHeight = Math.Max(1, paintBox.Height - (TextPaddingY * 2));
-                    var fontSize = FitFontSize(text, contentWidth, contentHeight);
-                    var ft = CreateLaidOutText(text, fontSize, contentWidth, contentHeight, fg);
-
-                    double x = paintBox.X + TextPaddingX;
-                    double y = paintBox.Y + TextPaddingY + Math.Max(0, (contentHeight - ft.Height) / 2);
-                    dc.DrawText(ft, new Point(x, y));
+                    else
+                    {
+                        DrawAxisAligned(dc, pixels, stride, width, height, lines[i].Box, text);
+                    }
                 }
             }
 
@@ -130,6 +121,215 @@ public static class ImageTranslateRenderer
         {
             writable.Unlock();
         }
+    }
+
+    private static void DrawAxisAligned(
+        DrawingContext dc,
+        byte[] pixels,
+        int stride,
+        int width,
+        int height,
+        Rect rawBox,
+        string text)
+    {
+        var raw = Clamp(rawBox, width, height);
+        if (raw.Width < 2 || raw.Height < 2)
+        {
+            return;
+        }
+
+        // Sample against the original OCR box so rings sit in real background.
+        var bg = SampleBackground(pixels, stride, width, height, raw);
+        var fg = ContrastingText(bg);
+
+        var paintBox = ExpandBox(raw, BoxExpandX, BoxExpandY, width, height);
+        dc.DrawRectangle(new SolidColorBrush(bg), null, paintBox);
+
+        double contentWidth = Math.Max(1, paintBox.Width - (TextPaddingX * 2));
+        double contentHeight = Math.Max(1, paintBox.Height - (TextPaddingY * 2));
+        var fontSize = FitFontSize(text, contentWidth, contentHeight);
+        var ft = CreateLaidOutText(text, fontSize, contentWidth, contentHeight, fg);
+
+        double x = paintBox.X + TextPaddingX;
+        double y = paintBox.Y + TextPaddingY + Math.Max(0, (contentHeight - ft.Height) / 2);
+        dc.DrawText(ft, new Point(x, y));
+    }
+
+    private static void DrawQuad(
+        DrawingContext dc,
+        byte[] pixels,
+        int stride,
+        int width,
+        int height,
+        Point[] quad,
+        double localW,
+        double localH,
+        string text)
+    {
+        var bounds = BoundsOf(quad);
+        bounds = Clamp(bounds, width, height);
+        var bg = SampleBackground(pixels, stride, width, height, bounds);
+        var fg = ContrastingText(bg);
+
+        var matrix = CreateAffineFromQuad(quad, localW, localH);
+        dc.PushTransform(new MatrixTransform(matrix));
+        try
+        {
+            dc.DrawRectangle(new SolidColorBrush(bg), null, new Rect(0, 0, localW, localH));
+
+            double contentWidth = Math.Max(1, localW - (TextPaddingX * 2));
+            double contentHeight = Math.Max(1, localH - (TextPaddingY * 2));
+            var fontSize = FitFontSize(text, contentWidth, contentHeight);
+            var ft = CreateLaidOutText(text, fontSize, contentWidth, contentHeight, fg);
+
+            double x = TextPaddingX;
+            double y = TextPaddingY + Math.Max(0, (contentHeight - ft.Height) / 2);
+            dc.DrawText(ft, new Point(x, y));
+        }
+        finally
+        {
+            dc.Pop();
+        }
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="line"/> has a usable 4-corner quad after clamping.
+    /// </summary>
+    internal static bool TryGetUsableQuad(
+        OcrTextLine line,
+        int imageWidth,
+        int imageHeight,
+        out Point[] quad,
+        out double localWidth,
+        out double localHeight)
+    {
+        quad = null;
+        localWidth = 0;
+        localHeight = 0;
+        if (line?.Corners == null || line.Corners.Count < 4)
+        {
+            return false;
+        }
+
+        var pts = new Point[4];
+        for (int i = 0; i < 4; i++)
+        {
+            var p = line.Corners[i];
+            if (double.IsNaN(p.X) || double.IsNaN(p.Y) || double.IsInfinity(p.X) || double.IsInfinity(p.Y))
+            {
+                return false;
+            }
+
+            pts[i] = new Point(
+                Math.Clamp(p.X, 0, imageWidth),
+                Math.Clamp(p.Y, 0, imageHeight));
+        }
+
+        if (!IsUsableQuad(pts, out localWidth, out localHeight))
+        {
+            return false;
+        }
+
+        quad = pts;
+        return true;
+    }
+
+    /// <summary>
+    /// True when four corners form a non-degenerate quad (enough area / edge length).
+    /// Assumes order TL → TR → BR → BL.
+    /// </summary>
+    internal static bool IsUsableQuad(IReadOnlyList<Point> corners, out double localWidth, out double localHeight)
+    {
+        localWidth = 0;
+        localHeight = 0;
+        if (corners == null || corners.Count < 4)
+        {
+            return false;
+        }
+
+        double area = Math.Abs(Shoelace(corners));
+        if (area < MinQuadArea)
+        {
+            return false;
+        }
+
+        localWidth = Distance(corners[0], corners[1]);
+        localHeight = Distance(corners[0], corners[3]);
+        if (localWidth < MinEdgeLength || localHeight < MinEdgeLength)
+        {
+            // Try the other pair of adjacent edges (TR→BR, TL→BL already tried height).
+            double w2 = Distance(corners[3], corners[2]);
+            double h2 = Distance(corners[1], corners[2]);
+            localWidth = Math.Max(localWidth, w2);
+            localHeight = Math.Max(localHeight, h2);
+        }
+
+        return localWidth >= MinEdgeLength && localHeight >= MinEdgeLength;
+    }
+
+    /// <summary>
+    /// Affine matrix mapping local rectangle (0,0)-(w,h) onto quad corners TL/TR/BL
+    /// (indices 0, 1, 3). BR is not independently constrained (affine).
+    /// </summary>
+    internal static Matrix CreateAffineFromQuad(IReadOnlyList<Point> quad, double localWidth, double localHeight)
+    {
+        ArgumentNullException.ThrowIfNull(quad);
+        if (quad.Count < 4)
+        {
+            throw new ArgumentException("Quad needs 4 corners.", nameof(quad));
+        }
+
+        if (localWidth < MinEdgeLength || localHeight < MinEdgeLength)
+        {
+            throw new ArgumentException("Local size is degenerate.");
+        }
+
+        Point tl = quad[0];
+        Point tr = quad[1];
+        Point bl = quad[3];
+
+        // (0,0)->TL, (w,0)->TR, (0,h)->BL
+        double a = (tr.X - tl.X) / localWidth;
+        double d = (tr.Y - tl.Y) / localWidth;
+        double b = (bl.X - tl.X) / localHeight;
+        double e = (bl.Y - tl.Y) / localHeight;
+        double c = tl.X;
+        double f = tl.Y;
+        return new Matrix(a, d, b, e, c, f);
+    }
+
+    private static double Shoelace(IReadOnlyList<Point> pts)
+    {
+        double sum = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            var a = pts[i];
+            var b = pts[(i + 1) % 4];
+            sum += (a.X * b.Y) - (b.X * a.Y);
+        }
+
+        return sum / 2.0;
+    }
+
+    private static double Distance(Point a, Point b)
+    {
+        double dx = a.X - b.X;
+        double dy = a.Y - b.Y;
+        return Math.Sqrt((dx * dx) + (dy * dy));
+    }
+
+    private static Rect BoundsOf(IReadOnlyList<Point> pts)
+    {
+        double minX = pts[0].X, maxX = pts[0].X, minY = pts[0].Y, maxY = pts[0].Y;
+        for (int i = 1; i < pts.Count; i++)
+        {
+            minX = Math.Min(minX, pts[i].X);
+            maxX = Math.Max(maxX, pts[i].X);
+            minY = Math.Min(minY, pts[i].Y);
+            maxY = Math.Max(maxY, pts[i].Y);
+        }
+
+        return new Rect(minX, minY, maxX - minX, maxY - minY);
     }
 
     /// <summary>Clamps a box to image bounds.</summary>
