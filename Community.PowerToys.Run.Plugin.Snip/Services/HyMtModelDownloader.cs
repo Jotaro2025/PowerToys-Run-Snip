@@ -176,8 +176,9 @@ public static class HyMtModelDownloader
     public static Task<(bool Ok, string Path, string Error)> EnsureDownloadedAsync(
         IProgress<HyMtDownloadProgress> progress = null,
         bool force = false,
+        string customDownloadUrl = null,
         CancellationToken cancellationToken = default)
-        => EnsureDownloadedAsync(Http, DefaultCachePath, progress, force, cancellationToken);
+        => EnsureDownloadedAsync(Http, DefaultCachePath, progress, force, customDownloadUrl, cancellationToken);
 
     /// <summary>Test / DI entry: same as <see cref="EnsureDownloadedAsync"/> with injectable client and target path.</summary>
     internal static async Task<(bool Ok, string Path, string Error)> EnsureDownloadedAsync(
