@@ -149,6 +149,7 @@ Translation is **off** by default; pick one engine in settings:
 
 1. **HTTP (OpenAI-compatible)**  
    Any `POST /v1/chat/completions` service, e.g. [HyMT2Sharp.Server](https://github.com/sdcb/HyMT2Sharp): `http://127.0.0.1:8080/v1`. Optional API key and model name.
+   The API key is stored encrypted with Windows DPAPI (current user) in PowerToys Run `settings.json` (as `dpapi:v1:…`; a legacy plaintext key is re-saved encrypted the first time it is read). **After restoring or syncing those settings on another PC or Windows account the key cannot be decrypted and must be entered again.** The PowerToys settings page shows the ciphertext in that textbox; just type a new plaintext key there and it is encrypted on the next read.
 
 2. **HyMT2Sharp (in-process)**  
    References [`Sdcb.HyMT2Sharp`](https://www.nuget.org/packages/Sdcb.HyMT2Sharp); **does not** bundle GGUF. Recommended official [Hy-MT2-1.8B-2Bit.gguf](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF) (~573 MB):

@@ -113,7 +113,7 @@ internal static class SnipSettingsPersister
             OptionPatch.Text("TargetLanguage", settings.TargetLanguage ?? string.Empty),
             OptionPatch.Text("UiLanguage", UiLanguageHelper.ToPersistedValue(settings.UiLanguage)),
             OptionPatch.Text("HttpBaseUrl", settings.HttpBaseUrl ?? string.Empty),
-            OptionPatch.Text("HttpApiKey", settings.HttpApiKey ?? string.Empty),
+            OptionPatch.Text("HttpApiKey", SecretProtector.Protect(settings.HttpApiKey ?? string.Empty)),
             OptionPatch.Text("HttpModel", settings.HttpModel ?? string.Empty),
             OptionPatch.Text("HyMtGgufPath", settings.HyMtGgufPath ?? string.Empty),
             OptionPatch.Text("HyMtCustomDownloadUrl", settings.HyMtCustomDownloadUrl ?? string.Empty),
