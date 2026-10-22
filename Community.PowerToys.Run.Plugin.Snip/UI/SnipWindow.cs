@@ -586,6 +586,11 @@ public sealed class SnipWindow : Window
             return;
         }
 
+        if (!EnsureOcrAssetsReady())
+        {
+            return;
+        }
+
         Result = new EditResult
         {
             Outcome = EditOutcome.ExtractText,
@@ -604,6 +609,11 @@ public sealed class SnipWindow : Window
     private async Task DoTranslateImageAsync()
     {
         if (!_hasSelection || _exportBusy)
+        {
+            return;
+        }
+
+        if (!EnsureOcrAssetsReady())
         {
             return;
         }
@@ -639,6 +649,46 @@ public sealed class SnipWindow : Window
             PngBytes = built.Value.Png,
         };
         Close();
+    }
+
+    /// <summary>
+    /// Ensures WeChat OCR assets are present (plugin <c>wco_data</c> or LocalAppData
+    /// cache). Slim packages prompt to download ~61 MB from the WeChatOcr NuGet package.
+    /// </summary>
+    private bool EnsureOcrAssetsReady()
+    {
+        if (WeChatOcrService.IsOcrComponentAvailable())
+        {
+            return true;
+        }
+
+        var answer = MessageBox.Show(
+            Properties.Resources.ocr_download_prompt,
+            Properties.Resources.tip_ocr,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            MessageBox.Show(
+                Properties.Resources.ocr_err_need_install,
+                Properties.Resources.tip_ocr,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        var (ok, path, downloadError) = OcrAssetsDownloadDialog.ShowDialogAndDownload(owner: this);
+        if (!ok || string.IsNullOrWhiteSpace(path))
+        {
+            MessageBox.Show(
+                downloadError ?? Properties.Resources.ocr_err_download_network,
+                Properties.Resources.ocr_download_title,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        return WeChatOcrService.IsOcrComponentAvailable();
     }
 
     /// <summary>
