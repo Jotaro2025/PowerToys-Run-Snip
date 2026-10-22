@@ -552,6 +552,9 @@
   <data name="tip_scroll_save" xml:space="preserve">
     <value>Stitch and save</value>
   </data>
+  <data name="tip_scroll_discard" xml:space="preserve">
+    <value>Discard scroll frames (Esc) — keeps selection</value>
+  </data>
   <data name="scroll_hint_title" xml:space="preserve">
     <value>Scroll capturing…</value>
   </data>

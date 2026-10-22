@@ -552,6 +552,9 @@
   <data name="tip_scroll_save" xml:space="preserve">
     <value>保存长图并退出</value>
   </data>
+  <data name="tip_scroll_discard" xml:space="preserve">
+    <value>丢弃滚动帧（Esc）— 保留选区</value>
+  </data>
   <data name="scroll_hint_title" xml:space="preserve">
     <value>滚动截屏中…</value>
   </data>

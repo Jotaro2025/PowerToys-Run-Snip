@@ -246,6 +246,40 @@ public static class ScrollStitcher
         return sorted[sorted.Length / 2];
     }
 
+    /// <summary>
+    /// Lightweight full-frame identity check used during capture to auto-stop
+    /// when the page no longer scrolls (same threshold as stitch FullDuplicate).
+    /// Must be called on the UI STA that owns the bitmaps.
+    /// </summary>
+    internal static bool IsNearlyIdentical(WriteableBitmap prev, WriteableBitmap next)
+    {
+        if (prev is null || next is null) return false;
+        if (prev.PixelWidth != next.PixelWidth || prev.PixelHeight != next.PixelHeight)
+            return false;
+        int width = prev.PixelWidth;
+        int h = prev.PixelHeight;
+        if (width <= 0 || h <= 0) return false;
+
+        prev.Lock();
+        next.Lock();
+        try
+        {
+            unsafe
+            {
+                double raw = ComputeRawMatchRatio(
+                    (byte*)prev.BackBuffer, prev.BackBufferStride, h, 0,
+                    (byte*)next.BackBuffer, next.BackBufferStride, h, 0,
+                    h, width, stepX: 1, stepY: 1);
+                return raw >= 0.999;
+            }
+        }
+        finally
+        {
+            next.Unlock();
+            prev.Unlock();
+        }
+    }
+
     public static int MeasureTopSkip(WriteableBitmap prev, WriteableBitmap next, int hintPx = 0)
     {
         var (skip, _, relation) = AlignVerticalTilesLocked(prev, next, hintPx);
