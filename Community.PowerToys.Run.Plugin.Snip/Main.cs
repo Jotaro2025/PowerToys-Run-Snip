@@ -227,7 +227,8 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
     public void Init(PluginInitContext context)
     {
-        _context = context ?? throw new ArgumentNullException(nameof(context));
+        ArgumentNullException.ThrowIfNull(context);
+        _context = context;
         _context.API.ThemeChanged += OnThemeChanged;
         UpdateIconPath(_context.API.GetCurrentTheme());
     }
