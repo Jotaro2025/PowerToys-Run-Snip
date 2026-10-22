@@ -20,13 +20,13 @@ public sealed class OcrTextLine
         Confidence = confidence;
         if (corners != null && corners.Count >= 4)
         {
-            Corners = new[]
-            {
+            Corners =
+            [
                 corners[0],
                 corners[1],
                 corners[2],
                 corners[3],
-            };
+            ];
         }
     }
 

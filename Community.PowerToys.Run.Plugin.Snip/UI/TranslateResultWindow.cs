@@ -50,7 +50,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
     private bool _closed;
     private bool _disposed;
     private bool _actionBusy;
-    private IReadOnlyList<OcrTextLine> _lines = Array.Empty<OcrTextLine>();
+    private IReadOnlyList<OcrTextLine> _lines = [];
 
     public TranslateResultWindow(BitmapSource image, byte[] png, SnipSettings settings)
     {

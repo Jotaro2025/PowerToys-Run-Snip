@@ -37,7 +37,7 @@ public sealed class SnipToolbar : Border
     private readonly ToolbarButton _redoButton;
     private readonly Dictionary<Color, Border> _colorChips = new();
     private readonly Dictionary<double, Border> _widthChips = new();
-    private readonly List<double> _widthPresets = new() { 2, 3, 5, 8 };
+    private readonly List<double> _widthPresets = [2, 3, 5, 8];
 
     public SnipToolbar(EditRequest request)
     {

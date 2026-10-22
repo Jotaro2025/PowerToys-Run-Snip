@@ -194,7 +194,7 @@ public static class WeChatOcrService
         var raw = result?.OcrResult?.SingleResult;
         if (raw == null || raw.Count == 0)
         {
-            return Array.Empty<OcrTextLine>();
+            return [];
         }
 
         var lines = new List<OcrTextLine>(raw.Count);
@@ -232,13 +232,13 @@ public static class WeChatOcrService
             var pos = line.SinglePos?.Pos;
             if (pos != null && pos.Count >= 4)
             {
-                corners = new[]
-                {
+                corners =
+                [
                     new Point(pos[0].X, pos[0].Y),
                     new Point(pos[1].X, pos[1].Y),
                     new Point(pos[2].X, pos[2].Y),
                     new Point(pos[3].X, pos[3].Y),
-                };
+                ];
             }
 
             lines.Add(new OcrTextLine(
