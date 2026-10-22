@@ -77,41 +77,9 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
-        /// <summary>
-        ///   Looks up a localized string similar to Full screen to clipboard.
-        /// </summary>
-        public static string cmd_full_clipboard_title {
-            get {
-                return ResourceManager.GetString("cmd_full_clipboard_title", resourceCulture);
-            }
-        }
 
-        /// <summary>
-        ///   Looks up a localized string similar to Capture the screen under the cursor and copy it to the clipboard.
-        /// </summary>
-        public static string cmd_full_clipboard_subtitle {
-            get {
-                return ResourceManager.GetString("cmd_full_clipboard_subtitle", resourceCulture);
-            }
-        }
 
-        /// <summary>
-        ///   Looks up a localized string similar to Full screen and save.
-        /// </summary>
-        public static string cmd_full_save_title {
-            get {
-                return ResourceManager.GetString("cmd_full_save_title", resourceCulture);
-            }
-        }
 
-        /// <summary>
-        ///   Looks up a localized string similar to Capture the screen under the cursor and save it as a PNG file.
-        /// </summary>
-        public static string cmd_full_save_subtitle {
-            get {
-                return ResourceManager.GetString("cmd_full_save_subtitle", resourceCulture);
-            }
-        }
 
         /// <summary>
         ///   Looks up a localized string similar to Save directory.
@@ -185,23 +153,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
-        /// <summary>
-        ///   Looks up a localized string similar to Full screen copied to clipboard.
-        /// </summary>
-        public static string msg_full_copied {
-            get {
-                return ResourceManager.GetString("msg_full_copied", resourceCulture);
-            }
-        }
 
-        /// <summary>
-        ///   Looks up a localized string similar to Full screen saved.
-        /// </summary>
-        public static string msg_full_saved {
-            get {
-                return ResourceManager.GetString("msg_full_saved", resourceCulture);
-            }
-        }
 
         /// <summary>
         ///   Looks up a localized string similar to Screenshot failed.
@@ -347,7 +299,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to Capture a region or the full screen with annotations.
+        ///   Looks up a localized string similar to Capture a region with annotations.
         /// </summary>
         public static string plugin_description {
             get {

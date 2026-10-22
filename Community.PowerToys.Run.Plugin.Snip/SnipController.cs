@@ -16,11 +16,10 @@ using Wox.Plugin.Logger;
 namespace Community.PowerToys.Run.Plugin.Snip;
 
 /// <summary>
-/// Runs a screenshot action on a single dedicated STA UI thread. PowerToys Run
+/// Runs a region screenshot on a single dedicated STA UI thread. PowerToys Run
 /// invokes <see cref="Wox.Plugin.Result.Action"/> synchronously and hides its
 /// window only after the action returns, so the capture is deferred: the thread
-/// waits for the Run window to disappear, captures, and then either shows the
-/// editor or copies/saves directly.
+/// waits for the Run window to disappear, captures, then shows the editor.
 /// </summary>
 /// <remarks>
 /// Heavy GDI capture and PNG encode run on the thread pool; WPF bitmaps,
@@ -36,12 +35,12 @@ public static class SnipController
     /// Kicks off a screenshot. Returns immediately; <paramref name="notify"/> is
     /// invoked when the action finishes (success or failure).
     /// </summary>
-    public static void Start(SnipMode mode, SnipSettings settings, Action<string, string> notify)
+    public static void Start(SnipSettings settings, Action<string, string> notify)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
         Dispatcher dispatcher = EnsureUiDispatcher();
-        dispatcher.BeginInvoke(new Action(() => _ = RunAsync(mode, settings, notify)), DispatcherPriority.Normal);
+        dispatcher.BeginInvoke(new Action(() => _ = RunAsync(settings, notify)), DispatcherPriority.Normal);
     }
 
     private static Dispatcher EnsureUiDispatcher()
@@ -74,7 +73,7 @@ public static class SnipController
         }
     }
 
-    private static async Task RunAsync(SnipMode mode, SnipSettings settings, Action<string, string> notify)
+    private static async Task RunAsync(SnipSettings settings, Action<string, string> notify)
     {
         System.Windows.Media.Imaging.WriteableBitmap bitmap = null;
         try
@@ -92,22 +91,7 @@ public static class SnipController
             // GDI BitBlt / GetDIBits off the UI STA; WriteableBitmap on this thread.
             var frame = await Task.Run(() => capture.CaptureScreenPixels(screen)).ConfigureAwait(true);
             bitmap = frame.ToWriteableBitmap();
-
-            switch (mode)
-            {
-                case SnipMode.Region:
-                    RunEditor(bitmap, screen, settings, notify);
-                    return;
-
-                case SnipMode.FullScreenClipboard:
-                    ClipboardService.CopyBitmap(bitmap);
-                    notify(Properties.Resources.msg_full_copied, string.Empty);
-                    return;
-
-                case SnipMode.FullScreenSave:
-                    await RunFullScreenSaveAsync(bitmap, settings, notify).ConfigureAwait(true);
-                    return;
-            }
+            RunEditor(bitmap, screen, settings, notify);
         }
         catch (Exception ex)
         {
@@ -244,26 +228,6 @@ public static class SnipController
         {
             Log.Exception($"Snip pin window failed: {ex.Message}", ex, typeof(SnipController));
             notify(Properties.Resources.pin_window_title, ex.Message);
-        }
-    }
-
-    private static async Task RunFullScreenSaveAsync(
-        System.Windows.Media.Imaging.WriteableBitmap bitmap,
-        SnipSettings settings,
-        Action<string, string> notify)
-    {
-        var png = await PngEncoder.EncodeAsync(bitmap).ConfigureAwait(true);
-        var (ok, path, error) = await ScreenshotFileSaver.SavePngAsync(
-            png,
-            settings.SaveDirectory,
-            SnipSettings.DefaultSaveFolder).ConfigureAwait(true);
-        if (ok)
-        {
-            notify(Properties.Resources.msg_full_saved, path);
-        }
-        else
-        {
-            notify(Properties.Resources.msg_failed, error);
         }
     }
 
