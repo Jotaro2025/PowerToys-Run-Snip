@@ -196,6 +196,7 @@ public sealed class SnipWindow : Window
 
         // Tunnel so Esc closes immediately even when a child (e.g. inline TextBox) has focus.
         PreviewKeyDown += OnKeyDown;
+
         // Right-click cancels the whole session (same as Esc / Cancel toolbar),
         // including mid-drag selection. Toolbar buttons only use left click.
         PreviewMouseRightButtonDown += OnPreviewMouseRightButtonDown;
