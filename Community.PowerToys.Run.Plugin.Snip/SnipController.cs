@@ -122,27 +122,11 @@ public static class SnipController
         var window = new SnipWindow(bitmap, screen, new EditRequest(), settings);
         window.ShowDialog();
 
+        // OCR / translate / pin are opened as session children inside SnipWindow
+        // (overlay hide → result → restore). Only finishing outcomes reach here.
         var result = window.Result;
         if (result == null || result.Outcome == EditOutcome.Cancelled || result.PngBytes == null)
         {
-            return;
-        }
-
-        if (result.Outcome == EditOutcome.ExtractText)
-        {
-            ShowTextExtraction(result, notify);
-            return;
-        }
-
-        if (result.Outcome == EditOutcome.TranslateImage)
-        {
-            ShowImageTranslate(result, settings, notify);
-            return;
-        }
-
-        if (result.Outcome == EditOutcome.Pinned)
-        {
-            ShowPinnedImage(result, notify);
             return;
         }
 
@@ -188,59 +172,6 @@ public static class SnipController
         if (settings.CopyAfterCapture)
         {
             notify(Properties.Resources.msg_copied, string.Empty);
-        }
-    }
-
-    /// <summary>
-    /// Opens the (modeless) text extraction window on this UI thread; it runs
-    /// the OCR itself and stays open after this action returns.
-    /// </summary>
-    private static void ShowTextExtraction(EditResult result, Action<string, string> notify)
-    {
-        try
-        {
-            var window = new OcrResultWindow(result.Result, result.PngBytes);
-            window.Show();
-            window.Activate();
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"Snip text extraction window failed: {ex.Message}", ex, typeof(SnipController));
-            notify(Properties.Resources.ocr_window_title, ex.Message);
-        }
-    }
-
-    /// <summary>
-    /// Opens the (modeless) image-translate window on this UI thread.
-    /// </summary>
-    private static void ShowImageTranslate(EditResult result, SnipSettings settings, Action<string, string> notify)
-    {
-        try
-        {
-            var window = new TranslateResultWindow(result.Result, result.PngBytes, settings);
-            window.Show();
-            window.Activate();
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"Snip image translate window failed: {ex.Message}", ex, typeof(SnipController));
-            notify(Properties.Resources.tr_window_title, ex.Message);
-        }
-    }
-
-    /// <summary>Opens a modeless topmost pin window for the captured bitmap.</summary>
-    private static void ShowPinnedImage(EditResult result, Action<string, string> notify)
-    {
-        try
-        {
-            var window = new PinImageWindow(result.Result);
-            window.Show();
-            window.Activate();
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"Snip pin window failed: {ex.Message}", ex, typeof(SnipController));
-            notify(Properties.Resources.pin_window_title, ex.Message);
         }
     }
 

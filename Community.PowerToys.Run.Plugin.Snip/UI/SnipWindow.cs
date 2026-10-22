@@ -21,7 +21,9 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
 /// <summary>
 /// Fullscreen borderless window that hosts the screenshot capture, selection,
-/// and annotation UI. Closes itself when the user confirms / saves / cancels.
+/// and annotation UI. Confirm / copy / save / cancel end the session; OCR /
+/// image-translate / pin keep the overlay (hide while a result window is open,
+/// then restore) so the user can annotate again on the same capture.
 /// </summary>
 public sealed class SnipWindow : Window
 {
@@ -54,6 +56,12 @@ public sealed class SnipWindow : Window
     private Rect _dragStartSelection;
     private bool _dragMovingHandle;
     private bool _disposed;
+
+    /// <summary>Modeless OCR/translate window opened without ending the snip session.</summary>
+    private Window _sessionChild;
+
+    /// <summary>True when the overlay was <see cref="Window.Hide"/> for a session child.</summary>
+    private bool _hiddenForSessionChild;
 
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
@@ -221,6 +229,7 @@ public sealed class SnipWindow : Window
 
     private void OnClosed(object sender, EventArgs e)
     {
+        DismissSessionChild(restoreOverlay: false);
         CleanupResources();
     }
 
@@ -479,6 +488,7 @@ public sealed class SnipWindow : Window
     // -----------------------------------------------------------------------------------
     private void Cancel()
     {
+        DismissSessionChild(restoreOverlay: false);
         Result = new EditResult { Outcome = EditOutcome.Cancelled };
         Close();
     }
@@ -529,6 +539,7 @@ public sealed class SnipWindow : Window
             return;
         }
 
+        DismissSessionChild(restoreOverlay: false);
         try
         {
             var bmp = BuildResultBitmap(_selection);
@@ -563,6 +574,7 @@ public sealed class SnipWindow : Window
             return;
         }
 
+        DismissSessionChild(restoreOverlay: false);
         try
         {
             var bmp = BuildResultBitmap(_selection);
@@ -590,12 +602,12 @@ public sealed class SnipWindow : Window
     }
 
     /// <summary>
-    /// Hands the selection (with annotations) over for text extraction; the
-    /// controller shows the result window once this overlay is closed.
+    /// Opens OCR on the current selection without ending the snip session.
+    /// The overlay is hidden until the result window closes, then restored.
     /// </summary>
     private void DoExtractText()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _sessionChild != null)
         {
             return;
         }
@@ -603,35 +615,24 @@ public sealed class SnipWindow : Window
         try
         {
             var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
             var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.ExtractText,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
+            var child = new OcrResultWindow(bmp, png);
+            OpenSessionChild(child);
         }
         catch (Exception ex)
         {
             Log.Exception($"SnipWindow DoExtractText failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+            RestoreOverlayAfterChild();
         }
-
-        Close();
     }
 
     /// <summary>
-    /// Hands the selection over for image translate. Shows a clear error and
-    /// keeps the overlay open when the translator is off or misconfigured.
+    /// Opens image translate without ending the snip session. Misconfiguration
+    /// keeps the overlay visible with a warning (same as before).
     /// </summary>
     private void DoTranslateImage()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _sessionChild != null)
         {
             return;
         }
@@ -656,22 +657,14 @@ public sealed class SnipWindow : Window
         {
             var bmp = BuildResultBitmap(_selection);
             var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.TranslateImage,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
+            var child = new TranslateResultWindow(bmp, png, _settings);
+            OpenSessionChild(child);
         }
         catch (Exception ex)
         {
             Log.Exception($"SnipWindow DoTranslateImage failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+            RestoreOverlayAfterChild();
         }
-
-        Close();
     }
 
     /// <summary>
@@ -726,11 +719,12 @@ public sealed class SnipWindow : Window
     }
 
     /// <summary>
-    /// Pins the current selection as a floating topmost image, then closes the editor.
+    /// Pins the current selection as a floating topmost image and keeps the overlay
+    /// so the user can annotate or pin again.
     /// </summary>
     private void DoPin()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _sessionChild != null)
         {
             return;
         }
@@ -738,23 +732,115 @@ public sealed class SnipWindow : Window
         try
         {
             var bmp = BuildResultBitmap(_selection);
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.Pinned,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
+
+            // Drop overlay topmost briefly so the new pin is not covered, then
+            // re-assert both; pin stays alive independently of the snip session.
+            Topmost = false;
+            var pin = new PinImageWindow(bmp);
+            pin.Show();
+            pin.Activate();
+            Topmost = true;
+            pin.Topmost = true;
+            pin.Activate();
         }
         catch (Exception ex)
         {
+            Topmost = true;
             Log.Exception($"SnipWindow DoPin failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+        }
+    }
+
+    /// <summary>
+    /// Hides the fullscreen overlay and shows a modeless child; when the child
+    /// closes, the overlay is shown again (same capture / selection / annotations).
+    /// </summary>
+    private void OpenSessionChild(Window child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        if (_sessionChild != null)
+        {
+            return;
         }
 
-        Close();
+        _sessionChild = child;
+        child.Closed += OnSessionChildClosed;
+        _hiddenForSessionChild = true;
+        Hide();
+        child.Show();
+        child.Activate();
+    }
+
+    private void OnSessionChildClosed(object sender, EventArgs e)
+    {
+        if (sender is Window w)
+        {
+            w.Closed -= OnSessionChildClosed;
+        }
+
+        if (ReferenceEquals(_sessionChild, sender))
+        {
+            _sessionChild = null;
+        }
+
+        RestoreOverlayAfterChild();
+    }
+
+    private void RestoreOverlayAfterChild()
+    {
+        if (!_hiddenForSessionChild || _disposed)
+        {
+            return;
+        }
+
+        _hiddenForSessionChild = false;
+        try
+        {
+            Show();
+            Activate();
+            Topmost = true;
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow restore overlay failed: {ex.Message}", ex, GetType());
+        }
+    }
+
+    /// <summary>
+    /// Closes any OCR/translate child. When <paramref name="restoreOverlay"/> is
+    /// false (session ending), the overlay is not shown again.
+    /// </summary>
+    private void DismissSessionChild(bool restoreOverlay)
+    {
+        var child = _sessionChild;
+        if (child == null)
+        {
+            if (!restoreOverlay)
+            {
+                _hiddenForSessionChild = false;
+            }
+
+            return;
+        }
+
+        _sessionChild = null;
+        child.Closed -= OnSessionChildClosed;
+        try
+        {
+            child.Close();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow dismiss session child failed: {ex.Message}", ex, GetType());
+        }
+
+        if (restoreOverlay)
+        {
+            RestoreOverlayAfterChild();
+        }
+        else
+        {
+            _hiddenForSessionChild = false;
+        }
     }
 
     private async Task DoSaveAsync()
@@ -764,6 +850,7 @@ public sealed class SnipWindow : Window
             return;
         }
 
+        DismissSessionChild(restoreOverlay: false);
         try
         {
             var bmp = BuildResultBitmap(_selection);
