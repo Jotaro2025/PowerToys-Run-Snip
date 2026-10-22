@@ -35,6 +35,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionHyMtIdleUnloadMinutes = "HyMtIdleUnloadMinutes";
     private const string OptionGlobalHotkey = "GlobalHotkey";
     private const string OptionTranslatorProvider = "TranslatorProvider";
+    private const string OptionOcrEngine = "OcrEngine";
     private const string OptionTargetLanguage = "TargetLanguage";
     private const string OptionUiLanguage = "UiLanguage";
     private const string OptionHttpBaseUrl = "HttpBaseUrl";
@@ -155,6 +156,21 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
             TextValue = _settings.GlobalHotkey,
             PlaceholderText = Properties.Resources.opt_hotkey_placeholder,
+        },
+
+        new PluginAdditionalOption()
+        {
+            Key = OptionOcrEngine,
+            DisplayLabel = Properties.Resources.opt_ocr_engine_label,
+            DisplayDescription = Properties.Resources.opt_ocr_engine_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Combobox,
+            ComboBoxValue = (int)_settings.OcrEngine,
+            ComboBoxItems =
+            [
+                new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_auto, "0"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_wechat, "1"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_windows, "2"),
+            ],
         },
 
         // PowerToys Run AdditionalOptions has no IsVisible / conditional-fold API
@@ -407,6 +423,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
         var hotkey = options.FirstOrDefault(x => x.Key == OptionGlobalHotkey)?.TextValue;
         _settings.GlobalHotkey = hotkey != null ? HotkeyParser.Normalize(hotkey) : string.Empty;
+
+        var ocrOpt = options.FirstOrDefault(x => x.Key == OptionOcrEngine);
+        if (ocrOpt != null && Enum.IsDefined(typeof(OcrEngineKind), ocrOpt.ComboBoxValue))
+        {
+            _settings.OcrEngine = (OcrEngineKind)ocrOpt.ComboBoxValue;
+        }
 
         var providerOpt = options.FirstOrDefault(x => x.Key == OptionTranslatorProvider);
         if (providerOpt != null

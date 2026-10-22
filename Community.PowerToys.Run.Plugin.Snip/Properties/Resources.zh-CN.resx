@@ -314,6 +314,21 @@
   <data name="opt_tr_provider_hymt" xml:space="preserve">
     <value>HyMT2Sharp（本地 GGUF）</value>
   </data>
+  <data name="opt_ocr_engine_label" xml:space="preserve">
+    <value>OCR 引擎</value>
+  </data>
+  <data name="opt_ocr_engine_desc" xml:space="preserve">
+    <value>自动：x64 上已具备微信 OCR 组件（full 包或已下载）时用微信 OCR，否则用 Windows OCR。ARM64 始终使用 Windows OCR（微信 OCR 仅有 x64 组件）。</value>
+  </data>
+  <data name="opt_ocr_engine_auto" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="opt_ocr_engine_wechat" xml:space="preserve">
+    <value>微信 OCR</value>
+  </data>
+  <data name="opt_ocr_engine_windows" xml:space="preserve">
+    <value>Windows OCR（系统自带）</value>
+  </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>翻译 · 目标语言</value>
   </data>
@@ -457,6 +472,12 @@
   </data>
   <data name="ocr_err_download_sha_mismatch" xml:space="preserve">
     <value>来自 {0} 的 OCR 组件包 SHA-256 校验失败（实际 {1}，预期 {2}），已丢弃该下载。</value>
+  </data>
+  <data name="ocr_err_windows_no_language" xml:space="preserve">
+    <value>Windows OCR 没有可用的识别语言。请打开「设置 → 时间和语言 → 语言和区域」，添加「中文(简体，中国)」（或所需语言），并确认已安装其「光学字符识别」功能；也可在管理员 PowerShell 中运行：Add-WindowsCapability -Online -Name "Language.OCR~~~zh-CN~0.0.1.0"。完成后重启 PowerToys。</value>
+  </data>
+  <data name="ocr_hint_switch_wechat" xml:space="preserve">
+    <value>也可以在 Snip 设置中把 OCR 引擎切换为「微信 OCR」（首次使用会下载约 61 MB 组件）。</value>
   </data>
   <data name="cmd_settings_title" xml:space="preserve">
     <value>设置</value>

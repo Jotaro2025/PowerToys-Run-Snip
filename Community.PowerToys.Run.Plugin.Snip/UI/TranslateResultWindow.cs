@@ -337,13 +337,13 @@ public sealed class TranslateResultWindow : Window, IDisposable
 
     private async Task RunPipelineAsync()
     {
-        SetBusy(WeChatOcrService.IsBusy
+        SetBusy(OcrService.IsBusy(_settings)
             ? Properties.Resources.tr_busy_ocr_wait
             : Properties.Resources.tr_busy_ocr);
         ITranslator translator = null;
         try
         {
-            _lines = await WeChatOcrService.RecognizeLinesAsync(_png, _cts.Token);
+            _lines = await OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token);
             if (_closed)
             {
                 return;

@@ -1043,7 +1043,7 @@ public sealed class SnipWindow : Window
                 return;
             }
 
-            var child = new OcrResultWindow(built.Value.Bitmap, built.Value.Png);
+            var child = new OcrResultWindow(built.Value.Bitmap, built.Value.Png, _settings);
             OpenSessionChild(child);
         }
         catch (Exception ex)
@@ -1109,7 +1109,9 @@ public sealed class SnipWindow : Window
     /// </summary>
     private bool EnsureOcrAssetsReady()
     {
-        if (WeChatOcrService.IsOcrComponentAvailable())
+        // Windows OCR (explicit, Auto without WeChat assets, or any non-x64 process) needs no download.
+        if (OcrService.ResolveEngine(_settings) != OcrEngineKind.WeChat
+            || WeChatOcrService.IsOcrComponentAvailable())
         {
             return true;
         }

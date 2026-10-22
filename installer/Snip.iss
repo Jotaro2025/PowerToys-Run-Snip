@@ -113,8 +113,8 @@ english.UninstRunningPrompt=PowerToys is running and must be closed to remove th
 chinesesimplified.UninstRunningPrompt=PowerToys 正在运行，卸载插件前需要先关闭。%n%n现在关闭 PowerToys 吗？完成后会自动重新启动。
 english.DeleteDataPrompt=Also delete Snip data?%n%n%1%n%nThis includes downloaded OCR files and HyMT translation models. Choose No to keep them (recommended if you plan to reinstall).
 chinesesimplified.DeleteDataPrompt=是否同时删除 Snip 数据？%n%n%1%n%n其中包括已下载的 OCR 文件和 HyMT 翻译模型。选「否」则保留（打算重新安装时推荐）。
-english.Arm64OcrNote=Note for ARM64: screenshot, annotation, pin and save work natively, but WeChat OCR (text extraction / image translate) ships only x64 native code and is not available inside an ARM64 PowerToys process.
-chinesesimplified.Arm64OcrNote=ARM64 提示：截屏、标注、钉图、保存均可原生使用；但微信 OCR（文字提取 / 图片翻译）只有 x64 原生组件，在 ARM64 版 PowerToys 进程中不可用。
+english.Arm64OcrNote=Note for ARM64: WeChat OCR ships only x64 native code, so text extraction and image translate use the built-in Windows OCR instead. It needs an OCR language: Settings → Time & language → Language & region → add Chinese (Simplified) (or your language) with the "Optical character recognition" feature. The slim installer is enough on ARM64.
+chinesesimplified.Arm64OcrNote=ARM64 提示：微信 OCR 只有 x64 原生组件，因此文字提取与图片翻译将改用系统自带的 Windows OCR。需要已安装 OCR 语言：「设置 → 时间和语言 → 语言和区域」添加「中文(简体)」（或所需语言）并安装其「光学字符识别」功能。ARM64 上使用 slim 安装包即可。
 
 [InstallDelete]
 ; Upgrade: wipe the previous plugin folder first so stale DLLs never linger.

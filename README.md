@@ -47,7 +47,7 @@ PowerToys Run（PowerToys 启动器）的**区域截屏**插件：框选标注�
 ## 系统要求
 
 - [PowerToys](https://github.com/microsoft/PowerToys) **≥ 0.100**（.NET 10 宿主）
-- **x64** PowerToys（OCR 组件仅有 x64 版本）；ARM64 版 PowerToys 可加载插件并使用截屏 / 标注 / 钉图，但 OCR 与图片翻译不可用
+- **x64** 或 **ARM64** PowerToys：微信 OCR 组件仅有 x64 版本；ARM64（或手动选择时）使用系统自带的 **Windows OCR**，需要已安装 OCR 语言（见「文字提取」）
 - Windows（插件为 WPF）
 
 ## 安装
@@ -61,7 +61,7 @@ PowerToys Run（PowerToys 启动器）的**区域截屏**插件：框选标注�
 | `Snip-Setup-<ver>-x64-slim.exe` | x64 | 与 slim zip 相同；首次 OCR 时按需下载 `wco_data` | 7 MB |
 | `Snip-Setup-<ver>-x64-full.exe` | x64 | slim + 内置 `wco_data`（约 61 MB），离线即可 OCR / 译图 | 35 MB |
 | `Snip-Setup-<ver>-arm64-slim.exe` | ARM64 | 同 x64-slim | 7 MB |
-| `Snip-Setup-<ver>-arm64-full.exe` | ARM64 | 同 x64-full（OCR 组件为 x64，ARM64 进程内不可用，见下） | 35 MB |
+| `Snip-Setup-<ver>-arm64-full.exe` | ARM64 | 同 x64-full；ARM64 上 OCR 使用 Windows OCR，内置的 `wco_data` 不会被使用，一般选 slim 即可 | 35 MB |
 
 - **前置条件：需先安装 PowerToys ≥ 0.100**（首个 .NET 10 宿主版本，本插件目标为 `net10.0-windows`）。安装程序会检测 `%LOCALAPPDATA%\PowerToys\`、`%ProgramFiles%\PowerToys\` 与卸载注册表；未安装或版本过旧会提示 [PowerToys Releases](https://github.com/microsoft/PowerToys/releases) / `winget install Microsoft.PowerToys` 并退出。
 - **按用户安装、无需管理员（无 UAC）**，安装到 `%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\`。
@@ -132,7 +132,19 @@ PowerToys 设置 → PowerToys Run → Snip 的 **AdditionalOptions** 仍可用�
 
 ## 文字提取（OCR）
 
-使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/)（见上文致谢）。**不需要安装微信**；识别在本地进行。
+两种引擎，均在本地识别，结果统一供「文字提取」与「图片翻译」使用。设置项 **OCR 引擎**（专用设置窗口「常规」页 / PowerToys 设置页）：
+
+| 选项 | 行为 |
+|---|---|
+| **自动**（默认） | x64 上已有微信 OCR 组件（full 包或已下载）→ 微信 OCR；否则 → Windows OCR（不再弹下载提示） |
+| **微信 OCR** | 始终用微信 OCR；slim 包首次使用提示下载组件 |
+| **Windows OCR** | 始终用系统自带 `Windows.Media.Ocr` |
+
+ARM64 版 PowerToys 中始终使用 Windows OCR（微信 OCR 只有 x64 原生组件）。
+
+### 微信 OCR
+
+使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/)（见上文致谢）。**不需要安装微信**。
 
 - **精简包（slim / 默认 `Snip-<ver>.zip`）**：不含 `wco_data`；首次「文字提取」或「图片翻译」时提示下载 WeChatOcr NuGet，解压到  
   `%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\wco_data\`
@@ -140,6 +152,14 @@ PowerToys 设置 → PowerToys Run → Snip 的 **AdditionalOptions** 仍可用�
 - 托管 DLL（`WeChatOcr.dll` 等约 1.3 MB）随两种包一起分发
 - 仅 **x64**；OCR 缺失 / 超时 / 失败时结果窗会提示
 - 关闭结果窗会取消进行中的识别；引擎忙碌时会显示等待提示
+
+### Windows OCR
+
+- 系统自带，无需下载，x64 与 ARM64 均原生运行；中文识别效果一般弱于微信 OCR，且不提供倾斜文字的四边形（译图按水平框贴字）
+- 需要已安装 OCR 语言：「设置 → 时间和语言 → 语言和区域」添加 **中文(简体，中国)**（或所需语言），并确认已安装其「光学字符识别」功能；或在管理员 PowerShell 运行  
+  `Add-WindowsCapability -Online -Name "Language.OCR~~~zh-CN~0.0.1.0"`，然后重启 PowerToys
+- 识别语言按 Windows 用户语言列表顺序选择（首个已安装 OCR 的语言），没有时再找简体中文
+- 超长滚动截图会自动分段识别（单段受 `OcrEngine.MaxImageDimension` 限制）
 
 ## 图片翻译
 

@@ -557,6 +557,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("ocr_err_download_sha_mismatch", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Windows OCR has no recognition language installed. Open Settings → Time &amp; language → Language &amp; region, add "Chinese (Simplified, China)" (or the language you need) and make sure its "Optical character recognition" feature is installed. Or run in an elevated PowerShell: Add-WindowsCapability -Online -Name "Language.OCR~~~zh-CN~0.0.1.0". Then restart PowerToys..
+        /// </summary>
+        public static string ocr_err_windows_no_language {
+            get {
+                return ResourceManager.GetString("ocr_err_windows_no_language", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Alternatively, set the OCR engine to "WeChat OCR" in Snip settings (first use downloads ~61 MB)..
+        /// </summary>
+        public static string ocr_hint_switch_wechat {
+            get {
+                return ResourceManager.GetString("ocr_hint_switch_wechat", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to Image translate.
         /// </summary>
@@ -888,6 +906,51 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string opt_tr_provider_hymt {
             get {
                 return ResourceManager.GetString("opt_tr_provider_hymt", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to OCR engine.
+        /// </summary>
+        public static string opt_ocr_engine_label {
+            get {
+                return ResourceManager.GetString("opt_ocr_engine_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Auto: WeChat OCR on x64 when its component is installed (full package or already downloaded), otherwise Windows OCR. ARM64 always uses Windows OCR (WeChat OCR is x64-only)..
+        /// </summary>
+        public static string opt_ocr_engine_desc {
+            get {
+                return ResourceManager.GetString("opt_ocr_engine_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Auto.
+        /// </summary>
+        public static string opt_ocr_engine_auto {
+            get {
+                return ResourceManager.GetString("opt_ocr_engine_auto", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to WeChat OCR.
+        /// </summary>
+        public static string opt_ocr_engine_wechat {
+            get {
+                return ResourceManager.GetString("opt_ocr_engine_wechat", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Windows OCR (built-in).
+        /// </summary>
+        public static string opt_ocr_engine_windows {
+            get {
+                return ResourceManager.GetString("opt_ocr_engine_windows", resourceCulture);
             }
         }
         /// <summary>
