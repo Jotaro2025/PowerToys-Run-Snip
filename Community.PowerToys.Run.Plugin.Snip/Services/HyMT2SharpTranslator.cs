@@ -32,9 +32,11 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
     private readonly HyMtBackendKind _backendKind;
     private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
     private readonly object _loadLock = new object();
+    private readonly CancellationTokenSource _disposeCts = new CancellationTokenSource();
     private HunyuanDenseModel _model;
-    private bool _disposed;
+    private volatile bool _disposed;
     private long _lastUsedUtcTicks = DateTime.UtcNow.Ticks;
+    private int _deferModelDispose;
 
     /// <summary>Raised once when the GGUF is about to be loaded (first inference).</summary>
     public event EventHandler ModelLoading;
@@ -52,6 +54,15 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
     /// <summary>UTC time the last <see cref="TranslateAsync"/> call finished (or construction time).</summary>
     public DateTime LastUsedUtc => new DateTime(Interlocked.Read(ref _lastUsedUtcTicks), DateTimeKind.Utc);
 
+    /// <summary>
+    /// Max time <see cref="Dispose"/> waits for an in-flight translation to observe
+    /// cancellation. On timeout the model is released by that call when it finishes.
+    /// </summary>
+    internal static TimeSpan DisposeWaitTimeout { get; set; } = TimeSpan.FromSeconds(5);
+
+    /// <summary>Test hook: the single-flight gate (simulate an in-flight call).</summary>
+    internal SemaphoreSlim GateForTests => _gate;
+
     public async Task<IReadOnlyList<string>> TranslateAsync(
         IReadOnlyList<string> texts,
         string targetLanguage,
@@ -65,6 +76,10 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 
         ObjectDisposedException.ThrowIf(_disposed, this);
 
+        // Dispose cancels in-flight inference so it can release the gate promptly.
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCts.Token);
+        cancellationToken = linked.Token;
+
         // Prefer a zero-timeout try so callers can show a busy hint before we queue.
         if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
         {
@@ -73,6 +88,7 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 
         try
         {
+            ObjectDisposedException.ThrowIf(_disposed, this);
             EnsureModelLoaded();
             var results = new string[texts.Count];
             for (int i = 0; i < texts.Count; i++)
@@ -138,6 +154,12 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         finally
         {
             Interlocked.Exchange(ref _lastUsedUtcTicks, DateTime.UtcNow.Ticks);
+
+            if (Volatile.Read(ref _deferModelDispose) == 1)
+            {
+                DisposeModel();
+            }
+
             _gate.Release();
         }
     }
@@ -257,16 +279,46 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         }
 
         _disposed = true;
-        _gate.Wait();
-        try
+
+        // Cancel in-flight inference first, then wait (bounded) for it to leave the gate.
+        _disposeCts.Cancel();
+        if (_gate.Wait(DisposeWaitTimeout))
         {
-            _model?.Dispose();
-            _model = null;
+            try
+            {
+                DisposeModel();
+            }
+            finally
+            {
+                _gate.Release();
+                _disposeCts.Dispose();
+            }
+
+            return;
         }
-        finally
+
+        // Still busy (a single Forward pass can be long): let the in-flight call free the
+        // model when it releases the gate. Re-check once in case it released just now.
+        Log.Warn(
+            $"Snip HyMT2Sharp dispose: inference did not stop within {DisposeWaitTimeout.TotalSeconds:F0}s; deferring model release.",
+            typeof(HyMT2SharpTranslator));
+        Volatile.Write(ref _deferModelDispose, 1);
+        if (_gate.Wait(0))
         {
-            _gate.Release();
-            _gate.Dispose();
+            try
+            {
+                DisposeModel();
+            }
+            finally
+            {
+                _gate.Release();
+            }
         }
+    }
+
+    private void DisposeModel()
+    {
+        var model = Interlocked.Exchange(ref _model, null);
+        model?.Dispose();
     }
 }
