@@ -224,7 +224,7 @@ public class BitmapServiceTests
     }
 
     [TestMethod]
-    public void DibRowFlipMemoryCopyPreservesBgrAndClearsAlpha()
+    public void DibRowFlipSpanPreservesBgrAndClearsAlpha()
     {
         const int w = 2;
         const int h = 2;
@@ -236,16 +236,7 @@ public class BitmapServiceTests
         src[8] = 255; src[9] = 0; src[10] = 0; src[11] = 255;
         src[12] = 255; src[13] = 0; src[14] = 0; src[15] = 255;
         var dst = new byte[stride * h];
-        unsafe
-        {
-            fixed (byte* s = src)
-            {
-                fixed (byte* d = dst)
-                {
-                    ClipboardService.CopyTopDownBgraToBottomUpDib(s, d, h, stride);
-                }
-            }
-        }
+        ClipboardService.CopyTopDownBgraToBottomUpDib(src, dst, h, stride);
 
         // Bottom-up DIB: first stored row is former bottom (blue), alpha cleared.
         Assert.AreEqual(255, dst[0]);
@@ -254,6 +245,17 @@ public class BitmapServiceTests
         Assert.AreEqual(0, dst[3], "alpha cleared");
         Assert.AreEqual(255, dst[8 + 2], "top row red channel in last DIB row");
         Assert.AreEqual(0, dst[8 + 3], "alpha cleared on last row");
+    }
+
+    [TestMethod]
+    public void ClearBgraAlphaZerosEveryFourthByte()
+    {
+        var row = new byte[] { 1, 2, 3, 255, 4, 5, 6, 128 };
+        ClipboardService.ClearBgraAlpha(row);
+        Assert.AreEqual(0, row[3]);
+        Assert.AreEqual(0, row[7]);
+        Assert.AreEqual(1, row[0]);
+        Assert.AreEqual(6, row[6]);
     }
 
     [TestMethod]

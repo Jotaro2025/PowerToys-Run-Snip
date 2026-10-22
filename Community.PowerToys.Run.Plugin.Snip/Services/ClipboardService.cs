@@ -5,6 +5,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Windows;
 using System.Windows.Media.Imaging;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
@@ -73,6 +74,12 @@ public static class ClipboardService
         return false;
     }
 
+    /// <summary>
+    /// Builds CF_DIB in the locked HGLOBAL: header + bottom-up BGRA rows.
+    /// Rows are <see cref="BitmapSource.CopyPixels(Int32Rect, IntPtr, int, int)"/>'d
+    /// straight into the GlobalLock buffer (flip while writing) and alpha-cleared
+    /// via <see cref="Span{T}"/> — no intermediate full-frame <c>byte[]</c>.
+    /// </summary>
     private static void PutDib(BitmapSource bitmap)
     {
         int w = bitmap.PixelWidth;
@@ -81,9 +88,6 @@ public static class ClipboardService
         int imageBytes = stride * h;
         int headerBytes = Marshal.SizeOf<BITMAPINFOHEADER>();
         int total = headerBytes + imageBytes;
-
-        var pixels = new byte[imageBytes];
-        bitmap.CopyPixels(pixels, stride, 0);
 
         IntPtr hGlobal = GlobalAlloc(Win32.GmemMoveable, (uint)total);
         if (hGlobal == IntPtr.Zero)
@@ -102,27 +106,7 @@ public static class ClipboardService
 
             try
             {
-                var bmi = new BITMAPINFOHEADER
-                {
-                    BiSize = (uint)headerBytes,
-                    BiWidth = w,
-                    BiHeight = h,
-                    BiPlanes = 1,
-                    BiBitCount = 32,
-                    BiCompression = 0,
-                    BiSizeImage = (uint)imageBytes,
-                };
-                Marshal.StructureToPtr(bmi, pDib, false);
-
-                // DIB rows are stored bottom-up; our pixel buffer is top-down.
-                unsafe
-                {
-                    byte* dst = (byte*)pDib + headerBytes;
-                    fixed (byte* src = pixels)
-                    {
-                        CopyTopDownBgraToBottomUpDib(src, dst, h, stride);
-                    }
-                }
+                WriteDibIntoLockedBuffer(bitmap, pDib, w, h, stride, headerBytes, imageBytes);
             }
             finally
             {
@@ -138,6 +122,46 @@ public static class ClipboardService
         {
             GlobalFree(hGlobal);
             throw;
+        }
+    }
+
+    /// <summary>
+    /// Writes BITMAPINFOHEADER + flipped BI_RGB pixels into an already-locked
+    /// CF_DIB buffer (peak = HGLOBAL only).
+    /// </summary>
+    private static unsafe void WriteDibIntoLockedBuffer(
+        BitmapSource bitmap,
+        IntPtr pDib,
+        int width,
+        int height,
+        int stride,
+        int headerBytes,
+        int imageBytes)
+    {
+        var bmi = new BITMAPINFOHEADER
+        {
+            BiSize = (uint)headerBytes,
+            BiWidth = width,
+            BiHeight = height,
+            BiPlanes = 1,
+            BiBitCount = 32,
+            BiCompression = 0,
+            BiSizeImage = (uint)imageBytes,
+        };
+
+        // Header via MemoryMarshal — no StructureToPtr boxing path.
+        MemoryMarshal.Write(new Span<byte>((void*)pDib, headerBytes), in bmi);
+
+        byte* pixelsBase = (byte*)pDib + headerBytes;
+
+        // Bottom-up DIB row y ← top-down source row (height - 1 - y).
+        // CopyPixels writes that one row directly into the locked buffer.
+        for (int y = 0; y < height; y++)
+        {
+            int srcY = height - 1 - y;
+            IntPtr destRow = (IntPtr)(pixelsBase + (y * (long)stride));
+            bitmap.CopyPixels(new Int32Rect(0, srcY, width, 1), destRow, stride, stride);
+            ClearBgraAlpha(new Span<byte>(pixelsBase + (y * (long)stride), stride));
         }
     }
 
@@ -169,7 +193,10 @@ public static class ClipboardService
 
         try
         {
-            Marshal.Copy(pngBytes, 0, pPng, pngBytes.Length);
+            unsafe
+            {
+                pngBytes.AsSpan().CopyTo(new Span<byte>((void*)pPng, pngBytes.Length));
+            }
         }
         finally
         {
@@ -183,20 +210,39 @@ public static class ClipboardService
     }
 
     /// <summary>
-    /// Flip top-down BGRA into bottom-up DIB rows with <see cref="Buffer.MemoryCopy"/>,
+    /// Flip top-down BGRA into bottom-up DIB rows via <see cref="Span{T}"/>,
     /// then clear the alpha byte (BI_RGB ignores it; keep high byte zero).
+    /// Used by unit tests; production <see cref="PutDib"/> flips while
+    /// CopyPixels-ing into the locked HGLOBAL.
     /// </summary>
-    internal static unsafe void CopyTopDownBgraToBottomUpDib(byte* src, byte* dst, int height, int stride)
+    internal static void CopyTopDownBgraToBottomUpDib(
+        ReadOnlySpan<byte> src,
+        Span<byte> dst,
+        int height,
+        int stride)
     {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(height);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(stride);
+        if (src.Length < height * stride || dst.Length < height * stride)
+        {
+            throw new ArgumentException("Buffer shorter than height * stride.");
+        }
+
         for (int y = 0; y < height; y++)
         {
-            byte* srcRow = src + ((height - 1 - y) * (long)stride);
-            byte* dstRow = dst + (y * (long)stride);
-            Buffer.MemoryCopy(srcRow, dstRow, stride, stride);
-            for (int x = 3; x < stride; x += 4)
-            {
-                dstRow[x] = 0;
-            }
+            ReadOnlySpan<byte> srcRow = src.Slice((height - 1 - y) * stride, stride);
+            Span<byte> dstRow = dst.Slice(y * stride, stride);
+            srcRow.CopyTo(dstRow);
+            ClearBgraAlpha(dstRow);
+        }
+    }
+
+    /// <summary>Zero every alpha byte in a BGRA row (BI_RGB high byte).</summary>
+    internal static void ClearBgraAlpha(Span<byte> bgraRow)
+    {
+        for (int x = 3; x < bgraRow.Length; x += 4)
+        {
+            bgraRow[x] = 0;
         }
     }
 
