@@ -536,6 +536,70 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
+        ///   Looks up a localized string similar to Re-apply.
+        /// </summary>
+        public static string tr_reapply {
+            get {
+                return ResourceManager.GetString("tr_reapply", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Save image.
+        /// </summary>
+        public static string tr_save_image {
+            get {
+                return ResourceManager.GetString("tr_save_image", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Re-applying translations….
+        /// </summary>
+        public static string tr_busy_rerender {
+            get {
+                return ResourceManager.GetString("tr_busy_rerender", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Image updated with edited translations.
+        /// </summary>
+        public static string tr_status_reapplied {
+            get {
+                return ResourceManager.GetString("tr_status_reapplied", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Translated image saved.
+        /// </summary>
+        public static string tr_image_saved {
+            get {
+                return ResourceManager.GetString("tr_image_saved", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Save Translated Image.
+        /// </summary>
+        public static string tr_save_dialog_title {
+            get {
+                return ResourceManager.GetString("tr_save_dialog_title", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Re-apply failed:.
+        /// </summary>
+        public static string tr_err_rerender {
+            get {
+                return ResourceManager.GetString("tr_err_rerender", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to save image:.
+        /// </summary>
+        public static string tr_err_save_image {
+            get {
+                return ResourceManager.GetString("tr_err_save_image", resourceCulture);
+            }
+        }
+        /// <summary>
         ///   Looks up a localized string similar to {0} lines → {1}.
         /// </summary>
         public static string tr_status_done {
