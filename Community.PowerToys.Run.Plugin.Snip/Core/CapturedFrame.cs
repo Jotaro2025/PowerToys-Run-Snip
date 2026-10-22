@@ -78,6 +78,47 @@ public sealed class CapturedFrame : IDisposable
     internal bool OwnsNativeDib => _dib != IntPtr.Zero;
 
     /// <summary>
+    /// Copies pixels into a managed buffer on any thread, then releases the DIB.
+    /// Prefer this for scroll tiles so the UI STA never holds hundreds of WriteableBitmaps.
+    /// </summary>
+    public ScrollTilePixels ToOwnedPixels()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        int byteCount = CaptureBuffers.BgraByteCount(Width, Height);
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
+        try
+        {
+            if (_bits != IntPtr.Zero)
+            {
+                unsafe
+                {
+                    ObjectDisposedException.ThrowIf(_bits == IntPtr.Zero || _dib == IntPtr.Zero, this);
+                    var src = new ReadOnlySpan<byte>((void*)_bits, byteCount);
+                    src.CopyTo(buffer.AsSpan(0, byteCount));
+                }
+            }
+            else
+            {
+                ArgumentNullException.ThrowIfNull(_pixels);
+                _pixels.AsSpan(0, byteCount).CopyTo(buffer.AsSpan(0, byteCount));
+            }
+
+            var tile = new ScrollTilePixels(buffer, Width, Height, Stride, rentedFromPool: true);
+            buffer = null; // ownership transferred
+            return tile;
+        }
+        finally
+        {
+            if (buffer != null)
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(buffer);
+            }
+
+            Dispose();
+        }
+    }
+
+    /// <summary>
     /// Builds a 96-DPI BGRA <see cref="WriteableBitmap"/> (call on the UI thread).
     /// Copies via <see cref="Span{T}"/> into <see cref="WriteableBitmap.BackBuffer"/>
     /// when a native DIB is held, then releases the HBITMAP (no mid-frame
