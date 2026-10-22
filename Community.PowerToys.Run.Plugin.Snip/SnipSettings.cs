@@ -27,6 +27,12 @@ public sealed class SnipSettings
     /// <summary>Delay before the capture starts, giving PowerToys Run time to hide.</summary>
     public int CaptureDelayMs { get; set; } = 150;
 
+    /// <summary>Milliseconds between scroll-capture wheel ticks (50–1000).</summary>
+    public int ScrollIntervalMs { get; set; } = 200;
+
+    /// <summary>Maximum raw tiles kept during one scroll session (10–500).</summary>
+    public int ScrollMaxTiles { get; set; } = 200;
+
     /// <summary>
     /// Global hotkey to start a region snip without typing in Run
     /// (e.g. <c>Ctrl+Shift+S</c>). Empty = disabled (default).
@@ -81,6 +87,8 @@ public sealed class SnipSettings
             CopyAfterCapture = CopyAfterCapture,
             AutoSaveAfterCapture = AutoSaveAfterCapture,
             CaptureDelayMs = CaptureDelayMs,
+            ScrollIntervalMs = ScrollIntervalMs,
+            ScrollMaxTiles = ScrollMaxTiles,
             GlobalHotkey = GlobalHotkey,
             TranslatorProvider = TranslatorProvider,
             TargetLanguage = TargetLanguage,
@@ -102,6 +110,8 @@ public sealed class SnipSettings
         CopyAfterCapture = other.CopyAfterCapture;
         AutoSaveAfterCapture = other.AutoSaveAfterCapture;
         CaptureDelayMs = other.CaptureDelayMs;
+        ScrollIntervalMs = other.ScrollIntervalMs;
+        ScrollMaxTiles = other.ScrollMaxTiles;
         GlobalHotkey = other.GlobalHotkey;
         TranslatorProvider = other.TranslatorProvider;
         TargetLanguage = other.TargetLanguage;

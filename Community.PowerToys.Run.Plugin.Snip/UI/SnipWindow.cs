@@ -597,7 +597,9 @@ public sealed class SnipWindow : Window
             _captureService,
             _root,
             physicalRect,
-            TryGetHwnd());
+            TryGetHwnd(),
+            scrollIntervalMs: Math.Clamp(_settings.ScrollIntervalMs, 50, 1000),
+            maxTiles: Math.Clamp(_settings.ScrollMaxTiles, 10, 500));
         _scrollController.CapturingStopped += OnScrollCapturingStopped;
         _scrollController.Cancelled += OnScrollCaptureCancelled;
         _toolbar.SetScrollCaptureActive(true);

@@ -1508,5 +1508,78 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("scroll_hint_stitching_sub", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Scroll interval (ms).
+        /// </summary>
+        public static string opt_scroll_interval_label {
+            get {
+                return ResourceManager.GetString("opt_scroll_interval_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Delay between auto-scroll wheel ticks (50–1000)..
+        /// </summary>
+        public static string opt_scroll_interval_desc {
+            get {
+                return ResourceManager.GetString("opt_scroll_interval_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Scroll max frames.
+        /// </summary>
+        public static string opt_scroll_maxtiles_label {
+            get {
+                return ResourceManager.GetString("opt_scroll_maxtiles_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Stop after this many captured frames (10–500)..
+        /// </summary>
+        public static string opt_scroll_maxtiles_desc {
+            get {
+                return ResourceManager.GetString("opt_scroll_maxtiles_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Unload HyMT model from memory.
+        /// </summary>
+        public static string opt_unload_hymt_label {
+            get {
+                return ResourceManager.GetString("opt_unload_hymt_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Check and save to free process-wide GGUF weights until next translate..
+        /// </summary>
+        public static string opt_unload_hymt_desc {
+            get {
+                return ResourceManager.GetString("opt_unload_hymt_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to HyMT model unloaded..
+        /// </summary>
+        public static string opt_unload_hymt_done {
+            get {
+                return ResourceManager.GetString("opt_unload_hymt_done", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Unload model now.
+        /// </summary>
+        public static string settings_unload_hymt {
+            get {
+                return ResourceManager.GetString("settings_unload_hymt", resourceCulture);
+            }
+        }
+
     }
 }
