@@ -109,6 +109,7 @@ internal static class SnipSettingsPersister
             OptionPatch.Text("GlobalHotkey", settings.GlobalHotkey ?? string.Empty),
             OptionPatch.ComboBox("TranslatorProvider", (int)settings.TranslatorProvider),
             OptionPatch.Text("TargetLanguage", settings.TargetLanguage ?? string.Empty),
+            OptionPatch.Text("UiLanguage", UiLanguageHelper.ToPersistedValue(settings.UiLanguage)),
             OptionPatch.Text("HttpBaseUrl", settings.HttpBaseUrl ?? string.Empty),
             OptionPatch.Text("HttpApiKey", settings.HttpApiKey ?? string.Empty),
             OptionPatch.Text("HttpModel", settings.HttpModel ?? string.Empty),

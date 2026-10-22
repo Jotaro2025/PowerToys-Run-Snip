@@ -32,6 +32,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionGlobalHotkey = "GlobalHotkey";
     private const string OptionTranslatorProvider = "TranslatorProvider";
     private const string OptionTargetLanguage = "TargetLanguage";
+    private const string OptionUiLanguage = "UiLanguage";
     private const string OptionHttpBaseUrl = "HttpBaseUrl";
     private const string OptionHttpApiKey = "HttpApiKey";
     private const string OptionHttpModel = "HttpModel";
@@ -88,6 +89,15 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             NumberBoxMax = 2000,
             NumberBoxSmallChange = 10,
             NumberBoxLargeChange = 100,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionUiLanguage,
+            DisplayLabel = Properties.Resources.opt_ui_lang_label,
+            DisplayDescription = Properties.Resources.opt_ui_lang_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = UiLanguageHelper.ToPersistedValue(_settings.UiLanguage),
+            PlaceholderText = "system | en | zh-CN",
         },
         new PluginAdditionalOption()
         {
@@ -262,6 +272,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         _context = context;
         _context.API.ThemeChanged += OnThemeChanged;
         UpdateIconPath(_context.API.GetCurrentTheme());
+        UiLanguageHelper.Apply(_settings.UiLanguage);
         ApplyHotkeyRegistration();
     }
 
@@ -311,6 +322,13 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             _settings.TargetLanguage = "简体中文";
         }
 
+        _settings.UiLanguage = UiLanguageHelper.Normalize(
+            options.FirstOrDefault(x => x.Key == OptionUiLanguage)?.TextValue ?? _settings.UiLanguage);
+        if (_settings.UiLanguage == UiLanguageHelper.System)
+        {
+            _settings.UiLanguage = string.Empty;
+        }
+
         _settings.HttpBaseUrl = options.FirstOrDefault(x => x.Key == OptionHttpBaseUrl)?.TextValue
             ?? _settings.HttpBaseUrl;
         _settings.HttpApiKey = options.FirstOrDefault(x => x.Key == OptionHttpApiKey)?.TextValue ?? string.Empty;
@@ -342,13 +360,16 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             ApplyGgufPath(options, HyMtModelDownloader.DefaultCachePath);
         }
 
+        UiLanguageHelper.Apply(_settings.UiLanguage);
         ApplyHotkeyRegistration();
     }
 
     private void OpenSettingsWindow()
     {
+        UiLanguageHelper.Apply(_settings.UiLanguage);
         SnipController.ShowSettingsWindow(_settings, onSaved: () =>
         {
+            UiLanguageHelper.Apply(_settings.UiLanguage);
             ApplyHotkeyRegistration();
         });
     }

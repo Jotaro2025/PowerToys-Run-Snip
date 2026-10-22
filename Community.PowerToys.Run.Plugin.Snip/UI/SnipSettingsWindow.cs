@@ -46,6 +46,9 @@ public sealed class SnipSettingsWindow : Window
     private TextBox _hymtPath;
     private TextBox _hymtCustomUrl;
     private ComboBox _hymtBackend;
+    private ComboBox _uiLanguage;
+    private TabControl _tabs;
+    private bool _suppressLanguageChanged;
 
     public SnipSettingsWindow(SnipSettings settings)
     {
@@ -53,7 +56,6 @@ public sealed class SnipSettingsWindow : Window
         _target = settings;
         _draft = settings.Clone();
 
-        Title = Properties.Resources.settings_window_title;
         Width = 520;
         MinWidth = 480;
         Height = 520;
@@ -65,6 +67,18 @@ public sealed class SnipSettingsWindow : Window
         Background = Brushes.White;
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
         FontSize = 13;
+
+        BuildUi();
+        LoadDraftIntoUi();
+        UpdateTranslateVisibility();
+    }
+
+    /// <summary>Rebuilds chrome + tabs from current resource culture (live language switch).</summary>
+    private void BuildUi()
+    {
+        var selectedTab = _tabs?.SelectedIndex ?? 0;
+
+        Title = Properties.Resources.settings_window_title;
 
         var root = new DockPanel { Margin = new Thickness(12) };
         Content = root;
@@ -104,36 +118,63 @@ public sealed class SnipSettingsWindow : Window
         buttons.Children.Add(save);
         root.Children.Add(buttons);
 
-        var tabs = new TabControl();
-        tabs.Items.Add(new TabItem
+        _tabs = new TabControl();
+        _tabs.Items.Add(new TabItem
         {
             Header = Properties.Resources.settings_tab_general,
             Content = BuildGeneralTab(),
         });
-        tabs.Items.Add(new TabItem
+        _tabs.Items.Add(new TabItem
         {
             Header = Properties.Resources.settings_tab_hotkey,
             Content = BuildHotkeyTab(),
         });
-        tabs.Items.Add(new TabItem
+        _tabs.Items.Add(new TabItem
         {
             Header = Properties.Resources.settings_tab_translate,
             Content = BuildTranslateTab(),
         });
-        tabs.Items.Add(new TabItem
+        _tabs.Items.Add(new TabItem
         {
             Header = Properties.Resources.settings_tab_about,
             Content = BuildAboutTab(),
         });
-        root.Children.Add(tabs);
+        root.Children.Add(_tabs);
 
-        LoadDraftIntoUi();
-        UpdateTranslateVisibility();
+        if (selectedTab >= 0 && selectedTab < _tabs.Items.Count)
+        {
+            _tabs.SelectedIndex = selectedTab;
+        }
     }
 
     private UIElement BuildGeneralTab()
     {
         var panel = new StackPanel { Margin = new Thickness(8) };
+
+        panel.Children.Add(Label(Properties.Resources.opt_ui_lang_label));
+        _uiLanguage = new ComboBox
+        {
+            Margin = new Thickness(0, 0, 0, 4),
+            MinHeight = 28,
+        };
+        _uiLanguage.Items.Add(new ComboBoxItem
+        {
+            Content = "跟随系统 / Follow system",
+            Tag = UiLanguageHelper.System,
+        });
+        _uiLanguage.Items.Add(new ComboBoxItem
+        {
+            Content = "English",
+            Tag = UiLanguageHelper.English,
+        });
+        _uiLanguage.Items.Add(new ComboBoxItem
+        {
+            Content = "简体中文",
+            Tag = UiLanguageHelper.ChineseSimplified,
+        });
+        _uiLanguage.SelectionChanged += OnUiLanguageSelectionChanged;
+        panel.Children.Add(_uiLanguage);
+        panel.Children.Add(Hint(Properties.Resources.opt_ui_lang_desc));
 
         panel.Children.Add(Label(Properties.Resources.opt_save_dir_label));
         _saveDir = new TextBox { Margin = new Thickness(0, 0, 0, 4) };
@@ -351,6 +392,7 @@ public sealed class SnipSettingsWindow : Window
 
     private void LoadDraftIntoUi()
     {
+        SelectUiLanguage(_draft.UiLanguage);
         _saveDir.Text = _draft.SaveDirectory ?? string.Empty;
         _copyAfter.IsChecked = _draft.CopyAfterCapture;
         _autoSave.IsChecked = _draft.AutoSaveAfterCapture;
@@ -393,6 +435,18 @@ public sealed class SnipSettingsWindow : Window
             return;
         }
 
+        CaptureDraftFromUi(delay, hotkeyText);
+
+        _target.CopyFrom(_draft);
+        UiLanguageHelper.Apply(_target.UiLanguage);
+        SnipSettingsPersister.Persist(SnipSettingsPersister.BuildPatchesFromSettings(_target));
+
+        DialogResult = true;
+        Close();
+    }
+
+    private void CaptureDraftFromUi(int delay, string hotkeyText)
+    {
         _draft.SaveDirectory = _saveDir.Text?.Trim() ?? string.Empty;
         _draft.CopyAfterCapture = _copyAfter.IsChecked == true;
         _draft.AutoSaveAfterCapture = _autoSave.IsChecked == true;
@@ -400,18 +454,90 @@ public sealed class SnipSettingsWindow : Window
         _draft.GlobalHotkey = HotkeyParser.Normalize(hotkeyText);
         _draft.TranslatorProvider = SelectedProvider();
         _draft.TargetLanguage = string.IsNullOrWhiteSpace(_targetLang.Text) ? "简体中文" : _targetLang.Text.Trim();
+        var uiLang = SelectedUiLanguage();
+        _draft.UiLanguage = uiLang == UiLanguageHelper.System ? string.Empty : uiLang;
         _draft.HttpBaseUrl = _httpUrl.Text?.Trim() ?? string.Empty;
         _draft.HttpApiKey = _httpKey.Text?.Trim() ?? string.Empty;
         _draft.HttpModel = _httpModel.Text?.Trim() ?? string.Empty;
         _draft.HyMtGgufPath = _hymtPath.Text?.Trim() ?? string.Empty;
         _draft.HyMtCustomDownloadUrl = _hymtCustomUrl.Text?.Trim() ?? string.Empty;
         _draft.HyMtBackend = SelectedBackend();
+    }
 
-        _target.CopyFrom(_draft);
-        SnipSettingsPersister.Persist(SnipSettingsPersister.BuildPatchesFromSettings(_target));
+    private void OnUiLanguageSelectionChanged(object sender, SelectionChangedEventArgs e)
+    {
+        if (_suppressLanguageChanged || _uiLanguage == null)
+        {
+            return;
+        }
 
-        DialogResult = true;
-        Close();
+        var next = SelectedUiLanguage();
+        var current = UiLanguageHelper.Normalize(_draft.UiLanguage);
+        if (string.Equals(next, current, StringComparison.OrdinalIgnoreCase)
+            || (next == UiLanguageHelper.System && string.IsNullOrWhiteSpace(_draft.UiLanguage)))
+        {
+            _draft.UiLanguage = next == UiLanguageHelper.System ? string.Empty : next;
+            return;
+        }
+
+        // Keep other edits; apply culture and rebuild labels immediately.
+        if (!int.TryParse(_delayMs.Text?.Trim(), out var delay) || delay < 0)
+        {
+            delay = _draft.CaptureDelayMs;
+        }
+
+        delay = Math.Min(2000, delay);
+        CaptureDraftFromUi(delay, (_hotkeyBox.Text ?? string.Empty).Trim());
+        _draft.UiLanguage = next == UiLanguageHelper.System ? string.Empty : next;
+        UiLanguageHelper.Apply(_draft.UiLanguage);
+
+        _suppressLanguageChanged = true;
+        try
+        {
+            BuildUi();
+            LoadDraftIntoUi();
+            UpdateTranslateVisibility();
+        }
+        finally
+        {
+            _suppressLanguageChanged = false;
+        }
+    }
+
+    private void SelectUiLanguage(string uiLanguage)
+    {
+        var key = UiLanguageHelper.Normalize(uiLanguage);
+        var wasSuppressed = _suppressLanguageChanged;
+        _suppressLanguageChanged = true;
+        try
+        {
+            for (var i = 0; i < _uiLanguage.Items.Count; i++)
+            {
+                if (_uiLanguage.Items[i] is ComboBoxItem item
+                    && item.Tag is string tag
+                    && string.Equals(tag, key, StringComparison.OrdinalIgnoreCase))
+                {
+                    _uiLanguage.SelectedIndex = i;
+                    return;
+                }
+            }
+
+            _uiLanguage.SelectedIndex = 0;
+        }
+        finally
+        {
+            _suppressLanguageChanged = wasSuppressed;
+        }
+    }
+
+    private string SelectedUiLanguage()
+    {
+        if (_uiLanguage?.SelectedItem is ComboBoxItem item && item.Tag is string tag)
+        {
+            return UiLanguageHelper.Normalize(tag);
+        }
+
+        return UiLanguageHelper.System;
     }
 
     private void OnHotkeyPreviewKeyDown(object sender, KeyEventArgs e)

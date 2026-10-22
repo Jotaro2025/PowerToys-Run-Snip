@@ -41,7 +41,7 @@ PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选�
 - HyMT 相关项标签前缀 `HyMT ·`：GGUF 路径、**下载推荐的 2Bit 模型**（勾选后保存触发）、自定义下载 URL、后端（自动 / CPU / Vulkan）
 - **设置折叠限制**：PowerToys Run 的 `AdditionalOptions` **不能**按引擎动态隐藏字段；请用专用设置窗口按引擎折叠。系统设置页仍用前缀分组降低噪音
 
-界面语言跟随 PowerToys（内置英文 + 简体中文）。
+界面语言默认跟随 PowerToys / 系统（内置英文 + 简体中文）；可在专用设置窗口「常规」顶部或 AdditionalOptions `UiLanguage`（`system` / `en` / `zh-CN`）手动切换，立即刷新设置页文案。
 
 ### 文字提取说明
 
