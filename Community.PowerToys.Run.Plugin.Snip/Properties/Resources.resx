@@ -588,4 +588,28 @@
   <data name="scroll_hint_stitching_sub" xml:space="preserve">
     <value>Building the long screenshot, please wait</value>
   </data>
+  <data name="opt_scroll_interval_label" xml:space="preserve">
+    <value>Scroll interval (ms)</value>
+  </data>
+  <data name="opt_scroll_interval_desc" xml:space="preserve">
+    <value>Delay between auto-scroll wheel ticks (50–1000).</value>
+  </data>
+  <data name="opt_scroll_maxtiles_label" xml:space="preserve">
+    <value>Scroll max frames</value>
+  </data>
+  <data name="opt_scroll_maxtiles_desc" xml:space="preserve">
+    <value>Stop after this many captured frames (10–500).</value>
+  </data>
+  <data name="opt_unload_hymt_label" xml:space="preserve">
+    <value>Unload HyMT model from memory</value>
+  </data>
+  <data name="opt_unload_hymt_desc" xml:space="preserve">
+    <value>Check and save to free process-wide GGUF weights until next translate.</value>
+  </data>
+  <data name="opt_unload_hymt_done" xml:space="preserve">
+    <value>HyMT model unloaded.</value>
+  </data>
+  <data name="settings_unload_hymt" xml:space="preserve">
+    <value>Unload model now</value>
+  </data>
 </root>

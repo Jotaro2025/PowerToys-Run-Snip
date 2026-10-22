@@ -29,6 +29,9 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionCopyAfterCapture = "CopyAfterCapture";
     private const string OptionAutoSaveAfterCapture = "AutoSaveAfterCapture";
     private const string OptionCaptureDelayMs = "CaptureDelayMs";
+    private const string OptionScrollIntervalMs = "ScrollIntervalMs";
+    private const string OptionScrollMaxTiles = "ScrollMaxTiles";
+    private const string OptionUnloadHyMt = "UnloadHyMtModel";
     private const string OptionGlobalHotkey = "GlobalHotkey";
     private const string OptionTranslatorProvider = "TranslatorProvider";
     private const string OptionTargetLanguage = "TargetLanguage";
@@ -89,6 +92,38 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             NumberBoxMax = 2000,
             NumberBoxSmallChange = 10,
             NumberBoxLargeChange = 100,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionScrollIntervalMs,
+            DisplayLabel = Properties.Resources.opt_scroll_interval_label,
+            DisplayDescription = Properties.Resources.opt_scroll_interval_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Numberbox,
+            NumberValue = _settings.ScrollIntervalMs,
+            NumberBoxMin = 50,
+            NumberBoxMax = 1000,
+            NumberBoxSmallChange = 10,
+            NumberBoxLargeChange = 50,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionScrollMaxTiles,
+            DisplayLabel = Properties.Resources.opt_scroll_maxtiles_label,
+            DisplayDescription = Properties.Resources.opt_scroll_maxtiles_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Numberbox,
+            NumberValue = _settings.ScrollMaxTiles,
+            NumberBoxMin = 10,
+            NumberBoxMax = 500,
+            NumberBoxSmallChange = 10,
+            NumberBoxLargeChange = 50,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionUnloadHyMt,
+            DisplayLabel = Properties.Resources.opt_unload_hymt_label,
+            DisplayDescription = Properties.Resources.opt_unload_hymt_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = false,
         },
         new PluginAdditionalOption()
         {
@@ -302,7 +337,27 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         var delay = options.FirstOrDefault(x => x.Key == OptionCaptureDelayMs)?.NumberValue;
         if (delay.HasValue && delay.Value >= 0)
         {
-            _settings.CaptureDelayMs = (int)Math.Min(2000, delay.Value);
+            _settings.CaptureDelayMs = (int)Math.Clamp(delay.Value, 0, 2000);
+        }
+
+        var scrollInterval = options.FirstOrDefault(x => x.Key == OptionScrollIntervalMs)?.NumberValue;
+        if (scrollInterval.HasValue)
+        {
+            _settings.ScrollIntervalMs = (int)Math.Clamp(scrollInterval.Value, 50, 1000);
+        }
+
+        var scrollMax = options.FirstOrDefault(x => x.Key == OptionScrollMaxTiles)?.NumberValue;
+        if (scrollMax.HasValue)
+        {
+            _settings.ScrollMaxTiles = (int)Math.Clamp(scrollMax.Value, 10, 500);
+        }
+
+        var unloadHyMt = options.FirstOrDefault(x => x.Key == OptionUnloadHyMt);
+        if (unloadHyMt is { Value: true })
+        {
+            unloadHyMt.Value = false;
+            HyMT2SharpTranslatorCache.Unload();
+            Notify(Properties.Resources.opt_unload_hymt_done, string.Empty);
         }
 
         var hotkey = options.FirstOrDefault(x => x.Key == OptionGlobalHotkey)?.TextValue;

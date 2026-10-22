@@ -588,4 +588,28 @@
   <data name="scroll_hint_stitching_sub" xml:space="preserve">
     <value>正在合成滚动长图，请稍候</value>
   </data>
+  <data name="opt_scroll_interval_label" xml:space="preserve">
+    <value>滚动间隔（毫秒）</value>
+  </data>
+  <data name="opt_scroll_interval_desc" xml:space="preserve">
+    <value>自动滚轮两次之间的间隔（50–1000）。</value>
+  </data>
+  <data name="opt_scroll_maxtiles_label" xml:space="preserve">
+    <value>滚动最大帧数</value>
+  </data>
+  <data name="opt_scroll_maxtiles_desc" xml:space="preserve">
+    <value>采集达到该帧数后停止（10–500）。</value>
+  </data>
+  <data name="opt_unload_hymt_label" xml:space="preserve">
+    <value>从内存卸载 HyMT 模型</value>
+  </data>
+  <data name="opt_unload_hymt_desc" xml:space="preserve">
+    <value>勾选并保存后释放进程内 GGUF；下次翻译再加载。</value>
+  </data>
+  <data name="opt_unload_hymt_done" xml:space="preserve">
+    <value>已卸载 HyMT 模型。</value>
+  </data>
+  <data name="settings_unload_hymt" xml:space="preserve">
+    <value>立即卸载模型</value>
+  </data>
 </root>

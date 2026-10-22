@@ -34,6 +34,8 @@ public sealed class SnipSettingsWindow : Window
     private CheckBox _copyAfter;
     private CheckBox _autoSave;
     private TextBox _delayMs;
+    private TextBox _scrollIntervalMs;
+    private TextBox _scrollMaxTiles;
     private TextBox _hotkeyBox;
     private TextBlock _hotkeyStatus;
     private ComboBox _provider;
@@ -200,6 +202,16 @@ public sealed class SnipSettingsWindow : Window
         panel.Children.Add(_delayMs);
         panel.Children.Add(Hint(Properties.Resources.opt_delay_desc));
 
+        panel.Children.Add(Label(Properties.Resources.opt_scroll_interval_label));
+        _scrollIntervalMs = new TextBox { Width = 100, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
+        panel.Children.Add(_scrollIntervalMs);
+        panel.Children.Add(Hint(Properties.Resources.opt_scroll_interval_desc));
+
+        panel.Children.Add(Label(Properties.Resources.opt_scroll_maxtiles_label));
+        _scrollMaxTiles = new TextBox { Width = 100, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
+        panel.Children.Add(_scrollMaxTiles);
+        panel.Children.Add(Hint(Properties.Resources.opt_scroll_maxtiles_desc));
+
         return new ScrollViewer
         {
             Content = panel,
@@ -329,6 +341,26 @@ public sealed class SnipSettingsWindow : Window
         _hymtBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_hymt_backend_cpu, Tag = HyMtBackendKind.Cpu });
         _hymtBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_hymt_backend_vulkan, Tag = HyMtBackendKind.Vulkan });
         _hymtPanel.Children.Add(_hymtBackend);
+
+        var unload = new Button
+        {
+            Content = Properties.Resources.settings_unload_hymt,
+            Height = 28,
+            Margin = new Thickness(0, 4, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Left,
+            Padding = new Thickness(10, 0, 10, 0),
+        };
+        unload.Click += (_, _) =>
+        {
+            HyMT2SharpTranslatorCache.Unload();
+            MessageBox.Show(
+                Properties.Resources.opt_unload_hymt_done,
+                Title,
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+        };
+        _hymtPanel.Children.Add(unload);
+
         panel.Children.Add(_hymtPanel);
 
         return new ScrollViewer
@@ -397,6 +429,8 @@ public sealed class SnipSettingsWindow : Window
         _copyAfter.IsChecked = _draft.CopyAfterCapture;
         _autoSave.IsChecked = _draft.AutoSaveAfterCapture;
         _delayMs.Text = _draft.CaptureDelayMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _scrollIntervalMs.Text = _draft.ScrollIntervalMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _scrollMaxTiles.Text = _draft.ScrollMaxTiles.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         var hotkey = _draft.GlobalHotkey ?? string.Empty;
         _hotkeyBox.Text = hotkey;
@@ -451,6 +485,18 @@ public sealed class SnipSettingsWindow : Window
         _draft.CopyAfterCapture = _copyAfter.IsChecked == true;
         _draft.AutoSaveAfterCapture = _autoSave.IsChecked == true;
         _draft.CaptureDelayMs = delay;
+        if (!int.TryParse(_scrollIntervalMs.Text?.Trim(), out var scrollInterval))
+        {
+            scrollInterval = _draft.ScrollIntervalMs;
+        }
+
+        _draft.ScrollIntervalMs = Math.Clamp(scrollInterval, 50, 1000);
+        if (!int.TryParse(_scrollMaxTiles.Text?.Trim(), out var scrollMax))
+        {
+            scrollMax = _draft.ScrollMaxTiles;
+        }
+
+        _draft.ScrollMaxTiles = Math.Clamp(scrollMax, 10, 500);
         _draft.GlobalHotkey = HotkeyParser.Normalize(hotkeyText);
         _draft.TranslatorProvider = SelectedProvider();
         _draft.TargetLanguage = string.IsNullOrWhiteSpace(_targetLang.Text) ? "简体中文" : _targetLang.Text.Trim();

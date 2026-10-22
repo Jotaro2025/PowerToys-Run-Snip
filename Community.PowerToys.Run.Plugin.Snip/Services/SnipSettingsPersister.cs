@@ -106,6 +106,8 @@ internal static class SnipSettingsPersister
             OptionPatch.Bool("CopyAfterCapture", settings.CopyAfterCapture),
             OptionPatch.Bool("AutoSaveAfterCapture", settings.AutoSaveAfterCapture),
             OptionPatch.Number("CaptureDelayMs", settings.CaptureDelayMs),
+            OptionPatch.Number("ScrollIntervalMs", settings.ScrollIntervalMs),
+            OptionPatch.Number("ScrollMaxTiles", settings.ScrollMaxTiles),
             OptionPatch.Text("GlobalHotkey", settings.GlobalHotkey ?? string.Empty),
             OptionPatch.ComboBox("TranslatorProvider", (int)settings.TranslatorProvider),
             OptionPatch.Text("TargetLanguage", settings.TargetLanguage ?? string.Empty),
