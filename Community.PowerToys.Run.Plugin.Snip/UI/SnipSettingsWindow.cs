@@ -16,6 +16,7 @@ using System.Windows.Navigation;
 using Community.PowerToys.Run.Plugin.Snip.Models;
 using Community.PowerToys.Run.Plugin.Snip.Services;
 using Microsoft.Win32;
+using Wox.Plugin.Logger;
 
 namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
@@ -407,9 +408,10 @@ public sealed class SnipSettingsWindow : Window
             {
                 Process.Start(new ProcessStartInfo(e.Uri.AbsoluteUri) { UseShellExecute = true });
             }
-            catch
+            catch (Exception ex)
             {
-                // Ignore launch failures in About.
+                // Ignore launch failures in About (logged for diagnostics).
+                Log.Exception($"Snip settings: open GitHub link failed: {ex.Message}", ex, typeof(SnipSettingsWindow));
             }
 
             e.Handled = true;
@@ -764,8 +766,9 @@ public sealed class SnipSettingsWindow : Window
                 return v.GetString() ?? "1.3.0";
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
+            Log.Exception($"Snip settings: read plugin.json version failed: {ex.Message}", ex, typeof(SnipSettingsWindow));
         }
 
         return "1.3.0";

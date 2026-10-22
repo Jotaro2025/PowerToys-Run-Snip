@@ -16,6 +16,7 @@ using System.Windows.Threading;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
 using Community.PowerToys.Run.Plugin.Snip.UI;
+using Wox.Plugin.Logger;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
@@ -225,7 +226,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] stop failed: {ex}");
+            Log.Exception($"Snip scroll stop failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             _active = false;
             await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
@@ -257,7 +258,7 @@ public sealed class ScrollCaptureController
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[scroll] ShowManualStopped failed: {ex.Message}");
+                Log.Exception($"Snip scroll stopped-hint failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             }
 
             Debug.WriteLine(autoStopped
@@ -306,7 +307,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] stitch failed: {ex}");
+            Log.Exception($"Snip scroll stitch failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             if (_tiles.Count > 0)
             {
                 var fallback = _tiles[0];
@@ -349,7 +350,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] cancel failed: {ex}");
+            Log.Exception($"Snip scroll cancel failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             _active = false;
             _stoppedPending = false;
             try
@@ -357,9 +358,10 @@ public sealed class ScrollCaptureController
                 HideOverlay();
                 DisposeTiles();
             }
-            catch
+            catch (Exception cleanupEx)
             {
-                // ignore
+                // Best-effort cleanup after a failed cancel.
+                Log.Exception($"Snip scroll cancel cleanup failed: {cleanupEx.Message}", cleanupEx, typeof(ScrollCaptureController));
             }
 
             await InvokeCancelledAsync().ConfigureAwait(false);
@@ -385,7 +387,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] capture failed: {ex.Message}");
+            Log.Exception($"Snip scroll capture failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             return null;
         }
         finally
@@ -455,7 +457,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] ShowOverlay failed: {ex.Message}");
+            Log.Exception($"Snip scroll show overlay failed: {ex.Message}", ex, typeof(ScrollCaptureController));
         }
     }
 
@@ -474,7 +476,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] HideOverlay failed: {ex.Message}");
+            Log.Exception($"Snip scroll hide overlay failed: {ex.Message}", ex, typeof(ScrollCaptureController));
         }
     }
 
@@ -511,7 +513,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] CapturingStopped callback failed: {ex.Message}");
+            Log.Exception($"Snip scroll CapturingStopped callback failed: {ex.Message}", ex, typeof(ScrollCaptureController));
         }
     }
 
@@ -523,7 +525,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] Cancelled callback failed: {ex.Message}");
+            Log.Exception($"Snip scroll Cancelled callback failed: {ex.Message}", ex, typeof(ScrollCaptureController));
         }
     }
 
@@ -544,7 +546,7 @@ public sealed class ScrollCaptureController
         }
         catch (Exception ex)
         {
-            Debug.WriteLine($"[scroll] LayoutOverlay failed: {ex.Message}");
+            Log.Exception($"Snip scroll layout overlay failed: {ex.Message}", ex, typeof(ScrollCaptureController));
         }
     }
 }
