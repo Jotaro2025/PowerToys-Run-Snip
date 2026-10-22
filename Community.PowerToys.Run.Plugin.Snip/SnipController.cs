@@ -172,7 +172,7 @@ public static class SnipController
                 bitmap = frame.ToWriteableBitmap();
             }
 
-            RunEditor(bitmap, screen, settings, notify);
+            await RunEditorAsync(bitmap, screen, settings, notify).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -181,7 +181,7 @@ public static class SnipController
         }
     }
 
-    private static void RunEditor(
+    private static async Task RunEditorAsync(
         System.Windows.Media.Imaging.WriteableBitmap bitmap,
         Core.ScreenInfo screen,
         SnipSettings settings,
@@ -208,7 +208,7 @@ public static class SnipController
         {
             if (settings.CopyAfterCapture)
             {
-                TryCopy(result.Result, result.PngBytes);
+                await TryCopyAsync(result.Result, result.PngBytes).ConfigureAwait(true);
             }
 
             notify(Properties.Resources.msg_saved, result.SavedPath);
@@ -218,15 +218,15 @@ public static class SnipController
         // Confirmed: apply the user's clipboard / auto-save preferences.
         if (settings.CopyAfterCapture)
         {
-            TryCopy(result.Result, result.PngBytes);
+            await TryCopyAsync(result.Result, result.PngBytes).ConfigureAwait(true);
         }
 
         if (settings.AutoSaveAfterCapture)
         {
-            var (ok, path, error) = ScreenshotFileSaver.SavePngAsync(
+            var (ok, path, error) = await ScreenshotFileSaver.SavePngAsync(
                 result.PngBytes,
                 settings.SaveDirectory,
-                SnipSettings.DefaultSaveFolder).GetAwaiter().GetResult();
+                SnipSettings.DefaultSaveFolder).ConfigureAwait(true);
             if (ok)
             {
                 notify(Properties.Resources.msg_saved, path);
@@ -243,7 +243,8 @@ public static class SnipController
         }
     }
 
-    private static void TryCopy(System.Windows.Media.Imaging.BitmapSource bitmap, byte[] pngBytes = null)
+    /// <summary>Large frames: CopyPixels/DIB build off the UI thread via <see cref="ClipboardService.CopyBitmapAsync"/>.</summary>
+    private static async Task TryCopyAsync(System.Windows.Media.Imaging.BitmapSource bitmap, byte[] pngBytes = null)
     {
         if (bitmap == null)
         {
@@ -252,7 +253,7 @@ public static class SnipController
 
         try
         {
-            ClipboardService.CopyBitmap(bitmap, pngBytes);
+            await ClipboardService.CopyBitmapAsync(bitmap, pngBytes).ConfigureAwait(true);
         }
         catch (Exception ex)
         {

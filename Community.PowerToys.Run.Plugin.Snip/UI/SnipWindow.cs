@@ -991,7 +991,8 @@ public sealed class SnipWindow : Window
 
         try
         {
-            ClipboardService.CopyBitmap(built.Value.Bitmap, built.Value.Png);
+            // CopyPixels / DIB build off the UI thread for large frames.
+            await ClipboardService.CopyBitmapAsync(built.Value.Bitmap, built.Value.Png).ConfigureAwait(true);
             Result = new EditResult
             {
                 Outcome = EditOutcome.Copied,
