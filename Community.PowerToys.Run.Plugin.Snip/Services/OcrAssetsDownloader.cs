@@ -242,7 +242,7 @@ public static class OcrAssetsDownloader
         string normalized = entryFullName.Replace('\\', '/');
         if (normalized.StartsWith(NupkgContentPrefix, StringComparison.OrdinalIgnoreCase))
         {
-            return normalized.Substring(NupkgContentPrefix.Length).Replace('/', Path.DirectorySeparatorChar);
+            return ToOsRelativePath(normalized.AsSpan(NupkgContentPrefix.Length));
         }
 
         // Fallback: contentFiles/any/<tfm>/wco_data/...
@@ -250,10 +250,36 @@ public static class OcrAssetsDownloader
         int idx = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
         if (idx >= 0 && normalized.StartsWith("contentFiles/", StringComparison.OrdinalIgnoreCase))
         {
-            return normalized.Substring(idx + marker.Length).Replace('/', Path.DirectorySeparatorChar);
+            return ToOsRelativePath(normalized.AsSpan(idx + marker.Length));
         }
 
         return null;
+    }
+
+    /// <summary>One allocation: slash-normalize a UTF-16 relative path slice.</summary>
+    private static string ToOsRelativePath(ReadOnlySpan<char> relative)
+    {
+        if (relative.IsEmpty)
+        {
+            return string.Empty;
+        }
+
+        if (Path.DirectorySeparatorChar == '/')
+        {
+            return relative.ToString();
+        }
+
+        return string.Create(relative.Length, relative, static (dest, src) =>
+        {
+            src.CopyTo(dest);
+            for (int i = 0; i < dest.Length; i++)
+            {
+                if (dest[i] == '/')
+                {
+                    dest[i] = Path.DirectorySeparatorChar;
+                }
+            }
+        });
     }
 
     private static async Task DownloadNupkgAsync(
