@@ -167,29 +167,23 @@ public static class ImageTranslateRenderer
 
     private static void BlitAxisText(WriteableBitmap dest, Rect paintBox, string text, Color fg)
     {
-        int x0 = (int)Math.Floor(paintBox.X);
-        int y0 = (int)Math.Floor(paintBox.Y);
-        int bw = Math.Max(1, (int)Math.Ceiling(paintBox.Width));
-        int bh = Math.Max(1, (int)Math.Ceiling(paintBox.Height));
-        x0 = Math.Clamp(x0, 0, dest.PixelWidth - 1);
-        y0 = Math.Clamp(y0, 0, dest.PixelHeight - 1);
-        bw = Math.Min(bw, dest.PixelWidth - x0);
-        bh = Math.Min(bh, dest.PixelHeight - y0);
-        if (bw < 1 || bh < 1)
+        var region = ComputeBlitRegion(paintBox, dest.PixelWidth, dest.PixelHeight);
+        if (region.IsEmpty)
         {
             return;
         }
 
-        var localBox = new Rect(0, 0, bw, bh);
+        // Draw in region-local space so a box clipped at the image edge keeps its layout.
+        var localBox = new Rect(paintBox.X - region.X, paintBox.Y - region.Y, paintBox.Width, paintBox.Height);
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
             DrawAxisText(dc, localBox, text, fg);
         }
 
-        var rtb = new RenderTargetBitmap(bw, bh, 96, 96, PixelFormats.Pbgra32);
+        var rtb = new RenderTargetBitmap(region.Width, region.Height, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(dv);
-        AlphaBlendInto(dest, rtb, x0, y0);
+        AlphaBlendInto(dest, rtb, region.X, region.Y);
     }
 
     private static void BlitQuadText(
@@ -200,26 +194,14 @@ public static class ImageTranslateRenderer
         string text,
         Color fg)
     {
-        var bounds = BoundsOf(quad);
-        int x0 = (int)Math.Floor(bounds.X);
-        int y0 = (int)Math.Floor(bounds.Y);
-        int bw = Math.Max(1, (int)Math.Ceiling(bounds.Width));
-        int bh = Math.Max(1, (int)Math.Ceiling(bounds.Height));
-        x0 = Math.Clamp(x0, 0, dest.PixelWidth - 1);
-        y0 = Math.Clamp(y0, 0, dest.PixelHeight - 1);
-        bw = Math.Min(bw, dest.PixelWidth - x0);
-        bh = Math.Min(bh, dest.PixelHeight - y0);
-        if (bw < 1 || bh < 1)
+        var region = ComputeBlitRegion(BoundsOf(quad), dest.PixelWidth, dest.PixelHeight);
+        if (region.IsEmpty)
         {
             return;
         }
 
-        // Draw in bounds-local space: translate quad so bounds top-left is (0,0).
-        var localQuad = new Point[4];
-        for (int i = 0; i < 4; i++)
-        {
-            localQuad[i] = new Point(quad[i].X - x0, quad[i].Y - y0);
-        }
+        // Draw in region-local space: translate quad so region top-left is (0,0).
+        var localQuad = OffsetQuad(quad, -region.X, -region.Y);
 
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
@@ -227,12 +209,49 @@ public static class ImageTranslateRenderer
             DrawQuadText(dc, localQuad, localW, localH, text, fg);
         }
 
-        var rtb = new RenderTargetBitmap(bw, bh, 96, 96, PixelFormats.Pbgra32);
+        var rtb = new RenderTargetBitmap(region.Width, region.Height, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(dv);
-        AlphaBlendInto(dest, rtb, x0, y0);
+        AlphaBlendInto(dest, rtb, region.X, region.Y);
     }
 
-    /// <summary>Pbgra32 overlay → Bgra32 dest with straight alpha blend (Span).</summary>
+    /// <summary>
+    /// Integer pixel region covering <paramref name="bounds"/>, clipped to the image
+    /// (floor left/top, ceil right/bottom). Empty when nothing is inside the image.
+    /// </summary>
+    internal static Int32Rect ComputeBlitRegion(Rect bounds, int imageWidth, int imageHeight)
+    {
+        if (bounds.IsEmpty || imageWidth <= 0 || imageHeight <= 0
+            || double.IsNaN(bounds.X) || double.IsNaN(bounds.Y)
+            || double.IsNaN(bounds.Width) || double.IsNaN(bounds.Height))
+        {
+            return Int32Rect.Empty;
+        }
+
+        int left = (int)Math.Floor(Math.Max(0, bounds.X));
+        int top = (int)Math.Floor(Math.Max(0, bounds.Y));
+        int right = (int)Math.Ceiling(Math.Min(imageWidth, bounds.Right));
+        int bottom = (int)Math.Ceiling(Math.Min(imageHeight, bounds.Bottom));
+        if (right <= left || bottom <= top)
+        {
+            return Int32Rect.Empty;
+        }
+
+        return new Int32Rect(left, top, right - left, bottom - top);
+    }
+
+    internal static Point[] OffsetQuad(IReadOnlyList<Point> quad, double dx, double dy)
+    {
+        ArgumentNullException.ThrowIfNull(quad);
+        var result = new Point[quad.Count];
+        for (int i = 0; i < quad.Count; i++)
+        {
+            result[i] = new Point(quad[i].X + dx, quad[i].Y + dy);
+        }
+
+        return result;
+    }
+
+    /// <summary>Pbgra32 overlay → Bgra32 dest via <see cref="BlendPremultipliedOver"/>.</summary>
     private static void AlphaBlendInto(WriteableBitmap dest, RenderTargetBitmap src, int destX, int destY)
     {
         int sw = src.PixelWidth;
@@ -244,61 +263,83 @@ public static class ImageTranslateRenderer
         dest.Lock();
         try
         {
+            int dstStride = dest.BackBufferStride;
+            int dw = dest.PixelWidth;
+            int dh = dest.PixelHeight;
+            Span<byte> dst;
             unsafe
             {
-                byte* dstBase = (byte*)dest.BackBuffer;
-                int dstStride = dest.BackBufferStride;
-                int dw = dest.PixelWidth;
-                int dh = dest.PixelHeight;
-                for (int y = 0; y < sh; y++)
-                {
-                    int dy = destY + y;
-                    if ((uint)dy >= (uint)dh)
-                    {
-                        continue;
-                    }
-
-                    for (int x = 0; x < sw; x++)
-                    {
-                        int dx = destX + x;
-                        if ((uint)dx >= (uint)dw)
-                        {
-                            continue;
-                        }
-
-                        int so = (y * srcStride) + (x * 4);
-                        byte sa = srcBuf[so + 3];
-                        if (sa == 0)
-                        {
-                            continue;
-                        }
-
-                        byte* dp = dstBase + (dy * dstStride) + (dx * 4);
-                        if (sa == 255)
-                        {
-                            dp[0] = srcBuf[so];
-                            dp[1] = srcBuf[so + 1];
-                            dp[2] = srcBuf[so + 2];
-                            dp[3] = 255;
-                            continue;
-                        }
-
-                        // src is Pbgra (premultiplied); convert-ish blend onto opaque dest.
-                        int inv = 255 - sa;
-                        dp[0] = (byte)(((srcBuf[so] * 255) + (dp[0] * inv)) / 255);
-                        dp[1] = (byte)(((srcBuf[so + 1] * 255) + (dp[1] * inv)) / 255);
-                        dp[2] = (byte)(((srcBuf[so + 2] * 255) + (dp[2] * inv)) / 255);
-                        dp[3] = 255;
-                    }
-                }
+                dst = new Span<byte>((void*)dest.BackBuffer, checked(dstStride * dh));
             }
 
-            dest.AddDirtyRect(new Int32Rect(destX, destY, Math.Min(sw, dest.PixelWidth - destX), Math.Min(sh, dest.PixelHeight - destY)));
+            var dirty = BlendPremultipliedOver(srcBuf, srcStride, sw, sh, dst, dstStride, dw, dh, destX, destY);
+            if (!dirty.IsEmpty)
+            {
+                dest.AddDirtyRect(dirty);
+            }
         }
         finally
         {
             dest.Unlock();
         }
+    }
+
+    /// <summary>
+    /// Source-over blend of a premultiplied BGRA overlay onto an opaque BGRA buffer:
+    /// <c>dst = src + dst * (255 - a) / 255</c>, alpha forced to 255. Pixels falling
+    /// outside the destination are clipped. Returns the touched destination rect.
+    /// </summary>
+    internal static Int32Rect BlendPremultipliedOver(
+        ReadOnlySpan<byte> src,
+        int srcStride,
+        int srcWidth,
+        int srcHeight,
+        Span<byte> dst,
+        int dstStride,
+        int dstWidth,
+        int dstHeight,
+        int destX,
+        int destY)
+    {
+        int x0 = Math.Max(0, destX);
+        int y0 = Math.Max(0, destY);
+        int x1 = Math.Min(dstWidth, destX + srcWidth);
+        int y1 = Math.Min(dstHeight, destY + srcHeight);
+        if (x1 <= x0 || y1 <= y0)
+        {
+            return Int32Rect.Empty;
+        }
+
+        for (int dy = y0; dy < y1; dy++)
+        {
+            var srcRow = src.Slice(((dy - destY) * srcStride) + ((x0 - destX) * 4), (x1 - x0) * 4);
+            var dstRow = dst.Slice((dy * dstStride) + (x0 * 4), (x1 - x0) * 4);
+            for (int o = 0; o < srcRow.Length; o += 4)
+            {
+                byte sa = srcRow[o + 3];
+                if (sa == 0)
+                {
+                    continue;
+                }
+
+                if (sa == 255)
+                {
+                    dstRow[o] = srcRow[o];
+                    dstRow[o + 1] = srcRow[o + 1];
+                    dstRow[o + 2] = srcRow[o + 2];
+                    dstRow[o + 3] = 255;
+                    continue;
+                }
+
+                int inv = 255 - sa;
+                dstRow[o] = (byte)(((srcRow[o] * 255) + (dstRow[o] * inv)) / 255);
+                dstRow[o + 1] = (byte)(((srcRow[o + 1] * 255) + (dstRow[o + 1] * inv)) / 255);
+                dstRow[o + 2] = (byte)(((srcRow[o + 2] * 255) + (dstRow[o + 2] * inv)) / 255);
+                dstRow[o + 3] = 255;
+            }
+        }
+
+        return new Int32Rect(x0, y0, x1 - x0, y1 - y0);
     }
 
     /// <summary>
