@@ -20,7 +20,8 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// region (multi-ring median for text color), erase original text with a pure-C#
 /// Telea-like inpaint on <c>WriteableBitmap.BackBuffer</c> via <see cref="Span{T}"/>
 /// (median fill fallback; no full-frame <c>byte[]</c> Marshal.Copy), then draw the translation with
-/// wrapping + adaptive font size. Quad path uses a pure WPF affine transform — no OpenCV.
+/// wrapping + adaptive font size into per-region RTBs blended back (no full-frame rematerialize).
+/// Quad path uses a pure WPF affine transform — no OpenCV.
 /// </summary>
 public static class ImageTranslateRenderer
 {
@@ -142,28 +143,162 @@ public static class ImageTranslateRenderer
             writable.Unlock();
         }
 
-        var dv = new DrawingVisual();
-        using (var dc = dv.RenderOpen())
+        // Composite glyphs into the same WriteableBitmap via per-region RTBs
+        // (no second full-frame RenderTargetBitmap — cuts peak ~1× frame).
+        foreach (var job in jobs)
         {
-            dc.DrawImage(writable, new Rect(0, 0, width, height));
-
-            foreach (var job in jobs)
+            if (job.IsQuad)
             {
-                if (job.IsQuad)
-                {
-                    DrawQuadText(dc, job.Quad, job.LocalWidth, job.LocalHeight, job.Text, job.Foreground);
-                }
-                else
-                {
-                    DrawAxisText(dc, job.PaintBox, job.Text, job.Foreground);
-                }
+                BlitQuadText(writable, job.Quad, job.LocalWidth, job.LocalHeight, job.Text, job.Foreground);
+            }
+            else
+            {
+                BlitAxisText(writable, job.PaintBox, job.Text, job.Foreground);
             }
         }
 
-        var rtb = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        if (writable.CanFreeze)
+        {
+            writable.Freeze();
+        }
+
+        return writable;
+    }
+
+    private static void BlitAxisText(WriteableBitmap dest, Rect paintBox, string text, Color fg)
+    {
+        int x0 = (int)Math.Floor(paintBox.X);
+        int y0 = (int)Math.Floor(paintBox.Y);
+        int bw = Math.Max(1, (int)Math.Ceiling(paintBox.Width));
+        int bh = Math.Max(1, (int)Math.Ceiling(paintBox.Height));
+        x0 = Math.Clamp(x0, 0, dest.PixelWidth - 1);
+        y0 = Math.Clamp(y0, 0, dest.PixelHeight - 1);
+        bw = Math.Min(bw, dest.PixelWidth - x0);
+        bh = Math.Min(bh, dest.PixelHeight - y0);
+        if (bw < 1 || bh < 1)
+        {
+            return;
+        }
+
+        var localBox = new Rect(0, 0, bw, bh);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            DrawAxisText(dc, localBox, text, fg);
+        }
+
+        var rtb = new RenderTargetBitmap(bw, bh, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(dv);
-        rtb.Freeze();
-        return rtb;
+        AlphaBlendInto(dest, rtb, x0, y0);
+    }
+
+    private static void BlitQuadText(
+        WriteableBitmap dest,
+        Point[] quad,
+        double localW,
+        double localH,
+        string text,
+        Color fg)
+    {
+        var bounds = BoundsOf(quad);
+        int x0 = (int)Math.Floor(bounds.X);
+        int y0 = (int)Math.Floor(bounds.Y);
+        int bw = Math.Max(1, (int)Math.Ceiling(bounds.Width));
+        int bh = Math.Max(1, (int)Math.Ceiling(bounds.Height));
+        x0 = Math.Clamp(x0, 0, dest.PixelWidth - 1);
+        y0 = Math.Clamp(y0, 0, dest.PixelHeight - 1);
+        bw = Math.Min(bw, dest.PixelWidth - x0);
+        bh = Math.Min(bh, dest.PixelHeight - y0);
+        if (bw < 1 || bh < 1)
+        {
+            return;
+        }
+
+        // Draw in bounds-local space: translate quad so bounds top-left is (0,0).
+        var localQuad = new Point[4];
+        for (int i = 0; i < 4; i++)
+        {
+            localQuad[i] = new Point(quad[i].X - x0, quad[i].Y - y0);
+        }
+
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            DrawQuadText(dc, localQuad, localW, localH, text, fg);
+        }
+
+        var rtb = new RenderTargetBitmap(bw, bh, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        AlphaBlendInto(dest, rtb, x0, y0);
+    }
+
+    /// <summary>Pbgra32 overlay → Bgra32 dest with straight alpha blend (Span).</summary>
+    private static void AlphaBlendInto(WriteableBitmap dest, RenderTargetBitmap src, int destX, int destY)
+    {
+        int sw = src.PixelWidth;
+        int sh = src.PixelHeight;
+        int srcStride = sw * 4;
+        var srcBuf = new byte[srcStride * sh];
+        src.CopyPixels(srcBuf, srcStride, 0);
+
+        dest.Lock();
+        try
+        {
+            unsafe
+            {
+                byte* dstBase = (byte*)dest.BackBuffer;
+                int dstStride = dest.BackBufferStride;
+                int dw = dest.PixelWidth;
+                int dh = dest.PixelHeight;
+                for (int y = 0; y < sh; y++)
+                {
+                    int dy = destY + y;
+                    if ((uint)dy >= (uint)dh)
+                    {
+                        continue;
+                    }
+
+                    for (int x = 0; x < sw; x++)
+                    {
+                        int dx = destX + x;
+                        if ((uint)dx >= (uint)dw)
+                        {
+                            continue;
+                        }
+
+                        int so = (y * srcStride) + (x * 4);
+                        byte sa = srcBuf[so + 3];
+                        if (sa == 0)
+                        {
+                            continue;
+                        }
+
+                        byte* dp = dstBase + (dy * dstStride) + (dx * 4);
+                        if (sa == 255)
+                        {
+                            dp[0] = srcBuf[so];
+                            dp[1] = srcBuf[so + 1];
+                            dp[2] = srcBuf[so + 2];
+                            dp[3] = 255;
+                            continue;
+                        }
+
+                        // src is Pbgra (premultiplied); convert-ish blend onto opaque dest.
+                        int inv = 255 - sa;
+                        dp[0] = (byte)(((srcBuf[so] * 255) + (dp[0] * inv)) / 255);
+                        dp[1] = (byte)(((srcBuf[so + 1] * 255) + (dp[1] * inv)) / 255);
+                        dp[2] = (byte)(((srcBuf[so + 2] * 255) + (dp[2] * inv)) / 255);
+                        dp[3] = 255;
+                    }
+                }
+            }
+
+            dest.AddDirtyRect(new Int32Rect(destX, destY, Math.Min(sw, dest.PixelWidth - destX), Math.Min(sh, dest.PixelHeight - destY)));
+        }
+        finally
+        {
+            dest.Unlock();
+        }
     }
 
     /// <summary>
