@@ -56,11 +56,11 @@ public static class HyMtModelDownloader
     private static readonly HttpClient Http = CreateClient();
 
     private static readonly (string Name, string Url)[] DownloadSources =
-    {
+    [
         ("ModelScope", ModelScopeUrl),
         ("hf-mirror", HfMirrorUrl),
         ("Hugging Face", HuggingFaceUrl),
-    };
+    ];
 
     /// <summary>
     /// <c>%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\models\Hy-MT2-1.8B-2Bit.gguf</c>
@@ -132,13 +132,13 @@ public static class HyMtModelDownloader
     {
         if (TryNormalizeHttpsUrl(customUrl, out var url, out _))
         {
-            return new[]
-            {
+            return
+            [
                 ("Custom", url),
                 ("ModelScope", ModelScopeUrl),
                 ("hf-mirror", HfMirrorUrl),
                 ("Hugging Face", HuggingFaceUrl),
-            };
+            ];
         }
 
         return DownloadSources;

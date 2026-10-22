@@ -98,12 +98,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayDescription = Properties.Resources.opt_tr_provider_desc,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Combobox,
             ComboBoxValue = (int)_settings.TranslatorProvider,
-            ComboBoxItems = new List<KeyValuePair<string, string>>
-            {
+            ComboBoxItems =
+            [
                 new KeyValuePair<string, string>(Properties.Resources.opt_tr_provider_off, "0"),
                 new KeyValuePair<string, string>(Properties.Resources.opt_tr_provider_http, "1"),
                 new KeyValuePair<string, string>(Properties.Resources.opt_tr_provider_hymt, "2"),
-            },
+            ],
         },
         new PluginAdditionalOption()
         {
@@ -176,12 +176,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayDescription = Properties.Resources.opt_tr_hymt_backend_desc,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Combobox,
             ComboBoxValue = (int)_settings.HyMtBackend,
-            ComboBoxItems = new List<KeyValuePair<string, string>>
-            {
+            ComboBoxItems =
+            [
                 new KeyValuePair<string, string>(Properties.Resources.opt_tr_hymt_backend_auto, "0"),
                 new KeyValuePair<string, string>(Properties.Resources.opt_tr_hymt_backend_cpu, "1"),
                 new KeyValuePair<string, string>(Properties.Resources.opt_tr_hymt_backend_vulkan, "2"),
-            },
+            ],
         },
     };
 

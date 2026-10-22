@@ -300,7 +300,7 @@ public sealed class AnnotationCanvas : FrameworkElement
             EndLineCap = PenLineCap.Round,
             LineJoin = PenLineJoin.Round,
         };
-        dc.DrawGeometry(null, pen, CreatePolyline(new[] { a.Start, a.End }, false));
+        dc.DrawGeometry(null, pen, CreatePolyline([a.Start, a.End], false));
 
         var dx = a.End.X - a.Start.X;
         var dy = a.End.Y - a.Start.Y;
@@ -320,7 +320,7 @@ public sealed class AnnotationCanvas : FrameworkElement
         var p1 = new Point(back.X + (perpX * headWidth), back.Y + (perpY * headWidth));
         var p2 = new Point(back.X - (perpX * headWidth), back.Y - (perpY * headWidth));
         var fill = new SolidColorBrush(a.Stroke);
-        dc.DrawGeometry(fill, pen, CreatePolyline(new[] { p1, a.End, p2 }, true));
+        dc.DrawGeometry(fill, pen, CreatePolyline([p1, a.End, p2], true));
     }
 
     private bool ShouldPreviewMosaic(MosaicAnnotation m)

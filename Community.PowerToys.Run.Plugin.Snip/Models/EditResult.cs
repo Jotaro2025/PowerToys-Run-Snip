@@ -22,7 +22,7 @@ public sealed record EditResult
     public Rect? Selection { get; init; }
 
     /// <summary>Annotations drawn on the image. Empty when cancelled.</summary>
-    public IReadOnlyList<Annotation> Annotations { get; init; } = Array.Empty<Annotation>();
+    public IReadOnlyList<Annotation> Annotations { get; init; } = [];
 
     /// <summary>Final rendered bitmap (size = selection size). <c>null</c> when cancelled.</summary>
     public BitmapSource Result { get; init; }
