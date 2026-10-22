@@ -500,6 +500,8 @@ public sealed class SnipWindow : Window
     /// <summary>
     /// Renders the selection plus annotations into a fresh bitmap whose size
     /// equals the selection's size in physical pixels.
+    /// With no annotations, returns a <see cref="CroppedBitmap"/> only (no
+    /// <see cref="RenderTargetBitmap"/> round-trip).
     /// </summary>
     private BitmapSource BuildResultBitmap(Rect selection)
     {
@@ -512,10 +514,14 @@ public sealed class SnipWindow : Window
         w = Math.Max(1, Math.Min(w, _source.PixelWidth - x));
         h = Math.Max(1, Math.Min(h, _source.PixelHeight - y));
 
-        // 1) Crop the source 1:1 to a fresh bitmap.
-        var cropped = new System.Windows.Media.Imaging.CroppedBitmap(
-            _source,
-            new Int32Rect(x, y, w, h));
+        // 1) Crop the source 1:1.
+        var cropped = new CroppedBitmap(_source, new Int32Rect(x, y, w, h));
+
+        // No markup → skip RenderTargetBitmap (crop is enough for copy/save/OCR).
+        if (_annoCanvas.Items.Count == 0)
+        {
+            return cropped;
+        }
 
         // 2) Render annotations on top of the 1:1 crop. AnnotationCanvas only
         //    draws markup (not the background); mosaic still samples SourceBitmap
@@ -530,8 +536,7 @@ public sealed class SnipWindow : Window
             dc.Pop();
         }
 
-        var rtb = new System.Windows.Media.Imaging.RenderTargetBitmap(
-            w, h, 96, 96, PixelFormats.Pbgra32);
+        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
         rtb.Render(visual);
         return rtb;
     }
@@ -567,7 +572,7 @@ public sealed class SnipWindow : Window
 
         try
         {
-            ClipboardService.CopyBitmap(built.Value.Bitmap);
+            ClipboardService.CopyBitmap(built.Value.Bitmap, built.Value.Png);
             Result = new EditResult
             {
                 Outcome = EditOutcome.Copied,
@@ -942,9 +947,10 @@ public sealed class SnipWindow : Window
     }
 
     /// <summary>
-    /// Composites the selection on the UI thread (RenderTargetBitmap affinity),
-    /// then PNG-encodes on the thread pool. Full-res source is always used —
-    /// OCR / translate / save must not see the overlay preview downsample.
+    /// Composites the selection on the UI thread (RenderTargetBitmap only when
+    /// annotations exist; otherwise a CroppedBitmap), then PNG-encodes on the
+    /// thread pool. Full-res source is always used — OCR / translate / save must
+    /// not see the overlay preview downsample.
     /// </summary>
     private async Task<(BitmapSource Bitmap, byte[] Png)?> BuildAndEncodeAsync()
     {

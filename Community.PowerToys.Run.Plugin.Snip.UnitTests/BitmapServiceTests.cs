@@ -198,6 +198,65 @@ public class BitmapServiceTests
     }
 
     [TestMethod]
+    public void MaterializeBufferReturnsExactLength()
+    {
+        using var ms = new MemoryStream();
+        var payload = new byte[] { 1, 2, 3, 4, 5 };
+        ms.Write(payload, 0, payload.Length);
+        // Expand capacity past Length so TryGetBuffer segment.Count < Array.Length.
+        _ = ms.Capacity;
+        var exact = PngEncoder.MaterializeBuffer(ms);
+        CollectionAssert.AreEqual(payload, exact);
+        Assert.AreEqual(payload.Length, exact.Length);
+    }
+
+    [TestMethod]
+    public void EncodeToStreamMatchesEncodeBytes()
+    {
+        RunOnStaThread(() =>
+        {
+            var bitmap = CreateTestBitmap(16, 12);
+            var viaEncode = PngEncoder.Encode(bitmap);
+            using var ms = new MemoryStream();
+            PngEncoder.EncodeToStream(bitmap, ms);
+            CollectionAssert.AreEqual(viaEncode, ms.ToArray());
+        });
+    }
+
+    [TestMethod]
+    public void DibRowFlipMemoryCopyPreservesBgrAndClearsAlpha()
+    {
+        const int w = 2;
+        const int h = 2;
+        const int stride = w * 4;
+        // Top-down: row0 = red,opaque ; row1 = blue,opaque
+        var src = new byte[stride * h];
+        src[0] = 0; src[1] = 0; src[2] = 255; src[3] = 255;
+        src[4] = 0; src[5] = 0; src[6] = 255; src[7] = 255;
+        src[8] = 255; src[9] = 0; src[10] = 0; src[11] = 255;
+        src[12] = 255; src[13] = 0; src[14] = 0; src[15] = 255;
+        var dst = new byte[stride * h];
+        unsafe
+        {
+            fixed (byte* s = src)
+            {
+                fixed (byte* d = dst)
+                {
+                    ClipboardService.CopyTopDownBgraToBottomUpDib(s, d, h, stride);
+                }
+            }
+        }
+
+        // Bottom-up DIB: first stored row is former bottom (blue), alpha cleared.
+        Assert.AreEqual(255, dst[0]);
+        Assert.AreEqual(0, dst[1]);
+        Assert.AreEqual(0, dst[2]);
+        Assert.AreEqual(0, dst[3], "alpha cleared");
+        Assert.AreEqual(255, dst[8 + 2], "top row red channel in last DIB row");
+        Assert.AreEqual(0, dst[8 + 3], "alpha cleared on last row");
+    }
+
+    [TestMethod]
     public void CapturedFrameToWriteableBitmapCopiesPixels()
     {
         RunOnStaThread(() =>

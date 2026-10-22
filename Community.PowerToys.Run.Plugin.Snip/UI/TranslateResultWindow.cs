@@ -480,9 +480,6 @@ public sealed class TranslateResultWindow : Window, IDisposable
         UpdateActionButtons(enabled: false);
         try
         {
-            // Freeze snapshot on UI, encode PNG off the STA thread.
-            var png = await PngEncoder.EncodeAsync(bmp);
-
             var initialDir = ScreenshotFileSaver.ResolveDirectory(
                 _settings.SaveDirectory, SnipSettings.DefaultSaveFolder);
             try
@@ -517,7 +514,8 @@ public sealed class TranslateResultWindow : Window, IDisposable
                 return;
             }
 
-            await File.WriteAllBytesAsync(dialog.FileName, png);
+            // Freeze on UI, encode straight to the file (no Encode→byte[]→WriteAllBytes).
+            await PngEncoder.EncodeToFileAsync(bmp, dialog.FileName);
             if (_closed)
             {
                 return;

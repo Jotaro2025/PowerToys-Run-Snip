@@ -3,7 +3,6 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
-using System.IO;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Windows.Media.Imaging;
@@ -21,7 +20,12 @@ public static class ClipboardService
     private const int CfDib = 8;
     private const int MaxOpenAttempts = 5;
 
-    public static void CopyBitmap(BitmapSource bitmap)
+    /// <param name="pngBytes">
+    /// Optional pre-encoded PNG (e.g. from <see cref="PngEncoder"/>). When
+    /// non-empty, clipboard PNG is taken from this buffer — no second
+    /// <see cref="PngBitmapEncoder"/> pass.
+    /// </param>
+    public static void CopyBitmap(BitmapSource bitmap, byte[] pngBytes = null)
     {
         ArgumentNullException.ThrowIfNull(bitmap);
 
@@ -39,7 +43,7 @@ public static class ClipboardService
         {
             EmptyClipboard();
             PutDib(bitmap);
-            PutPng(bitmap);
+            PutPng(bitmap, pngBytes);
         }
         finally
         {
@@ -116,19 +120,7 @@ public static class ClipboardService
                     byte* dst = (byte*)pDib + headerBytes;
                     fixed (byte* src = pixels)
                     {
-                        for (int y = 0; y < h; y++)
-                        {
-                            byte* srcRow = src + ((h - 1 - y) * stride);
-                            byte* dstRow = dst + (y * stride);
-                            for (int x = 0; x < stride; x += 4)
-                            {
-                                // BI_RGB DIBs ignore the high byte; keep it zero.
-                                dstRow[x + 0] = srcRow[x + 0];
-                                dstRow[x + 1] = srcRow[x + 1];
-                                dstRow[x + 2] = srcRow[x + 2];
-                                dstRow[x + 3] = 0;
-                            }
-                        }
+                        CopyTopDownBgraToBottomUpDib(src, dst, h, stride);
                     }
                 }
             }
@@ -149,15 +141,17 @@ public static class ClipboardService
         }
     }
 
-    private static void PutPng(BitmapSource bitmap)
+    private static void PutPng(BitmapSource bitmap, byte[] existingPng)
     {
-        var encoder = new PngBitmapEncoder();
-        encoder.Frames.Add(BitmapFrame.Create(bitmap));
         byte[] pngBytes;
-        using (var ms = new MemoryStream())
+        if (existingPng != null && existingPng.Length > 0)
         {
-            encoder.Save(ms);
-            pngBytes = ms.ToArray();
+            pngBytes = existingPng;
+        }
+        else
+        {
+            // No pre-encoded PNG — encode once (also avoids ToArray when possible).
+            pngBytes = PngEncoder.Encode(bitmap);
         }
 
         IntPtr hGlobal = GlobalAlloc(Win32.GmemMoveable, (uint)pngBytes.Length);
@@ -185,6 +179,24 @@ public static class ClipboardService
         if (SetClipboardData(RegisterClipboardFormat("PNG"), hGlobal) == IntPtr.Zero)
         {
             GlobalFree(hGlobal);
+        }
+    }
+
+    /// <summary>
+    /// Flip top-down BGRA into bottom-up DIB rows with <see cref="Buffer.MemoryCopy"/>,
+    /// then clear the alpha byte (BI_RGB ignores it; keep high byte zero).
+    /// </summary>
+    internal static unsafe void CopyTopDownBgraToBottomUpDib(byte* src, byte* dst, int height, int stride)
+    {
+        for (int y = 0; y < height; y++)
+        {
+            byte* srcRow = src + ((height - 1 - y) * (long)stride);
+            byte* dstRow = dst + (y * (long)stride);
+            Buffer.MemoryCopy(srcRow, dstRow, stride, stride);
+            for (int x = 3; x < stride; x += 4)
+            {
+                dstRow[x] = 0;
+            }
         }
     }
 
