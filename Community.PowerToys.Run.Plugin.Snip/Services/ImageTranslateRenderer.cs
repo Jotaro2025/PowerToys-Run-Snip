@@ -17,8 +17,8 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
 /// WeChat-style image translate rendering: sample background near each OCR
-/// region (multi-ring median), cover the original text (axis-aligned box or
-/// corner quad), pick a contrasting text color, and draw the translation with
+/// region (multi-ring median for text color), erase original text with a pure-C#
+/// Telea-like inpaint (median fill fallback), then draw the translation with
 /// wrapping + adaptive font size. Quad path uses a pure WPF affine transform — no OpenCV.
 /// </summary>
 public static class ImageTranslateRenderer
@@ -76,7 +76,7 @@ public static class ImageTranslateRenderer
             return source;
         }
 
-        // Work in Bgra32 so we can sample background colors cheaply.
+        // Work in Bgra32 so we can sample / inpaint cheaply.
         var converted = source.Format == PixelFormats.Bgra32
             ? source
             : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
@@ -88,26 +88,61 @@ public static class ImageTranslateRenderer
             var pixels = new byte[stride * height];
             System.Runtime.InteropServices.Marshal.Copy(writable.BackBuffer, pixels, 0, pixels.Length);
 
+            // Pass 1: sample contrast colors from the *original* buffer, then erase
+            // each region via Telea-like inpaint (median solid fill as fallback).
+            var jobs = new List<DrawJob>(lines.Count);
+            for (int i = 0; i < lines.Count; i++)
+            {
+                var text = translations[i];
+                if (string.IsNullOrWhiteSpace(text))
+                {
+                    continue;
+                }
+
+                if (TryGetUsableQuad(lines[i], width, height, out var quad, out double localW, out double localH))
+                {
+                    var bounds = Clamp(BoundsOf(quad), width, height);
+                    if (bounds.Width < 2 || bounds.Height < 2)
+                    {
+                        continue;
+                    }
+
+                    var bg = SampleBackground(pixels, stride, width, height, bounds);
+                    EraseRegion(pixels, stride, width, height, bounds, bg);
+                    jobs.Add(DrawJob.ForQuad(quad, localW, localH, text, ContrastingText(bg)));
+                }
+                else
+                {
+                    var raw = Clamp(lines[i].Box, width, height);
+                    if (raw.Width < 2 || raw.Height < 2)
+                    {
+                        continue;
+                    }
+
+                    var bg = SampleBackground(pixels, stride, width, height, raw);
+                    var paintBox = ExpandBox(raw, BoxExpandX, BoxExpandY, width, height);
+                    EraseRegion(pixels, stride, width, height, paintBox, bg);
+                    jobs.Add(DrawJob.ForAxis(paintBox, text, ContrastingText(bg)));
+                }
+            }
+
+            System.Runtime.InteropServices.Marshal.Copy(pixels, 0, writable.BackBuffer, pixels.Length);
+            writable.AddDirtyRect(new Int32Rect(0, 0, width, height));
+
             var dv = new DrawingVisual();
             using (var dc = dv.RenderOpen())
             {
                 dc.DrawImage(writable, new Rect(0, 0, width, height));
 
-                for (int i = 0; i < lines.Count; i++)
+                foreach (var job in jobs)
                 {
-                    var text = translations[i];
-                    if (string.IsNullOrWhiteSpace(text))
+                    if (job.IsQuad)
                     {
-                        continue;
-                    }
-
-                    if (TryGetUsableQuad(lines[i], width, height, out var quad, out double localW, out double localH))
-                    {
-                        DrawQuad(dc, pixels, stride, width, height, quad, localW, localH, text);
+                        DrawQuadText(dc, job.Quad, job.LocalWidth, job.LocalHeight, job.Text, job.Foreground);
                     }
                     else
                     {
-                        DrawAxisAligned(dc, pixels, stride, width, height, lines[i].Box, text);
+                        DrawAxisText(dc, job.PaintBox, job.Text, job.Foreground);
                     }
                 }
             }
@@ -123,28 +158,50 @@ public static class ImageTranslateRenderer
         }
     }
 
-    private static void DrawAxisAligned(
-        DrawingContext dc,
+    /// <summary>
+    /// Telea-like inpaint into <paramref name="pixels"/>; falls back to solid median fill
+    /// for tiny boxes or when propagation fails.
+    /// </summary>
+    internal static bool EraseRegion(
         byte[] pixels,
         int stride,
         int width,
         int height,
-        Rect rawBox,
-        string text)
+        Rect region,
+        Color medianFallback)
     {
-        var raw = Clamp(rawBox, width, height);
-        if (raw.Width < 2 || raw.Height < 2)
+        ArgumentNullException.ThrowIfNull(pixels);
+        int x0 = (int)Math.Floor(region.X);
+        int y0 = (int)Math.Floor(region.Y);
+        int x1 = (int)Math.Ceiling(region.Right);
+        int y1 = (int)Math.Ceiling(region.Bottom);
+        x0 = Math.Clamp(x0, 0, width);
+        y0 = Math.Clamp(y0, 0, height);
+        x1 = Math.Clamp(x1, 0, width);
+        y1 = Math.Clamp(y1, 0, height);
+
+        if (LightInpaint.TryInpaintRect(pixels, stride, width, height, x0, y0, x1, y1))
         {
-            return;
+            return true;
         }
 
-        // Sample against the original OCR box so rings sit in real background.
-        var bg = SampleBackground(pixels, stride, width, height, raw);
-        var fg = ContrastingText(bg);
+        LightInpaint.FillRectSolid(
+            pixels,
+            stride,
+            width,
+            height,
+            x0,
+            y0,
+            x1,
+            y1,
+            medianFallback.B,
+            medianFallback.G,
+            medianFallback.R);
+        return false;
+    }
 
-        var paintBox = ExpandBox(raw, BoxExpandX, BoxExpandY, width, height);
-        dc.DrawRectangle(new SolidColorBrush(bg), null, paintBox);
-
+    private static void DrawAxisText(DrawingContext dc, Rect paintBox, string text, Color fg)
+    {
         double contentWidth = Math.Max(1, paintBox.Width - (TextPaddingX * 2));
         double contentHeight = Math.Max(1, paintBox.Height - (TextPaddingY * 2));
         var fontSize = FitFontSize(text, contentWidth, contentHeight);
@@ -155,28 +212,18 @@ public static class ImageTranslateRenderer
         dc.DrawText(ft, new Point(x, y));
     }
 
-    private static void DrawQuad(
+    private static void DrawQuadText(
         DrawingContext dc,
-        byte[] pixels,
-        int stride,
-        int width,
-        int height,
         Point[] quad,
         double localW,
         double localH,
-        string text)
+        string text,
+        Color fg)
     {
-        var bounds = BoundsOf(quad);
-        bounds = Clamp(bounds, width, height);
-        var bg = SampleBackground(pixels, stride, width, height, bounds);
-        var fg = ContrastingText(bg);
-
         var matrix = CreateAffineFromQuad(quad, localW, localH);
         dc.PushTransform(new MatrixTransform(matrix));
         try
         {
-            dc.DrawRectangle(new SolidColorBrush(bg), null, new Rect(0, 0, localW, localH));
-
             double contentWidth = Math.Max(1, localW - (TextPaddingX * 2));
             double contentHeight = Math.Max(1, localH - (TextPaddingY * 2));
             var fontSize = FitFontSize(text, contentWidth, contentHeight);
@@ -190,6 +237,40 @@ public static class ImageTranslateRenderer
         {
             dc.Pop();
         }
+    }
+
+    private readonly struct DrawJob
+    {
+        private DrawJob(Rect paintBox, Point[] quad, double localW, double localH, string text, Color fg, bool isQuad)
+        {
+            PaintBox = paintBox;
+            Quad = quad;
+            LocalWidth = localW;
+            LocalHeight = localH;
+            Text = text;
+            Foreground = fg;
+            IsQuad = isQuad;
+        }
+
+        public Rect PaintBox { get; }
+
+        public Point[] Quad { get; }
+
+        public double LocalWidth { get; }
+
+        public double LocalHeight { get; }
+
+        public string Text { get; }
+
+        public Color Foreground { get; }
+
+        public bool IsQuad { get; }
+
+        public static DrawJob ForAxis(Rect paintBox, string text, Color fg)
+            => new DrawJob(paintBox, null, 0, 0, text, fg, isQuad: false);
+
+        public static DrawJob ForQuad(Point[] quad, double localW, double localH, string text, Color fg)
+            => new DrawJob(default, quad, localW, localH, text, fg, isQuad: true);
     }
 
     /// <summary>
