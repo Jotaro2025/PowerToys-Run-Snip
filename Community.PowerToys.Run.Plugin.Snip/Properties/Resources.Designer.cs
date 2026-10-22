@@ -283,6 +283,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("tip_undo", resourceCulture);
             }
         }
+        /// <summary>
+        ///   Looks up a localized string similar to Redo (Ctrl+Y)..
+        /// </summary>
+        public static string tip_redo {
+            get {
+                return ResourceManager.GetString("tip_redo", resourceCulture);
+            }
+        }
 
         /// <summary>
         ///   Looks up a localized string similar to Save (Ctrl+S).
@@ -371,6 +379,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string ocr_busy {
             get {
                 return ResourceManager.GetString("ocr_busy", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Waiting for another text recognition to finish….
+        /// </summary>
+        public static string ocr_busy_waiting {
+            get {
+                return ResourceManager.GetString("ocr_busy_waiting", resourceCulture);
             }
         }
 
@@ -501,6 +517,22 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string tr_busy_translate {
             get {
                 return ResourceManager.GetString("tr_busy_translate", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Translation engine busy — waiting….
+        /// </summary>
+        public static string tr_busy_hymt_wait {
+            get {
+                return ResourceManager.GetString("tr_busy_hymt_wait", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Waiting for another OCR job to finish….
+        /// </summary>
+        public static string tr_busy_ocr_wait {
+            get {
+                return ResourceManager.GetString("tr_busy_ocr_wait", resourceCulture);
             }
         }
         /// <summary>

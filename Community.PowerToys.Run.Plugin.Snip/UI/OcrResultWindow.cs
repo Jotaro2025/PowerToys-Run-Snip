@@ -4,6 +4,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -21,7 +22,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 /// recognized (editable, selectable) text on the right, plus copy actions.
 /// Runs the OCR when it opens and shows a busy state until the text arrives.
 /// </summary>
-public sealed class OcrResultWindow : Window
+public sealed class OcrResultWindow : Window, IDisposable
 {
     private static readonly Color Accent = Color.FromRgb(72, 210, 110);
     private static readonly Color ErrorColor = Color.FromRgb(214, 48, 49);
@@ -34,7 +35,9 @@ public sealed class OcrResultWindow : Window
     private readonly TextBlock _status;
     private readonly Button _copyButton;
     private readonly Button _copyAllButton;
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private bool _closed;
+    private bool _disposed;
 
     public OcrResultWindow(BitmapSource image, byte[] png)
     {
@@ -184,10 +187,12 @@ public sealed class OcrResultWindow : Window
 
     private async Task RecognizeAsync()
     {
-        SetBusy();
+        SetBusy(WeChatOcrService.IsBusy
+            ? Properties.Resources.ocr_busy_waiting
+            : Properties.Resources.ocr_busy);
         try
         {
-            var text = await WeChatOcrService.RecognizeAsync(_png);
+            var text = await WeChatOcrService.RecognizeAsync(_png, _cts.Token);
             if (_closed)
             {
                 return;
@@ -206,22 +211,38 @@ public sealed class OcrResultWindow : Window
             UpdateCopyButtons();
             _textBox.Focus();
         }
+        catch (OperationCanceledException)
+        {
+            // Window closed while OCR was running / queued.
+        }
+        catch (ObjectDisposedException)
+        {
+            // CTS or OCR resources disposed after close.
+        }
         catch (OcrException ex)
         {
-            ShowMessage(ex.Message, isError: true);
+            if (!_closed)
+            {
+                ShowMessage(ex.Message, isError: true);
+            }
         }
         catch (Exception ex)
         {
+            if (_closed)
+            {
+                return;
+            }
+
             Log.Exception($"Snip text extraction failed: {ex.Message}", ex, GetType());
             ShowMessage(WeChatOcrService.FailedMessage(ex.Message), isError: true);
         }
     }
 
-    private void SetBusy()
+    private void SetBusy(string message)
     {
         _overlay.Visibility = Visibility.Visible;
         _progress.Visibility = Visibility.Visible;
-        _overlayText.Text = Properties.Resources.ocr_busy;
+        _overlayText.Text = message;
         _overlayText.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108));
         _textBox.IsEnabled = false;
         Cursor = Cursors.AppStarting;
@@ -286,7 +307,30 @@ public sealed class OcrResultWindow : Window
 
     private void OnClosed(object sender, EventArgs e)
     {
-        // A recognition still running finishes in the background; its result is dropped.
         _closed = true;
+        Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        try
+        {
+            if (!_cts.IsCancellationRequested)
+            {
+                _cts.Cancel();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        _cts.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

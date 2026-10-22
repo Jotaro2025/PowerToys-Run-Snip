@@ -38,6 +38,9 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         _backendKind = backendKind;
     }
 
+    /// <summary>True when another TranslateAsync call currently holds the single-flight gate.</summary>
+    public bool IsBusy => _gate.CurrentCount == 0;
+
     public async Task<IReadOnlyList<string>> TranslateAsync(
         IReadOnlyList<string> texts,
         string targetLanguage,
@@ -51,7 +54,12 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 
         ObjectDisposedException.ThrowIf(_disposed, this);
 
-        await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        // Prefer a zero-timeout try so callers can show a busy hint before we queue.
+        if (!await _gate.WaitAsync(0, cancellationToken).ConfigureAwait(false))
+        {
+            await _gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+        }
+
         try
         {
             EnsureModelLoaded();
