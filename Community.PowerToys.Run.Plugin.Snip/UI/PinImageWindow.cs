@@ -10,12 +10,14 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
+using Community.PowerToys.Run.Plugin.Snip.Services;
 
 namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
 /// <summary>
 /// Lightweight Snipaste-style pin: topmost thin-border window showing a still
 /// screenshot. Drag to move; Esc, double-click, or context menu closes it.
+/// The UI holds only a downsampled/frozen display copy — not the export full-res.
 /// </summary>
 public sealed class PinImageWindow : Window
 {
@@ -38,24 +40,16 @@ public sealed class PinImageWindow : Window
         WindowStartupLocation = WindowStartupLocation.Manual;
         Cursor = Cursors.SizeAll;
 
+        // Materialized display bitmap (may be downsampled). Do not keep full-res as Source.
+        BitmapSource display = BitmapPreview.ForPin(image);
+
         var imageView = new Image
         {
-            Source = image,
+            Source = display,
             Stretch = Stretch.None,
             SnapsToDevicePixels = true,
         };
         RenderOptions.SetBitmapScalingMode(imageView, BitmapScalingMode.NearestNeighbor);
-
-        // Cap very large pins so they stay usable across monitors.
-        double maxW = SystemParameters.WorkArea.Width * 0.9;
-        double maxH = SystemParameters.WorkArea.Height * 0.9;
-        if (image.Width > maxW || image.Height > maxH)
-        {
-            imageView.Stretch = Stretch.Uniform;
-            imageView.MaxWidth = maxW;
-            imageView.MaxHeight = maxH;
-            RenderOptions.SetBitmapScalingMode(imageView, BitmapScalingMode.HighQuality);
-        }
 
         Content = imageView;
 

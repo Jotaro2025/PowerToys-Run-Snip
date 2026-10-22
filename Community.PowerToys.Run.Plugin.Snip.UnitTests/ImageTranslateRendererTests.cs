@@ -148,6 +148,19 @@ public class ImageTranslateRendererTests
     }
 
     [TestMethod]
+    public void FitFontSizeIsStableAcrossCalls()
+    {
+        RunOnStaThread(() =>
+        {
+            const string text = "缓存量字应保持字号稳定 hello 中文";
+            double a = ImageTranslateRenderer.FitFontSize(text, 120, 48);
+            double b = ImageTranslateRenderer.FitFontSize(text, 120, 48);
+            Assert.AreEqual(a, b, 0.01);
+            Assert.IsTrue(a >= ImageTranslateRenderer.MinFontSize);
+        });
+    }
+
+    [TestMethod]
     public void SampleBackgroundPrefersSurroundingFillColor()
     {
         RunOnStaThread(() =>
