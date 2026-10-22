@@ -230,7 +230,31 @@
   <data name="tr_image_copied" xml:space="preserve">
     <value>已复制翻译图片到剪贴板</value>
   </data>
-  <data name="tr_status_done" xml:space="preserve">
+    <data name="tr_reapply" xml:space="preserve">
+    <value>重新贴图</value>
+  </data>
+  <data name="tr_save_image" xml:space="preserve">
+    <value>保存图片</value>
+  </data>
+  <data name="tr_busy_rerender" xml:space="preserve">
+    <value>正在重新贴图…</value>
+  </data>
+  <data name="tr_status_reapplied" xml:space="preserve">
+    <value>已按编辑后的译文重新贴图</value>
+  </data>
+  <data name="tr_image_saved" xml:space="preserve">
+    <value>翻译图片已保存</value>
+  </data>
+  <data name="tr_save_dialog_title" xml:space="preserve">
+    <value>保存翻译图片</value>
+  </data>
+  <data name="tr_err_rerender" xml:space="preserve">
+    <value>重新贴图失败：</value>
+  </data>
+  <data name="tr_err_save_image" xml:space="preserve">
+    <value>保存图片失败：</value>
+  </data>
+<data name="tr_status_done" xml:space="preserve">
     <value>已翻译 {0} 行 → {1}</value>
   </data>
   <data name="tr_err_failed" xml:space="preserve">
