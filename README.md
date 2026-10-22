@@ -47,10 +47,31 @@ PowerToys Run（PowerToys 启动器）的**区域截屏**插件：框选标注�
 ## 系统要求
 
 - [PowerToys](https://github.com/microsoft/PowerToys) **≥ 0.100**（.NET 10 宿主）
-- **x64** PowerToys（OCR 组件仅有 x64 版本）
+- **x64** PowerToys（OCR 组件仅有 x64 版本）；ARM64 版 PowerToys 可加载插件并使用截屏 / 标注 / 钉图，但 OCR 与图片翻译不可用
 - Windows（插件为 WPF）
 
 ## 安装
+
+### 方式一：安装程序（推荐）
+
+从 [Releases](https://github.com/Jotaro2025/PowerToys-Run-Snip/releases) 下载与 **Windows 架构** 对应的安装程序：
+
+| 文件 | 架构 | 内容 | 大小（约） |
+|---|---|---|---|
+| `Snip-Setup-<ver>-x64-slim.exe` | x64 | 与 slim zip 相同；首次 OCR 时按需下载 `wco_data` | 7 MB |
+| `Snip-Setup-<ver>-x64-full.exe` | x64 | slim + 内置 `wco_data`（约 61 MB），离线即可 OCR / 译图 | 35 MB |
+| `Snip-Setup-<ver>-arm64-slim.exe` | ARM64 | 同 x64-slim | 7 MB |
+| `Snip-Setup-<ver>-arm64-full.exe` | ARM64 | 同 x64-full（OCR 组件为 x64，ARM64 进程内不可用，见下） | 35 MB |
+
+- **前置条件：需先安装 PowerToys ≥ 0.100**（首个 .NET 10 宿主版本，本插件目标为 `net10.0-windows`）。安装程序会检测 `%LOCALAPPDATA%\PowerToys\`、`%ProgramFiles%\PowerToys\` 与卸载注册表；未安装或版本过旧会提示 [PowerToys Releases](https://github.com/microsoft/PowerToys/releases) / `winget install Microsoft.PowerToys` 并退出。
+- **按用户安装、无需管理员（无 UAC）**，安装到 `%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\`。
+- 若 PowerToys 正在运行，会征得同意后关闭 `PowerToys.exe` / `PowerToys.PowerLauncher`，安装完成后从原路径重新启动（原本未运行则不启动）。卸载同理。
+- x64 与 ARM64 安装程序互不通用，架构不匹配时拒绝安装。
+- **升级**：直接运行新版本安装程序；会先清空插件目录中的旧文件再复制（slim/full 可互相覆盖）。设置与已下载的 OCR / HyMT 数据（`%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\`）不会被删除。
+- **卸载**：在「设置 → 应用」中卸载 *Snip for PowerToys Run*；默认保留数据，卸载时会询问是否一并删除（默认「否」）。静默卸载可加 `/DELETEDATA` 删除数据。
+- **HyMT 翻译模型不打包进任何安装程序**：GGUF 模型数 GB，体积过大；首次使用图片翻译时按需下载到上述数据目录。
+
+### 方式二：手动解压 zip
 
 1. 从 [Releases](https://github.com/Jotaro2025/PowerToys-Run-Snip/releases) 下载 `Snip-<ver>.zip`（精简包，推荐）或 `Snip-<ver>-full.zip`
 2. 解压得到的 `Snip\` 目录整体放到：
@@ -170,6 +191,19 @@ dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 
 - **`Snip-<Version>-slim.zip`** / **`Snip-<Version>.zip`（默认，推荐）**：无 `wco_data`，首次 OCR 按需下载
 - **`Snip-<Version>-full.zip`**：含 `wco_data`，可离线 OCR / 译图
+
+### 安装程序（Inno Setup）
+
+需要 [Inno Setup](https://jrsoftware.org/isinfo.php) **6.5+**（`choco install innosetup` / `winget install JRSoftware.InnoSetup`）。
+
+```powershell
+.\build\build-installer.ps1 -PowerToysInstallDir "D:\PowerToys"
+# 仅某架构 / 某变体：-Architectures x64 -Variants slim；指定 ISCC：-IsccPath "C:\...\ISCC.exe"
+```
+
+脚本分别以 `win-x64` / `win-arm64` 构建，暂存 slim（不含 `wco_data` 与 `.pdb`，与 slim zip 一致）与 full 布局，再用 `installer/Snip.iss` 编译 4 个安装程序到 `artifacts/installer/`。版本号取自 `plugin.json`，经 `ISCC /DAppVersion=…` 传入。Linux 上可通过 wine 运行 ISCC（`-IsccPath` 填 wine 内的 Windows 路径）。
+
+CI（`.github/workflows/installer.yml`）在 Windows 上构建 4 个安装程序与 zip 并上传为 artifact；推送 `v*` 标签时一并附加到 GitHub Release。
 
 Windows 手工验收见 [docs/windows-e2e-checklist.md](docs/windows-e2e-checklist.md)。
 

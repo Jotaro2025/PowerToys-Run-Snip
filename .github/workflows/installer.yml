@@ -1,0 +1,118 @@
+name: Installer
+
+on:
+  push:
+    branches: [main]
+    tags: ["v*"]
+  pull_request:
+    paths:
+      - "installer/**"
+      - "build/build-installer.ps1"
+      - "scripts/pack-release.ps1"
+      - "Community.PowerToys.Run.Plugin.Snip/**"
+      - ".github/workflows/installer.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  installer:
+    runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      PT_REFS: ${{ github.workspace }}\build\PowerToysRefs
+      # Inno Setup 6.5+ is required (installer/Languages/ChineseSimplified.isl). Pin 6.x; Inno 7 is a separate major.
+      INNO_VERSION: "6.7.3"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Ensure Inno Setup 6
+        id: inno
+        shell: pwsh
+        run: |
+          $iscc = $null
+          foreach ($p in @("${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe", "$env:ProgramFiles\Inno Setup 6\ISCC.exe")) {
+            if (Test-Path $p) { $iscc = $p; break }
+          }
+          $ok = $false
+          if ($iscc) {
+            $v = [version](Get-Item $iscc).VersionInfo.FileVersion
+            Write-Host "Found ISCC $v at $iscc"
+            $ok = $v.Major -eq 6 -and $v -ge [version]"6.5.0"
+          }
+          if (-not $ok) {
+            choco install innosetup --version=$env:INNO_VERSION -y --no-progress --allow-downgrade
+            if ($LASTEXITCODE -ne 0) { throw "choco install innosetup failed ($LASTEXITCODE)" }
+            $iscc = "${env:ProgramFiles(x86)}\Inno Setup 6\ISCC.exe"
+            if (-not (Test-Path $iscc)) { throw "ISCC.exe not found after install" }
+          }
+          "iscc=$iscc" >> $env:GITHUB_OUTPUT
+
+      - name: Build installers (x64 + arm64, slim + full)
+        shell: pwsh
+        run: ./build/build-installer.ps1 -PowerToysInstallDir "${{ env.PT_REFS }}" -IsccPath "${{ steps.inno.outputs.iscc }}"
+
+      # Keep the zip packages produced alongside the installers (same as ci.yml).
+      - name: Pack release zips
+        shell: pwsh
+        run: ./scripts/pack-release.ps1 -PowerToysInstallDir "${{ env.PT_REFS }}" -Configuration Release
+
+      - name: Upload installers
+        uses: actions/upload-artifact@v4
+        with:
+          name: Snip-Installers-${{ github.sha }}
+          path: artifacts/installer/Snip-Setup-*.exe
+          if-no-files-found: error
+          retention-days: 30
+
+      - name: Upload zips
+        uses: actions/upload-artifact@v4
+        with:
+          name: Snip-Zips-${{ github.sha }}
+          path: artifacts/Snip-*.zip
+          if-no-files-found: error
+          retention-days: 30
+
+  release:
+    if: startsWith(github.ref, 'refs/tags/v')
+    needs: installer
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - name: Download installers
+        uses: actions/download-artifact@v4
+        with:
+          name: Snip-Installers-${{ github.sha }}
+          path: dist
+
+      - name: Download zips
+        uses: actions/download-artifact@v4
+        with:
+          name: Snip-Zips-${{ github.sha }}
+          path: dist
+
+      - name: Attach to GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            dist/Snip-Setup-*.exe
+            dist/Snip-*.zip
+          fail_on_unmatched_files: true
+          generate_release_notes: true
