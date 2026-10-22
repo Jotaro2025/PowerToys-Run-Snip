@@ -34,4 +34,9 @@ public static class ToolIcons
     public const string ScrollCapture =
         "M7,4 L17,4 L17,17 L7,17 Z M7,7 L17,7 M7,10 L17,10 M7,13 L15,13 " +
         "M5,19 L19,19 M12,17 L12,22 M8,19 L12,22 L16,19";
+
+    // Scroll capture upward: stacked pages + upward arrow (mirror of ScrollCapture).
+    public const string ScrollCaptureUp =
+        "M7,7 L17,7 L17,20 L7,20 Z M7,11 L17,11 M7,14 L17,14 M7,17 L15,17 " +
+        "M5,5 L19,5 M12,7 L12,2 M8,5 L12,2 L16,5";
 }

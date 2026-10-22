@@ -1409,6 +1409,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        /// <summary>
+        ///   Looks up a localized string similar to Scroll capture (upward).
+        /// </summary>
+        public static string tip_scroll_up {
+            get {
+                return ResourceManager.GetString("tip_scroll_up", resourceCulture);
+            }
+        }
+
         public static string tip_scroll_stop {
             get {
                 return ResourceManager.GetString("tip_scroll_stop", resourceCulture);
@@ -1476,6 +1485,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string scroll_hint_capturing_sub {
             get {
                 return ResourceManager.GetString("scroll_hint_capturing_sub", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Paused — cursor left the selection.
+        /// </summary>
+        public static string scroll_hint_paused {
+            get {
+                return ResourceManager.GetString("scroll_hint_paused", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Move the mouse back into the selection to continue.
+        /// </summary>
+        public static string scroll_hint_paused_sub {
+            get {
+                return ResourceManager.GetString("scroll_hint_paused_sub", resourceCulture);
             }
         }
 

@@ -540,6 +540,9 @@
   <data name="tip_scroll" xml:space="preserve">
     <value>滚动截屏</value>
   </data>
+  <data name="tip_scroll_up" xml:space="preserve">
+    <value>向上滚动截屏</value>
+  </data>
   <data name="tip_scroll_stop" xml:space="preserve">
     <value>停止滚动截屏</value>
   </data>
@@ -572,6 +575,12 @@
   </data>
   <data name="scroll_hint_capturing_sub" xml:space="preserve">
     <value>截取当前画面</value>
+  </data>
+  <data name="scroll_hint_paused" xml:space="preserve">
+    <value>已暂停：鼠标离开了选区</value>
+  </data>
+  <data name="scroll_hint_paused_sub" xml:space="preserve">
+    <value>将鼠标移回选区即可继续</value>
   </data>
   <data name="scroll_hint_stopped" xml:space="preserve">
     <value>滚动截屏已结束</value>

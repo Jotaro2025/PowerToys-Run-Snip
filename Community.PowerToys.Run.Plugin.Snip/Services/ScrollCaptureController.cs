@@ -50,6 +50,7 @@ public sealed class ScrollCaptureController
     private int _stopNotified;
     private bool _heightCapReached;
     private int _maxHeightPx;
+    private volatile bool _paused;
 
     public event Action<int> CapturingStopped;
 
@@ -66,6 +67,12 @@ public sealed class ScrollCaptureController
 
     /// <summary>True when capture auto-stopped because the projected stitched height hit the cap.</summary>
     public bool HeightCapReached => _heightCapReached;
+
+    /// <summary>True when this session scrolls content upward (tiles are reversed before stitch).</summary>
+    public bool ScrollUp => _scrollUp;
+
+    /// <summary>True while capture is paused because the cursor left the selection.</summary>
+    public bool IsPaused => _paused;
 
     public ScrollCaptureController(
         ICaptureService capture,
@@ -100,6 +107,7 @@ public sealed class ScrollCaptureController
         }
 
         _active = true;
+        _paused = false;
         _stoppedPending = false;
         _heightCapReached = false;
         Interlocked.Exchange(ref _stopNotified, 0);
@@ -128,8 +136,40 @@ public sealed class ScrollCaptureController
             maxHeight = ScrollStitcher.ResolveMaxStitchedHeight(first.Width);
         }
 
+        // Mouse guard arms once the cursor has been inside the selection, so starting
+        // from the toolbar (outside the selection) does not pause immediately.
+        bool guardArmed = false;
         while (!ct.IsCancellationRequested && _active && _tiles.Count < _maxTiles)
         {
+            bool inside = IsCursorInsideCapture();
+            guardArmed |= inside;
+            if (guardArmed && !inside)
+            {
+                if (!_paused)
+                {
+                    _paused = true;
+                    PostToOverlay(() => _overlay.ShowPaused());
+                    Debug.WriteLine("[scroll] paused — cursor left selection");
+                }
+
+                try
+                {
+                    await Task.Delay(_scrollIntervalMs, ct).ConfigureAwait(false);
+                }
+                catch (TaskCanceledException)
+                {
+                    break;
+                }
+
+                continue;
+            }
+
+            if (_paused)
+            {
+                _paused = false;
+                Debug.WriteLine("[scroll] resumed — cursor back in selection");
+            }
+
             PostToOverlay(() => _overlay.ShowCapturing(_tiles.Count + 1));
 
             SimulateWheelAtCenter();
@@ -170,9 +210,13 @@ public sealed class ScrollCaptureController
             }
 
             consecutiveDups = 0;
-            int contributed = _tiles.Count > 0
-                ? ScrollStitcher.EstimateContributedRows(_tiles[_tiles.Count - 1], bmp, scrollHint)
-                : bmp.Height;
+
+            // Scroll-up: newest tile sits on top, so measure older-below-newer (same row count).
+            int contributed = _tiles.Count == 0
+                ? bmp.Height
+                : _scrollUp
+                    ? ScrollStitcher.EstimateContributedRows(bmp, _tiles[_tiles.Count - 1], scrollHint)
+                    : ScrollStitcher.EstimateContributedRows(_tiles[_tiles.Count - 1], bmp, scrollHint);
             if (contributed > 0 && contributed < bmp.Height)
             {
                 scrollHint = contributed;
@@ -194,6 +238,38 @@ public sealed class ScrollCaptureController
 
         _active = false;
         await FinishCapturingUiAsync(autoStopped: !ct.IsCancellationRequested).ConfigureAwait(false);
+    }
+
+    private bool IsCursorInsideCapture()
+    {
+        if (!Win32.GetCursorPos(out var pt))
+        {
+            return true;
+        }
+
+        return IsPointInside(_captureRect, pt.X, pt.Y);
+    }
+
+    /// <summary>Half-open hit test in physical pixels (right/bottom edge excluded).</summary>
+    internal static bool IsPointInside(Int32Rect rect, int x, int y)
+        => rect.Width > 0 && rect.Height > 0
+            && x >= rect.X && x < rect.X + rect.Width
+            && y >= rect.Y && y < rect.Y + rect.Height;
+
+    /// <summary>
+    /// Scroll-up sessions capture newest content on top; reverse so the stitcher
+    /// always sees a top-to-bottom sequence.
+    /// </summary>
+    internal static T[] OrderTilesForStitch<T>(IReadOnlyList<T> tiles, bool scrollUp)
+    {
+        ArgumentNullException.ThrowIfNull(tiles);
+        var arr = new T[tiles.Count];
+        for (int i = 0; i < arr.Length; i++)
+        {
+            arr[i] = tiles[scrollUp ? arr.Length - 1 - i : i];
+        }
+
+        return arr;
     }
 
     private void SimulateWheelAtCenter()
@@ -298,7 +374,7 @@ public sealed class ScrollCaptureController
             }
             else
             {
-                var tilesCopy = _tiles.ToArray();
+                var tilesCopy = OrderTilesForStitch(_tiles, _scrollUp);
                 Debug.WriteLine($"[scroll] stitching {tilesCopy.Length} raw tile(s) — pixel buffers on pool");
                 using var stitchResult = await Task.Run(() => ScrollStitcher.Stitch(tilesCopy)).ConfigureAwait(true);
                 resultBitmap = await _dispatcher.InvokeAsync(stitchResult.ToWriteableBitmap).Task.ConfigureAwait(true);
