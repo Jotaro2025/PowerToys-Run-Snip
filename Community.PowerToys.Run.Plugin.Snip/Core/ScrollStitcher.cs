@@ -18,6 +18,37 @@ namespace Community.PowerToys.Run.Plugin.Snip.Core;
 
 public static class ScrollStitcher
 {
+    /// <summary>Hard cap on stitched output height (px). Capture auto-stops near it; stitch truncates beyond it.</summary>
+    public const int MaxStitchedHeightPx = 32768;
+
+    /// <summary>Hard cap on stitched BGRA buffer size (bytes) — keeps wide monitors from a multi-GB single allocation.</summary>
+    public const long MaxStitchedBytes = 512L * 1024 * 1024;
+
+    /// <summary>Effective max output height for a given tile width (min of px cap and byte cap).</summary>
+    public static int ResolveMaxStitchedHeight(int width)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(width);
+        long byBytes = MaxStitchedBytes / CaptureBuffers.BgraStride(width);
+        return (int)Math.Max(1, Math.Min(MaxStitchedHeightPx, byBytes));
+    }
+
+    /// <summary>
+    /// Rows <paramref name="next"/> would add below <paramref name="prev"/> (0 for full duplicate).
+    /// Thread-pool safe; used during capture to track the projected stitched height.
+    /// </summary>
+    internal static int EstimateContributedRows(ScrollTilePixels prev, ScrollTilePixels next, int scrollHintPx = 0)
+    {
+        ArgumentNullException.ThrowIfNull(prev);
+        ArgumentNullException.ThrowIfNull(next);
+        var (topSkip, _, relation) = AlignVerticalTilesPixels(prev, next, scrollHintPx);
+        return relation switch
+        {
+            TileRelation.FullDuplicate => 0,
+            TileRelation.NoOverlap => next.Height,
+            _ => Math.Max(0, next.Height - topSkip),
+        };
+    }
+
     public sealed class StitchOffset
     {
         public int TileIndex { get; init; }
@@ -49,6 +80,9 @@ public static class ScrollStitcher
         public required IReadOnlyList<StitchOffset> Offsets { get; init; }
 
         public required int TotalHeight { get; init; }
+
+        /// <summary>True when output was clipped at <see cref="ResolveMaxStitchedHeight"/>.</summary>
+        public bool Truncated { get; init; }
 
         public bool RentedFromPool
         {
@@ -271,6 +305,14 @@ public static class ScrollStitcher
         ValidatePixelTiles(tiles, width);
 
         var offsets = new StitchOffset[tiles.Count];
+        int maxHeight = ResolveMaxStitchedHeight(width);
+        bool truncated = false;
+        if (firstHeight > maxHeight)
+        {
+            firstHeight = maxHeight;
+            truncated = true;
+        }
+
         int totalHeight = firstHeight;
         int scrollHintPx = estimatedScrollPxPerTile;
         var recentDh = new List<int>(8);
@@ -288,6 +330,19 @@ public static class ScrollStitcher
             var prev = tiles[i - 1];
             var cur = tiles[i];
             int curHeight = cur.Height;
+
+            if (truncated)
+            {
+                offsets[i] = new StitchOffset
+                {
+                    TileIndex = i,
+                    TopSkip = curHeight,
+                    RowsContributed = 0,
+                    DestY = totalHeight,
+                    Mode = "height-cap",
+                };
+                continue;
+            }
 
             if (perTileScrollPx != null && i - 1 < perTileScrollPx.Count && perTileScrollPx[i - 1] > 0)
                 scrollHintPx = perTileScrollPx[i - 1];
@@ -309,6 +364,13 @@ public static class ScrollStitcher
             }
 
             int contributed = relation == TileRelation.NoOverlap ? curHeight : curHeight - topSkip;
+            if (totalHeight + contributed > maxHeight)
+            {
+                contributed = Math.Max(0, maxHeight - totalHeight);
+                truncated = true;
+                Debug.WriteLine($"[stitch] tile {i}: height cap {maxHeight}px reached — truncating");
+            }
+
             offsets[i] = new StitchOffset
             {
                 TileIndex = i,
@@ -327,11 +389,11 @@ public static class ScrollStitcher
             Debug.WriteLine($"[stitch] tile {i}: {relation} skip={offsets[i].TopSkip} contrib={contributed} mode={mode} totalH={totalHeight} hint={scrollHintPx}");
         }
 
-        return ComposeStitchedPixels(tiles, offsets, width, totalHeight);
+        return ComposeStitchedPixels(tiles, offsets, width, totalHeight, truncated);
     }
 
     private static PixelStitchResult ComposeStitchedPixels(
-        IReadOnlyList<ScrollTilePixels> tiles, StitchOffset[] offsets, int width, int totalHeight)
+        IReadOnlyList<ScrollTilePixels> tiles, StitchOffset[] offsets, int width, int totalHeight, bool truncated)
     {
         int dstStride = CaptureBuffers.BgraStride(width);
         int byteCount = CaptureBuffers.BgraByteCount(width, totalHeight);
@@ -363,6 +425,7 @@ public static class ScrollStitcher
             Stride = dstStride,
             Offsets = offsets,
             TotalHeight = totalHeight,
+            Truncated = truncated,
             RentedFromPool = true,
         };
     }

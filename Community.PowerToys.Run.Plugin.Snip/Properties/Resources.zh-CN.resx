@@ -582,6 +582,9 @@
   <data name="scroll_hint_stopped_sub" xml:space="preserve">
     <value>点 √ 确认或保存时再拼接长图</value>
   </data>
+  <data name="scroll_hint_max_height" xml:space="preserve">
+    <value>已达最大长度（{0}px），已自动停止</value>
+  </data>
   <data name="scroll_hint_stitching" xml:space="preserve">
     <value>拼接中…</value>
   </data>

@@ -582,6 +582,9 @@
   <data name="scroll_hint_stopped_sub" xml:space="preserve">
     <value>Done or Save to stitch the long image</value>
   </data>
+  <data name="scroll_hint_max_height" xml:space="preserve">
+    <value>Reached max length ({0}px) — auto-stopped</value>
+  </data>
   <data name="scroll_hint_stitching" xml:space="preserve">
     <value>Stitching…</value>
   </data>

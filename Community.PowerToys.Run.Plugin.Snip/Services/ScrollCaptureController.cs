@@ -47,6 +47,8 @@ public sealed class ScrollCaptureController
     private bool _stitchingOverlayActive;
     private bool _stoppedPending;
     private int _stopNotified;
+    private bool _heightCapReached;
+    private int _maxHeightPx;
 
     public event Action<int> CapturingStopped;
 
@@ -60,6 +62,9 @@ public sealed class ScrollCaptureController
 
     /// <summary>True after capture stopped (manual/auto) while tiles are kept for stitch.</summary>
     public bool IsStoppedPending => _stoppedPending && _tiles.Count > 0;
+
+    /// <summary>True when capture auto-stopped because the projected stitched height hit the cap.</summary>
+    public bool HeightCapReached => _heightCapReached;
 
     public ScrollCaptureController(
         ICaptureService capture,
@@ -95,6 +100,7 @@ public sealed class ScrollCaptureController
 
         _active = true;
         _stoppedPending = false;
+        _heightCapReached = false;
         Interlocked.Exchange(ref _stopNotified, 0);
         Interlocked.Exchange(ref _captureBusy, 0);
         _tiles.Clear();
@@ -110,10 +116,15 @@ public sealed class ScrollCaptureController
     private async Task AutoScrollLoopAsync(CancellationToken ct)
     {
         int consecutiveDups = 0;
+        int projectedHeight = 0;
+        int maxHeight = int.MaxValue;
+        int scrollHint = 0;
         var first = await CaptureOnceSafeAsync().ConfigureAwait(false);
         if (first != null && _active && !ct.IsCancellationRequested)
         {
             _tiles.Add(first);
+            projectedHeight = first.Height;
+            maxHeight = ScrollStitcher.ResolveMaxStitchedHeight(first.Width);
         }
 
         while (!ct.IsCancellationRequested && _active && _tiles.Count < _maxTiles)
@@ -158,9 +169,26 @@ public sealed class ScrollCaptureController
             }
 
             consecutiveDups = 0;
+            int contributed = _tiles.Count > 0
+                ? ScrollStitcher.EstimateContributedRows(_tiles[_tiles.Count - 1], bmp, scrollHint)
+                : bmp.Height;
+            if (contributed > 0 && contributed < bmp.Height)
+            {
+                scrollHint = contributed;
+            }
+
             _tiles.Add(bmp);
+            projectedHeight += contributed;
             PostToOverlay(() => _overlay.ShowManualCapturing(_tiles.Count));
-            Debug.WriteLine($"[scroll] tile #{_tiles.Count} captured");
+            Debug.WriteLine($"[scroll] tile #{_tiles.Count} captured (projected h={projectedHeight}/{maxHeight})");
+
+            if (projectedHeight >= maxHeight)
+            {
+                _heightCapReached = true;
+                _maxHeightPx = maxHeight;
+                Debug.WriteLine("[scroll] auto-stop — stitched height cap reached");
+                break;
+            }
         }
 
         _active = false;
@@ -215,7 +243,15 @@ public sealed class ScrollCaptureController
                 {
                     EnsureOverlayAttached();
                     _overlay.Visibility = Visibility.Visible;
-                    _overlay.ShowManualStopped(_tiles.Count);
+                    if (_heightCapReached)
+                    {
+                        _overlay.ShowHeightCapStopped(_maxHeightPx);
+                    }
+                    else
+                    {
+                        _overlay.ShowManualStopped(_tiles.Count);
+                    }
+
                     LayoutOverlay();
                 });
             }
@@ -265,7 +301,7 @@ public sealed class ScrollCaptureController
                 Debug.WriteLine($"[scroll] stitching {tilesCopy.Length} raw tile(s) — pixel buffers on pool");
                 using var stitchResult = await Task.Run(() => ScrollStitcher.Stitch(tilesCopy)).ConfigureAwait(true);
                 resultBitmap = await _dispatcher.InvokeAsync(stitchResult.ToWriteableBitmap).Task.ConfigureAwait(true);
-                Debug.WriteLine($"[scroll] stitch complete — {tilesCopy.Length} tiles → h={resultBitmap.PixelHeight}");
+                Debug.WriteLine($"[scroll] stitch complete — {tilesCopy.Length} tiles → h={resultBitmap.PixelHeight} truncated={stitchResult.Truncated}");
             }
         }
         catch (Exception ex)

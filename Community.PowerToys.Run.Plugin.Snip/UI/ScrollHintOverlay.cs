@@ -95,6 +95,15 @@ public sealed class ScrollHintOverlay : Border
         Subtitle = _statsSubtitle;
     }
 
+    /// <summary>Auto-stopped because the stitched image reached the maximum height.</summary>
+    public void ShowHeightCapStopped(int maxHeightPx)
+    {
+        Title = Properties.Resources.scroll_hint_max_height
+            .Replace("{0}", maxHeightPx.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal);
+        _statsSubtitle = Properties.Resources.scroll_hint_stopped_sub;
+        Subtitle = _statsSubtitle;
+    }
+
     public void ShowStitchingInProgress()
     {
         BorderBrush = new SolidColorBrush(Color.FromArgb(200, 120, 200, 255));
