@@ -19,8 +19,8 @@ using Wox.Plugin.Logger;
 namespace Community.PowerToys.Run.Plugin.Snip;
 
 /// <summary>
-/// PowerToys Run plugin that exposes the region screenshot editor and the
-/// full-screen capture actions ported from the TDS screenshot tool.
+/// PowerToys Run plugin that exposes the region screenshot editor
+/// ported from the TDS screenshot tool.
 /// </summary>
 public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 {
@@ -193,16 +193,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         {
             CreateCommand(
                 Properties.Resources.cmd_region_title,
-                Properties.Resources.cmd_region_subtitle,
-                SnipMode.Region),
-            CreateCommand(
-                Properties.Resources.cmd_full_clipboard_title,
-                Properties.Resources.cmd_full_clipboard_subtitle,
-                SnipMode.FullScreenClipboard),
-            CreateCommand(
-                Properties.Resources.cmd_full_save_title,
-                Properties.Resources.cmd_full_save_subtitle,
-                SnipMode.FullScreenSave),
+                Properties.Resources.cmd_region_subtitle),
         };
 
         var search = query.Search?.Trim() ?? string.Empty;
@@ -218,7 +209,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         return filtered;
     }
 
-    private Result CreateCommand(string title, string subtitle, SnipMode mode)
+    private Result CreateCommand(string title, string subtitle)
     {
         return new Result
         {
@@ -228,7 +219,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             QueryTextDisplay = title,
             Action = _ =>
             {
-                SnipController.Start(mode, _settings, Notify);
+                SnipController.Start(_settings, Notify);
                 return true;
             },
         };

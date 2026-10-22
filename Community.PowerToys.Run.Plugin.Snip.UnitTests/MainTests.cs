@@ -51,14 +51,15 @@ public class MainTests
     }
 
     [TestMethod]
-    public void QueryWithoutSearchReturnsAllCommands()
+    public void QueryWithoutSearchReturnsRegionCommandOnly()
     {
         var main = CreateMain();
 
         var results = main.Query(new Query(string.Empty));
 
-        Assert.HasCount(3, results);
-        Assert.IsTrue(results.All(r => r.Action != null));
+        Assert.HasCount(1, results);
+        Assert.AreEqual(Properties.Resources.cmd_region_title, results[0].Title);
+        Assert.IsNotNull(results[0].Action);
     }
 
     [TestMethod]
@@ -66,10 +67,10 @@ public class MainTests
     {
         var main = CreateMain();
 
-        var results = main.Query(new Query("clipboard"));
+        var results = main.Query(new Query("region"));
 
         Assert.HasCount(1, results);
-        Assert.AreEqual(Properties.Resources.cmd_full_clipboard_title, results[0].Title);
+        Assert.AreEqual(Properties.Resources.cmd_region_title, results[0].Title);
     }
 
     [TestMethod]

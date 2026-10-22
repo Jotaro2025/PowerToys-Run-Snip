@@ -21,7 +21,9 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
 /// <summary>
 /// Fullscreen borderless window that hosts the screenshot capture, selection,
-/// and annotation UI. Closes itself when the user confirms / saves / cancels.
+/// and annotation UI. Confirm / copy / save / cancel end the session; OCR /
+/// image-translate / pin keep the overlay (hide while a result window is open,
+/// then restore) so the user can annotate again on the same capture.
 /// </summary>
 public sealed class SnipWindow : Window
 {
@@ -54,6 +56,13 @@ public sealed class SnipWindow : Window
     private Rect _dragStartSelection;
     private bool _dragMovingHandle;
     private bool _disposed;
+    private bool _exportBusy;
+
+    /// <summary>Modeless OCR/translate window opened without ending the snip session.</summary>
+    private Window _sessionChild;
+
+    /// <summary>True when the overlay was <see cref="Window.Hide"/> for a session child.</summary>
+    private bool _hiddenForSessionChild;
 
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
@@ -91,9 +100,12 @@ public sealed class SnipWindow : Window
         SnapsToDevicePixels = true;
         Title = Properties.Resources.plugin_name;
 
+        // Overlay may show a downsampled preview for large (near-fullscreen)
+        // captures so WPF paints less; _source stays full-res for mosaic /
+        // BuildResultBitmap / OCR / translate / save / copy.
         _screenshotImage = new SnipBackground
         {
-            Source = source,
+            Source = BitmapPreview.ForOverlay(source),
             Width = _logicalSize.Width,
             Height = _logicalSize.Height,
             IsHitTestVisible = false,
@@ -137,11 +149,11 @@ public sealed class SnipWindow : Window
         _toolbar.UndoClicked += (sender, e) => _annoCanvas.Undo();
         _toolbar.RedoClicked += (sender, e) => _annoCanvas.Redo();
         _toolbar.SaveClicked += async (sender, e) => await DoSaveAsync();
-        _toolbar.ExtractTextClicked += (sender, e) => DoExtractText();
-        _toolbar.TranslateImageClicked += (sender, e) => DoTranslateImage();
-        _toolbar.PinClicked += (sender, e) => DoPin();
+        _toolbar.ExtractTextClicked += async (sender, e) => await DoExtractTextAsync();
+        _toolbar.TranslateImageClicked += async (sender, e) => await DoTranslateImageAsync();
+        _toolbar.PinClicked += async (sender, e) => await DoPinAsync();
         _toolbar.CancelClicked += (sender, e) => Cancel();
-        _toolbar.ConfirmClicked += (sender, e) => DoConfirm();
+        _toolbar.ConfirmClicked += async (sender, e) => await DoConfirmAsync();
 
         _root = new Canvas { ClipToBounds = true, Background = Brushes.Transparent };
         _root.Children.Add(_screenshotImage);
@@ -221,6 +233,7 @@ public sealed class SnipWindow : Window
 
     private void OnClosed(object sender, EventArgs e)
     {
+        DismissSessionChild(restoreOverlay: false);
         CleanupResources();
     }
 
@@ -438,7 +451,7 @@ public sealed class SnipWindow : Window
 
         if (e.Key == Key.Enter)
         {
-            DoConfirm();
+            _ = DoConfirmAsync();
             return;
         }
 
@@ -463,7 +476,7 @@ public sealed class SnipWindow : Window
             }
             else if (e.Key == Key.C)
             {
-                DoCopy();
+                _ = DoCopyAsync();
                 e.Handled = true;
             }
             else if (e.Key == Key.S)
@@ -479,6 +492,7 @@ public sealed class SnipWindow : Window
     // -----------------------------------------------------------------------------------
     private void Cancel()
     {
+        DismissSessionChild(restoreOverlay: false);
         Result = new EditResult { Outcome = EditOutcome.Cancelled };
         Close();
     }
@@ -522,67 +536,50 @@ public sealed class SnipWindow : Window
         return rtb;
     }
 
-    private void DoConfirm()
+    private async Task DoConfirmAsync()
     {
-        if (!_hasSelection)
+        DismissSessionChild(restoreOverlay: false);
+        var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+        if (built == null)
         {
             return;
         }
 
-        try
+        Result = new EditResult
         {
-            var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.Confirmed,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
-        }
-        catch (Exception ex)
-        {
-            // Never leave the user staring at a frozen overlay: always close
-            // and surface a Cancelled result so the caller returns cleanly.
-            Log.Exception($"SnipWindow DoConfirm failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
-        }
-
+            Outcome = EditOutcome.Confirmed,
+            Selection = _selection,
+            Annotations = _annoCanvas.Items.ToArray(),
+            Result = built.Value.Bitmap,
+            PngBytes = built.Value.Png,
+        };
         Close();
     }
 
-    private void DoCopy()
+    private async Task DoCopyAsync()
     {
-        if (!_hasSelection)
+        DismissSessionChild(restoreOverlay: false);
+        var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+        if (built == null)
         {
             return;
         }
 
         try
         {
-            var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
-            var png = PngEncoder.Encode(bmp);
-            ClipboardService.CopyBitmap(bmp);
+            ClipboardService.CopyBitmap(built.Value.Bitmap);
             Result = new EditResult
             {
                 Outcome = EditOutcome.Copied,
                 Selection = _selection,
                 Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
+                Result = built.Value.Bitmap,
+                PngBytes = built.Value.Png,
             };
         }
         catch (Exception ex)
         {
-            Log.Exception($"SnipWindow DoCopy failed: {ex.Message}", ex, GetType());
+            Log.Exception($"SnipWindow DoCopyAsync failed: {ex.Message}", ex, GetType());
             Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
         }
 
@@ -590,48 +587,51 @@ public sealed class SnipWindow : Window
     }
 
     /// <summary>
-    /// Hands the selection (with annotations) over for text extraction; the
-    /// controller shows the result window once this overlay is closed.
+    /// Opens OCR on the current selection without ending the snip session.
+    /// The overlay is hidden until the result window closes, then restored.
     /// </summary>
-    private void DoExtractText()
+    private async Task DoExtractTextAsync()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _sessionChild != null || _exportBusy)
+        {
+            return;
+        }
+
+        if (!EnsureOcrAssetsReady())
         {
             return;
         }
 
         try
         {
-            var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
+            var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+            if (built == null)
             {
-                Outcome = EditOutcome.ExtractText,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
+                return;
+            }
+
+            var child = new OcrResultWindow(built.Value.Bitmap, built.Value.Png);
+            OpenSessionChild(child);
         }
         catch (Exception ex)
         {
-            Log.Exception($"SnipWindow DoExtractText failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+            Log.Exception($"SnipWindow DoExtractTextAsync failed: {ex.Message}", ex, GetType());
+            RestoreOverlayAfterChild();
         }
-
-        Close();
     }
 
     /// <summary>
-    /// Hands the selection over for image translate. Shows a clear error and
-    /// keeps the overlay open when the translator is off or misconfigured.
+    /// Opens image translate without ending the snip session. Misconfiguration
+    /// keeps the overlay visible with a warning (same as before).
     /// </summary>
-    private void DoTranslateImage()
+    private async Task DoTranslateImageAsync()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _sessionChild != null || _exportBusy)
+        {
+            return;
+        }
+
+        if (!EnsureOcrAssetsReady())
         {
             return;
         }
@@ -654,24 +654,60 @@ public sealed class SnipWindow : Window
 
         try
         {
-            var bmp = BuildResultBitmap(_selection);
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
+            var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+            if (built == null)
             {
-                Outcome = EditOutcome.TranslateImage,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
+                return;
+            }
+
+            var child = new TranslateResultWindow(built.Value.Bitmap, built.Value.Png, _settings);
+            OpenSessionChild(child);
         }
         catch (Exception ex)
         {
-            Log.Exception($"SnipWindow DoTranslateImage failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+            Log.Exception($"SnipWindow DoTranslateImageAsync failed: {ex.Message}", ex, GetType());
+            RestoreOverlayAfterChild();
+        }
+    }
+
+    /// <summary>
+    /// Ensures WeChat OCR assets are present (plugin <c>wco_data</c> or LocalAppData
+    /// cache). Slim packages prompt to download ~61 MB from the WeChatOcr NuGet package.
+    /// </summary>
+    private bool EnsureOcrAssetsReady()
+    {
+        if (WeChatOcrService.IsOcrComponentAvailable())
+        {
+            return true;
         }
 
-        Close();
+        var answer = MessageBox.Show(
+            Properties.Resources.ocr_download_prompt,
+            Properties.Resources.tip_ocr,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            MessageBox.Show(
+                Properties.Resources.ocr_err_need_install,
+                Properties.Resources.tip_ocr,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        var (ok, path, downloadError) = OcrAssetsDownloadDialog.ShowDialogAndDownload(owner: this);
+        if (!ok || string.IsNullOrWhiteSpace(path))
+        {
+            MessageBox.Show(
+                downloadError ?? Properties.Resources.ocr_err_download_network,
+                Properties.Resources.ocr_download_title,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        return WeChatOcrService.IsOcrComponentAvailable();
     }
 
     /// <summary>
@@ -726,51 +762,149 @@ public sealed class SnipWindow : Window
     }
 
     /// <summary>
-    /// Pins the current selection as a floating topmost image, then closes the editor.
+    /// Pins the current selection as a floating topmost image and keeps the overlay
+    /// so the user can annotate or pin again.
     /// </summary>
-    private void DoPin()
+    private async Task DoPinAsync()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _sessionChild != null || _exportBusy)
         {
             return;
         }
 
         try
         {
-            var bmp = BuildResultBitmap(_selection);
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
+            var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+            if (built == null)
             {
-                Outcome = EditOutcome.Pinned,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
+                return;
+            }
+
+            // Drop overlay topmost briefly so the new pin is not covered, then
+            // re-assert both; pin stays alive independently of the snip session.
+            Topmost = false;
+            var pin = new PinImageWindow(built.Value.Bitmap);
+            pin.Show();
+            pin.Activate();
+            Topmost = true;
+            pin.Topmost = true;
+            pin.Activate();
         }
         catch (Exception ex)
         {
-            Log.Exception($"SnipWindow DoPin failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+            Topmost = true;
+            Log.Exception($"SnipWindow DoPinAsync failed: {ex.Message}", ex, GetType());
+        }
+    }
+
+    /// <summary>
+    /// Hides the fullscreen overlay and shows a modeless child; when the child
+    /// closes, the overlay is shown again (same capture / selection / annotations).
+    /// </summary>
+    private void OpenSessionChild(Window child)
+    {
+        ArgumentNullException.ThrowIfNull(child);
+        if (_sessionChild != null)
+        {
+            return;
         }
 
-        Close();
+        _sessionChild = child;
+        child.Closed += OnSessionChildClosed;
+        _hiddenForSessionChild = true;
+        Hide();
+        child.Show();
+        child.Activate();
+    }
+
+    private void OnSessionChildClosed(object sender, EventArgs e)
+    {
+        if (sender is Window w)
+        {
+            w.Closed -= OnSessionChildClosed;
+        }
+
+        if (ReferenceEquals(_sessionChild, sender))
+        {
+            _sessionChild = null;
+        }
+
+        RestoreOverlayAfterChild();
+    }
+
+    private void RestoreOverlayAfterChild()
+    {
+        if (!_hiddenForSessionChild || _disposed)
+        {
+            return;
+        }
+
+        _hiddenForSessionChild = false;
+        try
+        {
+            Show();
+            Activate();
+            Topmost = true;
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow restore overlay failed: {ex.Message}", ex, GetType());
+        }
+    }
+
+    /// <summary>
+    /// Closes any OCR/translate child. When <paramref name="restoreOverlay"/> is
+    /// false (session ending), the overlay is not shown again.
+    /// </summary>
+    private void DismissSessionChild(bool restoreOverlay)
+    {
+        var child = _sessionChild;
+        if (child == null)
+        {
+            if (!restoreOverlay)
+            {
+                _hiddenForSessionChild = false;
+            }
+
+            return;
+        }
+
+        _sessionChild = null;
+        child.Closed -= OnSessionChildClosed;
+        try
+        {
+            child.Close();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow dismiss session child failed: {ex.Message}", ex, GetType());
+        }
+
+        if (restoreOverlay)
+        {
+            RestoreOverlayAfterChild();
+        }
+        else
+        {
+            _hiddenForSessionChild = false;
+        }
     }
 
     private async Task DoSaveAsync()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _exportBusy)
         {
             return;
         }
 
+        DismissSessionChild(restoreOverlay: false);
         try
         {
-            var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
-            var png = PngEncoder.Encode(bmp);
+            var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+            if (built == null)
+            {
+                return;
+            }
 
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
@@ -787,14 +921,14 @@ public sealed class SnipWindow : Window
             }
 
             var path = dialog.FileName;
-            await File.WriteAllBytesAsync(path, png);
+            await File.WriteAllBytesAsync(path, built.Value.Png).ConfigureAwait(true);
             Result = new EditResult
             {
                 Outcome = EditOutcome.Saved,
                 Selection = _selection,
                 Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
+                Result = built.Value.Bitmap,
+                PngBytes = built.Value.Png,
                 SavedPath = path,
             };
         }
@@ -805,6 +939,40 @@ public sealed class SnipWindow : Window
         }
 
         Close();
+    }
+
+    /// <summary>
+    /// Composites the selection on the UI thread (RenderTargetBitmap affinity),
+    /// then PNG-encodes on the thread pool. Full-res source is always used —
+    /// OCR / translate / save must not see the overlay preview downsample.
+    /// </summary>
+    private async Task<(BitmapSource Bitmap, byte[] Png)?> BuildAndEncodeAsync()
+    {
+        if (!_hasSelection || _exportBusy)
+        {
+            return null;
+        }
+
+        _exportBusy = true;
+        Cursor = Cursors.Wait;
+        try
+        {
+            var bmp = BuildResultBitmap(_selection);
+            var png = await PngEncoder.EncodeAsync(bmp).ConfigureAwait(true);
+            return (bmp, png);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow BuildAndEncodeAsync failed: {ex.Message}", ex, GetType());
+            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+            Close();
+            return null;
+        }
+        finally
+        {
+            _exportBusy = false;
+            Cursor = Cursors.Cross;
+        }
     }
 
     // -----------------------------------------------------------------------------------

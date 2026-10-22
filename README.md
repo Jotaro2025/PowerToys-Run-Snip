@@ -8,13 +8,7 @@ PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选�
 
 ## 功能
 
-在 PowerToys Run 中输入关键词 `snip`。**主能力是区域截屏**（遮罩框选 + 标注 / OCR / 译图 / 钉住）；仓库与插件描述以区域为主。另保留两条全屏快捷命令（后续可能收敛）：
-
-| 命令 | 行为 |
-|---|---|
-| **区域截屏**（主） | 全屏遮罩拖拽框选，支持标注、OCR、图片翻译、钉住后复制或保存 |
-| **全屏截屏到剪贴板** | 直接截取光标所在屏幕并复制（DIB + PNG） |
-| **全屏截屏并保存** | 直接截取光标所在屏幕并保存为 PNG |
+在 PowerToys Run 中输入关键词 `snip`，挂载**区域截屏**一条命令（遮罩框选 + 标注 / OCR / 译图 / 钉住；需要整屏时框选整块显示器即可，不再单独提供全屏到剪贴板 / 全屏保存入口）。仓库与插件描述以区域为主。
 
 区域截屏编辑器能力：
 
@@ -23,11 +17,12 @@ PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选�
 - 7 色颜色板 + 4 档笔画粗细、撤销（Ctrl+Z）
 - 快捷键：Enter 完成、Esc 取消、Ctrl+C 复制、Ctrl+S 保存、Ctrl+Z 撤销、Ctrl+Y 重做、Delete 删除选中标注
 - **文字提取（OCR）**：工具栏上的「文字提取」按钮，仿微信截图：识别选区（含标注）中的文字，
-  在结果窗口中显示，可编辑/选中，支持「复制」（有选中时复制选中部分）和「全部复制」
-- **钉住图片**：工具栏图钉按钮，截屏后以置顶轻量窗口贴在屏幕上（拖动移动；Esc / 双击 / 右键关闭）
+  在结果窗口中显示，可编辑/选中，支持「复制」（有选中时复制选中部分）和「全部复制」；关闭结果窗后回到遮罩可继续标注
+- **钉住图片**：工具栏图钉按钮，以置顶轻量窗口贴在屏幕上（拖动移动；Esc / 双击 / 右键关闭）；**不结束**截屏会话，可继续标注或再次钉住
 - **图片翻译**：工具栏上的「图片翻译」按钮；OCR 取出带框文字后翻译，擦除原文并重绘译文，
   结果窗口左侧为翻译图、右侧为可编辑译文列表（需在设置中配置翻译引擎）；
   可「重新贴图」把编辑后的译文再画回左侧，也可「保存图片」/复制图片
+- **会话保持（OCR / 翻译 / 钉住）**：点文字提取或图片翻译时先隐藏全屏遮罩，结果窗关闭后自动恢复同一选区与标注（仿微信截图可再试）；钉住不关遮罩。Enter / 复制 / 保存 / Esc 取消仍结束本次截屏；Esc 取消会顺带关掉未关的 OCR/翻译结果窗，避免残留
 - 多显示器 + 高 DPI 正确适配（取光标所在屏幕，按物理像素捕获）
 
 插件设置（PowerToys 设置 → PowerToys Run → Snip）：
@@ -47,18 +42,21 @@ PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选�
 ### 文字提取说明
 
 文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)，该包自带完整的 OCR 组件
-（`WeChatOCR.exe`、mmmojo DLL 和模型文件），随插件一起部署在插件目录的 `wco_data\` 下：
+（`WeChatOCR.exe`、mmmojo DLL 和模型文件）。**默认推荐精简包（slim）**，不强制每人下载约 61 MB 的 `wco_data`：
 
-- **不需要安装微信**，离线识别，不联网
-- 插件体积因此增加约 61 MB（`wco_data\` 约 60 MB + 依赖 DLL 约 1.3 MB）
-- 仅支持 x64 版 PowerToys（OCR 组件只有 x64 版本）
-- OCR 组件缺失、超时、识别失败或没有识别到文字时，结果窗口会给出对应提示
+- **不需要安装微信**；识别在本地进行（下载组件后可不联网）
+- **仅支持 x64** 版 PowerToys（OCR 组件只有 x64 版本）
+- **精简包（slim / 默认 `Snip-<ver>.zip`）**：不含 `wco_data`；首次「文字提取」或「图片翻译」时提示下载 WeChatOcr NuGet 包（nuget.org → Azure 中国 CDN），解压到  
+  `%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\wco_data\`
+- **完整包（full）**：插件目录自带 `wco_data\`，可离线 OCR，体积大约多 61 MB
+- 托管 DLL（`WeChatOcr.dll` 等约 1.3 MB）仍随两种包一起分发
+- OCR 缺失、超时、识别失败或没有文字时，结果窗口会提示；可改下完整包或允许下载
 - 关闭 OCR / 图片翻译结果窗口会取消进行中的识别与翻译；若引擎正被占用会显示忙碌等待提示
 
 ### 图片翻译说明
 
-图片翻译复用 WeChat OCR 的逐行框（`Left/Top/Right/Bottom`），翻译后按框擦除原文并重绘译文：框外多环中位色采样背景、对比色文字、框内换行（英文按词 / 中文按字）并自适应字号（有下限），边缘留出少量 padding。
-有 `SinglePos` 四角点时按四边形仿射贴字（纯 WPF，无 OpenCV），否则回退轴对齐框；HyMT 首次加载 GGUF 时结果窗显示「正在加载模型…」。
+图片翻译复用 WeChat OCR 的逐行框（`Left/Top/Right/Bottom`），翻译后按框擦除原文并重绘译文：框外多环中位色采样（用于对比色文字）；擦除优先用纯 C# **Telea 风格轻量 inpaint**（自边界向内传播的距离加权 + 廉价梯度项，无 OpenCV 原生依赖），过小或失败时回退中位色实心填充；框内换行（英文按词 / 中文按字）并自适应字号（有下限），边缘留出少量 padding。
+有 `SinglePos` 四角点时按四边形仿射贴字（纯 WPF，无 OpenCV），擦除对该四边形外接矩形做 inpaint；否则回退轴对齐框；HyMT 首次加载 GGUF 时结果窗显示「正在加载模型…」。
 多行 OCR 结果会**批量**发给翻译引擎（编号对齐；解析失败则回退逐行），HTTP 与 HyMT2Sharp 均减少往返次数。
 结果窗口支持编辑右侧译文后点「重新贴图」仅重绘左侧（不重新 OCR/翻译），以及「保存图片」（默认目录与截屏保存目录一致，可改路径）。
 
@@ -127,8 +125,10 @@ dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 
 1. `dotnet build -c Release -p:EnableWindowsTargeting=true`
 2. 将输出暂存为 `artifacts/staging/Snip/`（跳过 `.pdb`）
-3. 自检关键文件：`plugin.json`、主 DLL、`Images\`、`WeChatOcr.dll`、`Sdcb.HyMT2Sharp.dll`、`wco_data\WeChatOCR.exe`、`zh-CN\*.resources.dll`，并拒绝仍带 Microsoft / aka.ms 元数据的 `plugin.json`
-4. 生成 `artifacts/Snip-<Version>.zip`（版本号读取自 `plugin.json`）
+3. 自检关键文件：`plugin.json`、主 DLL、`Images\`、`WeChatOcr.dll`、`Sdcb.HyMT2Sharp.dll`、`wco_data\WeChatOCR.exe`（构建输出仍含 OCR，供 full）、`zh-CN\*.resources.dll`，并拒绝仍带 Microsoft / aka.ms 元数据的 `plugin.json`
+4. 生成两套包（版本号读取自 `plugin.json`）：
+   - **`Snip-<Version>-slim.zip`** / **`Snip-<Version>.zip`（默认，推荐）**：去掉 `wco_data`，首次 OCR 按需下载
+   - **`Snip-<Version>-full.zip`**：保留 `wco_data`，可离线文字提取 / 图片翻译
 
 Windows 手工验收可参考 [docs/windows-e2e-checklist.md](docs/windows-e2e-checklist.md)。
 
@@ -143,9 +143,9 @@ Windows 手工验收可参考 [docs/windows-e2e-checklist.md](docs/windows-e2e-c
 ├── plugin.json
 ├── Images\Snip.dark.png
 ├── Images\Snip.light.png
-├── WeChatOcr.dll、Google.Protobuf.dll、Newtonsoft.Json.dll         (文字提取依赖)
+├── WeChatOcr.dll、Google.Protobuf.dll、Newtonsoft.Json.dll         (文字提取托管依赖；两种包都有)
 ├── Sdcb.HyMT2Sharp.dll 等                                           (图片翻译：进程内引擎，不含 GGUF)
-├── wco_data\WeChatOCR.exe、mmmojo*.dll、x64.config、Model\*          (文字提取 OCR 组件)
+├── wco_data\…                                                       (仅 full 包；slim 首次 OCR 下载到 LocalAppData)
 ├── Community.PowerToys.Run.Plugin.Snip.deps.json 等其余构建输出
 └── zh-CN\Community.PowerToys.Run.Plugin.Snip.resources.dll   (中文资源)
 ```
@@ -175,7 +175,8 @@ PowerToys 0.9x 及更早版本的插件目录是 `%LOCALAPPDATA%\Microsoft\Power
 - 插件框架（`Wox.Plugin`）来自 PowerToys（MIT）。
 - 文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)（NuGet 标注 MIT 许可，仅以包引用，
   未复制其源码）。该包的描述注明“Study only, do not use for commercial purposes”（仅供学习，勿用于商业用途）；
-  其自带的 OCR 组件（`WeChatOCR.exe`、mmmojo DLL、模型文件）来自腾讯微信，构建时由该包复制到输出目录。
+  其自带的 OCR 组件（`WeChatOCR.exe`、mmmojo DLL、模型文件）来自腾讯微信；完整包构建时复制到输出目录，
+  精简包则在首次使用时从同一 NuGet 包下载到 LocalAppData。
 - 图片翻译可选引用 [Sdcb.HyMT2Sharp](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)（Apache-2.0）；
   **不**引用 `Sdcb.GgufWeights.*`。推荐权重与官方 2Bit GGUF 同源（Apache-2.0）；
   插件默认从 [魔搭 ModelScope](https://www.modelscope.cn/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF)
