@@ -27,6 +27,68 @@ public static class ScrollStitcher
         public string Mode { get; init; } = "anchor";
     }
 
+    /// <summary>BGRA stitch output — materialize with <see cref="ToWriteableBitmap"/> on the UI STA.</summary>
+    public sealed class PixelStitchResult : IDisposable
+    {
+        private byte[] _pixels;
+        private bool _rented;
+        private bool _disposed;
+
+        public required byte[] Pixels
+        {
+            get => _pixels;
+            init { _pixels = value; }
+        }
+
+        public required int Width { get; init; }
+
+        public required int Height { get; init; }
+
+        public required int Stride { get; init; }
+
+        public required IReadOnlyList<StitchOffset> Offsets { get; init; }
+
+        public required int TotalHeight { get; init; }
+
+        public bool RentedFromPool
+        {
+            get => _rented;
+            init => _rented = value;
+        }
+
+        /// <summary>UI STA only.</summary>
+        public WriteableBitmap ToWriteableBitmap()
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            var tile = new ScrollTilePixels(_pixels, Width, Height, Stride, rentedFromPool: false);
+            try
+            {
+                return tile.ToWriteableBitmap();
+            }
+            finally
+            {
+                // Detach so ScrollTilePixels.Dispose does not clear our array.
+                // ScrollTilePixels only Returns to pool when rentedFromPool is true.
+            }
+        }
+
+        public void Dispose()
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            if (_rented && _pixels != null)
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(_pixels);
+            }
+
+            _pixels = null;
+        }
+    }
+
     public sealed class StitchResult
     {
         public required WriteableBitmap Bitmap { get; init; }
@@ -89,17 +151,112 @@ public static class ScrollStitcher
         }
     }
 
+    /// <summary>Thread-pool safe: stitches owned BGRA tiles into a pixel buffer (no WriteableBitmap).</summary>
+    public static PixelStitchResult Stitch(IReadOnlyList<ScrollTilePixels> tiles)
+        => StitchPixelsCore(tiles, 0, null);
+
+    public static PixelStitchResult Stitch(
+        IReadOnlyList<ScrollTilePixels> tiles,
+        int estimatedScrollPxPerTile,
+        IReadOnlyList<int> perTileScrollPx = null)
+        => StitchPixelsCore(tiles, estimatedScrollPxPerTile, perTileScrollPx);
+
+    /// <summary>
+    /// Legacy UI-thread helper: copies WriteableBitmap tiles into pixel buffers, stitches off any thread
+    /// affinity for Lock during compose is avoided by working on managed arrays.
+    /// Prefer <see cref="Stitch(IReadOnlyList{ScrollTilePixels})"/>.
+    /// </summary>
     public static StitchResult Stitch(IReadOnlyList<WriteableBitmap> tiles)
-        => StitchCore(tiles, 0, null);
+    {
+        ArgumentNullException.ThrowIfNull(tiles);
+        var owned = new List<ScrollTilePixels>(tiles.Count);
+        try
+        {
+            foreach (var wb in tiles)
+            {
+                owned.Add(CopyWriteableBitmapToTile(wb));
+            }
+
+            using var pixels = StitchPixelsCore(owned, 0, null);
+            return new StitchResult
+            {
+                Bitmap = pixels.ToWriteableBitmap(),
+                Offsets = pixels.Offsets,
+                TotalHeight = pixels.TotalHeight,
+            };
+        }
+        finally
+        {
+            foreach (var t in owned)
+            {
+                t.Dispose();
+            }
+        }
+    }
 
     public static StitchResult Stitch(
         IReadOnlyList<WriteableBitmap> tiles,
         int estimatedScrollPxPerTile = 0,
         IReadOnlyList<int> perTileScrollPx = null)
-        => StitchCore(tiles, estimatedScrollPxPerTile, perTileScrollPx);
+    {
+        ArgumentNullException.ThrowIfNull(tiles);
+        var owned = new List<ScrollTilePixels>(tiles.Count);
+        try
+        {
+            foreach (var wb in tiles)
+            {
+                owned.Add(CopyWriteableBitmapToTile(wb));
+            }
 
-    private static StitchResult StitchCore(
-        IReadOnlyList<WriteableBitmap> tiles,
+            using var pixels = StitchPixelsCore(owned, estimatedScrollPxPerTile, perTileScrollPx);
+            return new StitchResult
+            {
+                Bitmap = pixels.ToWriteableBitmap(),
+                Offsets = pixels.Offsets,
+                TotalHeight = pixels.TotalHeight,
+            };
+        }
+        finally
+        {
+            foreach (var t in owned)
+            {
+                t.Dispose();
+            }
+        }
+    }
+
+    private static ScrollTilePixels CopyWriteableBitmapToTile(WriteableBitmap wb)
+    {
+        int w = wb.PixelWidth;
+        int h = wb.PixelHeight;
+        int stride = CaptureBuffers.BgraStride(w);
+        int byteCount = CaptureBuffers.BgraByteCount(w, h);
+        var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
+        wb.Lock();
+        try
+        {
+            unsafe
+            {
+                int srcStride = wb.BackBufferStride;
+                byte* src = (byte*)wb.BackBuffer;
+                int rowBytes = w * 4;
+                for (int y = 0; y < h; y++)
+                {
+                    new ReadOnlySpan<byte>(src + ((long)y * srcStride), rowBytes)
+                        .CopyTo(buffer.AsSpan(y * stride, rowBytes));
+                }
+            }
+        }
+        finally
+        {
+            wb.Unlock();
+        }
+
+        return new ScrollTilePixels(buffer, w, h, stride, rentedFromPool: true);
+    }
+
+    private static PixelStitchResult StitchPixelsCore(
+        IReadOnlyList<ScrollTilePixels> tiles,
         int estimatedScrollPxPerTile,
         IReadOnlyList<int> perTileScrollPx)
     {
@@ -107,11 +264,11 @@ public static class ScrollStitcher
         if (tiles.Count == 0) throw new ArgumentException("At least one tile is required.", nameof(tiles));
 
         var first = tiles[0];
-        int width = first.PixelWidth;
-        int firstHeight = first.PixelHeight;
+        int width = first.Width;
+        int firstHeight = first.Height;
         if (width <= 0 || firstHeight <= 0)
             throw new ArgumentException("First tile has zero area.", nameof(tiles));
-        ValidateTiles(tiles, width);
+        ValidatePixelTiles(tiles, width);
 
         var offsets = new StitchOffset[tiles.Count];
         int totalHeight = firstHeight;
@@ -130,17 +287,15 @@ public static class ScrollStitcher
         {
             var prev = tiles[i - 1];
             var cur = tiles[i];
-            int curHeight = cur.PixelHeight;
+            int curHeight = cur.Height;
 
             if (perTileScrollPx != null && i - 1 < perTileScrollPx.Count && perTileScrollPx[i - 1] > 0)
                 scrollHintPx = perTileScrollPx[i - 1];
 
-            var (topSkip, mode, relation) = AlignVerticalTilesLocked(prev, cur, scrollHintPx);
+            var (topSkip, mode, relation) = AlignVerticalTilesPixels(prev, cur, scrollHintPx);
 
             if (relation == TileRelation.FullDuplicate)
             {
-                // contrib=0：采集链里 Forward 被跳过或双路径重复时会产生几乎相同的相邻 tile，此处丢弃。
-                // 若 raw tile 数正常但长图仍缺段，查 [stitch] full-duplicate 日志与 [scroll] ForwardWheel。
                 offsets[i] = new StitchOffset
                 {
                     TileIndex = i,
@@ -172,71 +327,84 @@ public static class ScrollStitcher
             Debug.WriteLine($"[stitch] tile {i}: {relation} skip={offsets[i].TopSkip} contrib={contributed} mode={mode} totalH={totalHeight} hint={scrollHintPx}");
         }
 
-        return ComposeStitchedBitmap(tiles, offsets, width, totalHeight);
+        return ComposeStitchedPixels(tiles, offsets, width, totalHeight);
     }
 
-    private static StitchResult ComposeStitchedBitmap(
-        IReadOnlyList<WriteableBitmap> tiles, StitchOffset[] offsets, int width, int totalHeight)
+    private static PixelStitchResult ComposeStitchedPixels(
+        IReadOnlyList<ScrollTilePixels> tiles, StitchOffset[] offsets, int width, int totalHeight)
     {
-        var result = new WriteableBitmap(
-            width,
-            totalHeight,
-            96,
-            96,
-            PixelFormats.Bgra32,
-            null);
+        int dstStride = CaptureBuffers.BgraStride(width);
+        int byteCount = CaptureBuffers.BgraByteCount(width, totalHeight);
+        var dest = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
+        dest.AsSpan(0, byteCount).Clear();
+        int pixelRowBytes = width * 4;
 
-        result.Lock();
-        try
+        for (int i = 0; i < tiles.Count; i++)
         {
-            unsafe
+            var tile = tiles[i];
+            var off = offsets[i];
+            if (off.RowsContributed <= 0) continue;
+            var src = tile.DangerousGetArray();
+            int srcStride = tile.Stride;
+            int srcY = off.TopSkip;
+            for (int row = 0; row < off.RowsContributed; row++)
             {
-                byte* dstBase = (byte*)result.BackBuffer;
-                int dstStride = result.BackBufferStride;
-                int pixelRowBytes = width * 4;
-                new Span<byte>(dstBase, dstStride * totalHeight).Clear();
-
-                for (int i = 0; i < tiles.Count; i++)
-                {
-                    var tile = tiles[i];
-                    var off = offsets[i];
-                    if (off.RowsContributed <= 0) continue;
-                    tile.Lock();
-                    try
-                    {
-                        byte* srcBase = (byte*)tile.BackBuffer;
-                        int srcStride = tile.BackBufferStride;
-                        int srcY = off.TopSkip;
-                        long dstByteStart = (long)off.DestY * dstStride;
-                        for (int row = 0; row < off.RowsContributed; row++)
-                        {
-                            byte* srcRow = srcBase + (long)(srcY + row) * srcStride;
-                            byte* dstRow = dstBase + dstByteStart + (long)row * dstStride;
-                            Buffer.MemoryCopy(srcRow, dstRow, pixelRowBytes, pixelRowBytes);
-                            if (dstStride > pixelRowBytes)
-                                new Span<byte>(dstRow + pixelRowBytes, dstStride - pixelRowBytes).Clear();
-                        }
-                    }
-                    finally
-                    {
-                        tile.Unlock();
-                    }
-                }
+                int srcOffset = (srcY + row) * srcStride;
+                int dstOffset = (off.DestY + row) * dstStride;
+                src.AsSpan(srcOffset, pixelRowBytes).CopyTo(dest.AsSpan(dstOffset, pixelRowBytes));
             }
-
-            result.AddDirtyRect(new Int32Rect(0, 0, width, totalHeight));
-        }
-        finally
-        {
-            result.Unlock();
         }
 
-        return new StitchResult
+        return new PixelStitchResult
         {
-            Bitmap = result,
+            Pixels = dest,
+            Width = width,
+            Height = totalHeight,
+            Stride = dstStride,
             Offsets = offsets,
             TotalHeight = totalHeight,
+            RentedFromPool = true,
         };
+    }
+
+    private static (int topSkip, string mode, TileRelation relation) AlignVerticalTilesPixels(
+        ScrollTilePixels prev, ScrollTilePixels next, int scrollHintPx = 0)
+    {
+        int width = prev.Width;
+        int prevH = prev.Height;
+        int nextH = next.Height;
+        if (prevH <= 0 || nextH <= 0 || width <= 0)
+            return (0, "no-overlap", TileRelation.NoOverlap);
+
+        unsafe
+        {
+            fixed (byte* prevBase = prev.DangerousGetArray())
+            fixed (byte* nextBase = next.DangerousGetArray())
+            {
+                return AlignVerticalTilesFromPointers(
+                    prevBase, prev.Stride, prevH,
+                    nextBase, next.Stride, nextH,
+                    width, scrollHintPx);
+            }
+        }
+    }
+
+    private static void ValidatePixelTiles(IReadOnlyList<ScrollTilePixels> tiles, int width)
+    {
+        for (int i = 1; i < tiles.Count; i++)
+        {
+            var t = tiles[i];
+            if (t.Width != width)
+                throw new ArgumentException(
+                    $"Tile {i} has width {t.Width}, expected {width}.",
+                    nameof(tiles));
+            if (t.Height != tiles[i - 1].Height)
+                throw new ArgumentException(
+                    $"Tile {i} height {t.Height} differs from previous tile.",
+                    nameof(tiles));
+            if (t.Height <= 0)
+                throw new ArgumentException($"Tile {i} has zero height.", nameof(tiles));
+        }
     }
 
     private static int Median(IReadOnlyList<int> values)
@@ -249,8 +417,32 @@ public static class ScrollStitcher
     /// <summary>
     /// Lightweight full-frame identity check used during capture to auto-stop
     /// when the page no longer scrolls (same threshold as stitch FullDuplicate).
-    /// Must be called on the UI STA that owns the bitmaps.
+    /// Safe on any thread for <see cref="ScrollTilePixels"/>.
     /// </summary>
+    internal static bool IsNearlyIdentical(ScrollTilePixels prev, ScrollTilePixels next)
+    {
+        if (prev is null || next is null) return false;
+        if (prev.Width != next.Width || prev.Height != next.Height)
+            return false;
+        int width = prev.Width;
+        int h = prev.Height;
+        if (width <= 0 || h <= 0) return false;
+
+        unsafe
+        {
+            fixed (byte* prevBase = prev.DangerousGetArray())
+            fixed (byte* nextBase = next.DangerousGetArray())
+            {
+                double raw = ComputeRawMatchRatio(
+                    prevBase, prev.Stride, h, 0,
+                    nextBase, next.Stride, h, 0,
+                    h, width, stepX: 1, stepY: 1);
+                return raw >= 0.999;
+            }
+        }
+    }
+
+    /// <summary>UI STA only — prefer the <see cref="ScrollTilePixels"/> overload.</summary>
     internal static bool IsNearlyIdentical(WriteableBitmap prev, WriteableBitmap next)
     {
         if (prev is null || next is null) return false;

@@ -40,7 +40,7 @@ public sealed class ScrollCaptureController
     private readonly bool _scrollUp;
     private readonly Dispatcher _dispatcher;
 
-    private readonly List<WriteableBitmap> _tiles = new();
+    private readonly List<ScrollTilePixels> _tiles = new();
     private CancellationTokenSource _cts;
     private bool _active;
     private int _captureBusy;
@@ -137,18 +137,16 @@ public sealed class ScrollCaptureController
                 break;
             }
 
-            // Compare on UI STA — WriteableBitmap.Lock affinity.
             bool duplicate = false;
             if (_tiles.Count > 0)
             {
-                var prev = _tiles[_tiles.Count - 1];
-                duplicate = await _dispatcher.InvokeAsync(() => ScrollStitcher.IsNearlyIdentical(prev, bmp))
-                    .Task.ConfigureAwait(false);
+                duplicate = ScrollStitcher.IsNearlyIdentical(_tiles[_tiles.Count - 1], bmp);
             }
 
             if (duplicate)
             {
                 consecutiveDups++;
+                bmp.Dispose();
                 Debug.WriteLine($"[scroll] duplicate tile (streak={consecutiveDups}) — not kept");
                 if (consecutiveDups >= ConsecutiveDuplicateStopThreshold)
                 {
@@ -239,7 +237,7 @@ public sealed class ScrollCaptureController
         await NotifyCapturingStoppedOnceAsync().ConfigureAwait(false);
     }
 
-    /// <summary>One-shot stitch of stored tiles for confirm/save.</summary>
+    /// <summary>One-shot stitch of stored tiles for confirm/save. WriteableBitmap is created on the UI STA.</summary>
     public async Task<WriteableBitmap> StitchAsync()
     {
         _stitchingOverlayActive = true;
@@ -253,26 +251,35 @@ public sealed class ScrollCaptureController
             if (_tiles.Count == 0)
             {
                 Debug.WriteLine("[scroll] stitch skipped — no tiles");
-                return EmptyTile();
+                return await _dispatcher.InvokeAsync(EmptyTile).Task.ConfigureAwait(true);
             }
 
             if (_tiles.Count == 1)
             {
-                resultBitmap = CloneTile(_tiles[0]);
+                var only = _tiles[0];
+                resultBitmap = await _dispatcher.InvokeAsync(only.ToWriteableBitmap).Task.ConfigureAwait(true);
             }
             else
             {
                 var tilesCopy = _tiles.ToArray();
-                Debug.WriteLine($"[scroll] stitching {tilesCopy.Length} raw tile(s) — one-time merge");
-                var stitchResult = await Task.Run(() => ScrollStitcher.Stitch(tilesCopy)).ConfigureAwait(true);
-                resultBitmap = stitchResult.Bitmap;
+                Debug.WriteLine($"[scroll] stitching {tilesCopy.Length} raw tile(s) — pixel buffers on pool");
+                using var stitchResult = await Task.Run(() => ScrollStitcher.Stitch(tilesCopy)).ConfigureAwait(true);
+                resultBitmap = await _dispatcher.InvokeAsync(stitchResult.ToWriteableBitmap).Task.ConfigureAwait(true);
                 Debug.WriteLine($"[scroll] stitch complete — {tilesCopy.Length} tiles → h={resultBitmap.PixelHeight}");
             }
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[scroll] stitch failed: {ex}");
-            resultBitmap = _tiles.Count > 0 ? CloneTile(_tiles[0]) : EmptyTile();
+            if (_tiles.Count > 0)
+            {
+                var fallback = _tiles[0];
+                resultBitmap = await _dispatcher.InvokeAsync(fallback.ToWriteableBitmap).Task.ConfigureAwait(true);
+            }
+            else
+            {
+                resultBitmap = await _dispatcher.InvokeAsync(EmptyTile).Task.ConfigureAwait(true);
+            }
         }
         finally
         {
@@ -281,7 +288,7 @@ public sealed class ScrollCaptureController
         }
 
         DisposeTiles();
-        return resultBitmap ?? EmptyTile();
+        return resultBitmap ?? await _dispatcher.InvokeAsync(EmptyTile).Task.ConfigureAwait(true);
     }
 
     public void Cancel() => _ = CancelAsync();
@@ -323,24 +330,22 @@ public sealed class ScrollCaptureController
         }
     }
 
-    private async Task<WriteableBitmap> CaptureOnceSafeAsync()
+    private async Task<ScrollTilePixels> CaptureOnceSafeAsync()
     {
-        CapturedFrame frame = null;
         try
         {
             Interlocked.Exchange(ref _captureBusy, 1);
-            frame = await Task.Run(
-                () => _capture.CaptureScreenRectPixels(
+
+            // Capture + copy to managed BGRA on the thread pool — no WriteableBitmap yet.
+            return await Task.Run(() =>
+            {
+                using var frame = _capture.CaptureScreenRectPixels(
                     _captureRect.X,
                     _captureRect.Y,
                     _captureRect.Width,
-                    _captureRect.Height)).ConfigureAwait(false);
-
-            // WriteableBitmap must be created on the UI STA.
-            // ToWriteableBitmap disposes the CapturedFrame after the Span copy.
-            var wb = await _dispatcher.InvokeAsync(frame.ToWriteableBitmap).Task.ConfigureAwait(false);
-            frame = null;
-            return wb;
+                    _captureRect.Height);
+                return frame.ToOwnedPixels();
+            }).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -349,7 +354,6 @@ public sealed class ScrollCaptureController
         }
         finally
         {
-            frame?.Dispose();
             Interlocked.Exchange(ref _captureBusy, 0);
         }
     }
@@ -365,43 +369,13 @@ public sealed class ScrollCaptureController
             null);
     }
 
-    private static WriteableBitmap CloneTile(WriteableBitmap src)
-    {
-        int w = src.PixelWidth;
-        int h = src.PixelHeight;
-        var clone = new WriteableBitmap(w, h, 96, 96, PixelFormats.Bgra32, null);
-        src.Lock();
-        clone.Lock();
-        try
-        {
-            unsafe
-            {
-                int rowBytes = w * 4;
-                byte* s = (byte*)src.BackBuffer;
-                byte* d = (byte*)clone.BackBuffer;
-                for (int y = 0; y < h; y++)
-                {
-                    Buffer.MemoryCopy(
-                        s + ((long)y * src.BackBufferStride),
-                        d + ((long)y * clone.BackBufferStride),
-                        rowBytes,
-                        rowBytes);
-                }
-            }
-
-            clone.AddDirtyRect(new Int32Rect(0, 0, w, h));
-        }
-        finally
-        {
-            clone.Unlock();
-            src.Unlock();
-        }
-
-        return clone;
-    }
-
     private void DisposeTiles()
     {
+        for (int i = 0; i < _tiles.Count; i++)
+        {
+            _tiles[i]?.Dispose();
+        }
+
         _tiles.Clear();
         _stoppedPending = false;
     }
