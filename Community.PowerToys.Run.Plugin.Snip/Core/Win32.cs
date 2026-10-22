@@ -127,6 +127,19 @@ internal static class Win32
     [DllImport(Gdi32, SetLastError = true)]
     public static extern IntPtr CreateCompatibleBitmap(IntPtr hdc, int nWidth, int nHeight);
 
+    /// <summary>
+    /// Device-independent bitmap whose bits pointer is written by GDI (e.g. BitBlt).
+    /// Use negative <c>biHeight</c> for top-down BGRA matching WPF.
+    /// </summary>
+    [DllImport(Gdi32, SetLastError = true)]
+    public static extern IntPtr CreateDIBSection(
+        IntPtr hdc,
+        ref BITMAPINFO pbmi,
+        uint iUsage,
+        out IntPtr ppvBits,
+        IntPtr hSection,
+        uint dwOffset);
+
     [DllImport(Gdi32, SetLastError = true)]
     public static extern IntPtr SelectObject(IntPtr hdc, IntPtr h);
 

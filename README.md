@@ -23,7 +23,7 @@ PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选�
   结果窗口左侧为翻译图、右侧为可编辑译文列表（需在设置中配置翻译引擎）；
   可「重新贴图」把编辑后的译文再画回左侧，也可「保存图片」/复制图片
 - **会话保持（OCR / 翻译 / 钉住）**：点文字提取或图片翻译时先隐藏全屏遮罩，结果窗关闭后自动恢复同一选区与标注（仿微信截图可再试）；钉住不关遮罩。Enter / 复制 / 保存 / Esc 取消仍结束本次截屏；Esc 取消会顺带关掉未关的 OCR/翻译结果窗，避免残留
-- 多显示器 + 高 DPI 正确适配（取光标所在屏幕，按物理像素捕获）
+- 多显示器 + 高 DPI 正确适配（取光标所在屏幕，按物理像素捕获；GDI 用 CreateDIBSection 直写 top-down BGRA，再单次拷入 `CapturedFrame`，无 AllocHGlobal 中间缓冲；BitBlt/拷贝仍在线程池，UI 再组 WriteableBitmap）
 
 插件设置（PowerToys 设置 → PowerToys Run → Snip）：
 
