@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading.Tasks;
@@ -22,6 +23,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 /// <summary>
 /// WeChat-style image translate window: translated image on the left, editable
 /// translation list on the right. Runs OCR → translate → erase+repaint on open.
+/// Supports re-applying edited translations onto the image and saving the result.
 /// </summary>
 public sealed class TranslateResultWindow : Window
 {
@@ -40,8 +42,11 @@ public sealed class TranslateResultWindow : Window
     private readonly TextBlock _status;
     private readonly Button _copyAllButton;
     private readonly Button _copyImageButton;
+    private readonly Button _reapplyButton;
+    private readonly Button _saveImageButton;
     private readonly List<TextBox> _translationBoxes = new();
     private bool _closed;
+    private bool _actionBusy;
     private IReadOnlyList<OcrTextLine> _lines = Array.Empty<OcrTextLine>();
 
     public TranslateResultWindow(BitmapSource image, byte[] png, SnipSettings settings)
@@ -144,6 +149,14 @@ public sealed class TranslateResultWindow : Window
         var buttons = new StackPanel { Orientation = Orientation.Horizontal };
         DockPanel.SetDock(buttons, Dock.Right);
         bottom.Children.Add(buttons);
+
+        _reapplyButton = CreateButton(Properties.Resources.tr_reapply, isDefault: false);
+        _reapplyButton.Click += async (sender, e) => await ReapplyAsync();
+        buttons.Children.Add(_reapplyButton);
+
+        _saveImageButton = CreateButton(Properties.Resources.tr_save_image, isDefault: false);
+        _saveImageButton.Click += async (sender, e) => await SaveImageAsync();
+        buttons.Children.Add(_saveImageButton);
 
         _copyImageButton = CreateButton(Properties.Resources.tr_copy_image, isDefault: false);
         _copyImageButton.Click += (sender, e) => CopyImage();
@@ -316,7 +329,7 @@ public sealed class TranslateResultWindow : Window
     }
 
     private string JoinTranslations()
-        => string.Join(Environment.NewLine, _translationBoxes.Select(b => b.Text ?? string.Empty));
+        => string.Join(Environment.NewLine, CollectTranslations());
 
     private void SetBusy(string message)
     {
@@ -346,14 +359,139 @@ public sealed class TranslateResultWindow : Window
 
     private void UpdateActionButtons(bool enabled)
     {
-        if (_copyAllButton == null || _copyImageButton == null)
+        if (_copyAllButton == null || _copyImageButton == null
+            || _reapplyButton == null || _saveImageButton == null)
         {
             return;
         }
 
+        _reapplyButton.IsEnabled = enabled;
+        _saveImageButton.IsEnabled = enabled;
         _copyAllButton.IsEnabled = enabled;
         _copyImageButton.IsEnabled = enabled;
     }
+
+    private async Task ReapplyAsync()
+    {
+        if (_closed || _actionBusy || _lines.Count == 0 || _translationBoxes.Count != _lines.Count)
+        {
+            return;
+        }
+
+        _actionBusy = true;
+        UpdateActionButtons(enabled: false);
+        Cursor = Cursors.AppStarting;
+        _status.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108));
+        _status.Text = Properties.Resources.tr_busy_rerender;
+
+        try
+        {
+            var translations = CollectTranslations();
+            var rendered = await Task.Run(() => ImageTranslateRenderer.Render(_originalImage, _lines, translations));
+            if (_closed)
+            {
+                return;
+            }
+
+            _imageView.Source = rendered;
+            _status.Foreground = new SolidColorBrush(Color.FromRgb(48, 175, 85));
+            _status.Text = Properties.Resources.tr_status_reapplied;
+            UpdateActionButtons(enabled: true);
+            Cursor = null;
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip translate re-apply failed: {ex.Message}", ex, GetType());
+            if (!_closed)
+            {
+                Cursor = null;
+                _status.Foreground = new SolidColorBrush(ErrorColor);
+                _status.Text = $"{Properties.Resources.tr_err_rerender} {ex.Message}";
+                UpdateActionButtons(enabled: true);
+            }
+        }
+        finally
+        {
+            _actionBusy = false;
+        }
+    }
+
+    private async Task SaveImageAsync()
+    {
+        if (_closed || _actionBusy || _imageView.Source is not BitmapSource bmp)
+        {
+            return;
+        }
+
+        _actionBusy = true;
+        UpdateActionButtons(enabled: false);
+        try
+        {
+            // Encode on the UI thread: the bitmap belongs to it.
+            var png = PngEncoder.Encode(bmp);
+
+            var initialDir = ScreenshotFileSaver.ResolveDirectory(
+                _settings.SaveDirectory, SnipSettings.DefaultSaveFolder);
+            try
+            {
+                if (!string.IsNullOrWhiteSpace(initialDir) && !Directory.Exists(initialDir))
+                {
+                    Directory.CreateDirectory(initialDir);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Exception($"Snip translate save dir create failed: {ex.Message}", ex, GetType());
+            }
+
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = Properties.Resources.tr_save_dialog_title,
+                DefaultExt = ".png",
+                FileName = ScreenshotFileSaver.BuildTranslatedFileName(),
+                Filter = Properties.Resources.save_dialog_filter,
+                AddExtension = true,
+                OverwritePrompt = true,
+            };
+            if (!string.IsNullOrWhiteSpace(initialDir) && Directory.Exists(initialDir))
+            {
+                dialog.InitialDirectory = initialDir;
+            }
+
+            if (dialog.ShowDialog(this) != true)
+            {
+                UpdateActionButtons(enabled: true);
+                return;
+            }
+
+            await File.WriteAllBytesAsync(dialog.FileName, png);
+            if (_closed)
+            {
+                return;
+            }
+
+            _status.Foreground = new SolidColorBrush(Color.FromRgb(48, 175, 85));
+            _status.Text = $"{Properties.Resources.tr_image_saved} {dialog.FileName}";
+            UpdateActionButtons(enabled: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip translate save image failed: {ex.Message}", ex, GetType());
+            if (!_closed)
+            {
+                _status.Foreground = new SolidColorBrush(ErrorColor);
+                _status.Text = $"{Properties.Resources.tr_err_save_image} {ex.Message}";
+                UpdateActionButtons(enabled: true);
+            }
+        }
+        finally
+        {
+            _actionBusy = false;
+        }
+    }
+
+    private IReadOnlyList<string> CollectTranslations()
+        => _translationBoxes.Select(b => b.Text ?? string.Empty).ToList();
 
     private void CopyText(string text)
     {
@@ -403,6 +541,13 @@ public sealed class TranslateResultWindow : Window
         {
             Close();
             e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.S && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            e.Handled = true;
+            _ = SaveImageAsync();
         }
     }
 
