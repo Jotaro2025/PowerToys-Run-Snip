@@ -327,10 +327,10 @@
     <value>Vulkan</value>
   </data>
   <data name="opt_tr_hymt_download_label" xml:space="preserve">
-    <value>Download recommended 2Bit model</value>
+    <value>Download recommended 2Bit model now</value>
   </data>
   <data name="opt_tr_hymt_download_desc" xml:space="preserve">
-    <value>Check and save to download Hy-MT2-1.8B-2Bit.gguf (~573 MB, Apache-2.0) into LocalAppData (ModelScope first, then hf-mirror / Hugging Face) and fill the GGUF path. Skips if the cache file already looks valid. Weights are not shipped with the plugin.</value>
+    <value>One-shot action: check this box and click Save to start downloading Hy-MT2-1.8B-2Bit.gguf (~573 MB, Apache-2.0) into LocalAppData (ModelScope first, then hf-mirror / Hugging Face) and fill the GGUF path. Incomplete downloads resume on retry. The checkbox does not stay enabled. Skips if the cache already looks valid. Weights are not shipped with the plugin.</value>
   </data>
     <data name="tr_download_title" xml:space="preserve">
     <value>Download Hy-MT2 model</value>
@@ -367,6 +367,9 @@
   </data>
   <data name="tr_err_download_incomplete" xml:space="preserve">
     <value>Download failed: incomplete file. Please try again.</value>
+  </data>
+  <data name="tr_err_download_sha_mismatch" xml:space="preserve">
+    <value>Download rejected: SHA-256 mismatch (file deleted). Got:</value>
   </data>
   <data name="tr_err_download_cancelled" xml:space="preserve">
     <value>Download cancelled.</value>

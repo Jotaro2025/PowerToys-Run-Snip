@@ -67,7 +67,8 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
      1. **魔搭 ModelScope**（默认）：`https://www.modelscope.cn/api/v1/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF/repo?Revision=master&FilePath=Hy-MT2-1.8B-2Bit.gguf`
      2. **hf-mirror**：`https://hf-mirror.com/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
      3. **Hugging Face**（兜底）：`https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
-   - 某一源中途失败会自动换下一个；全部失败时提示检查网络 / 魔搭
+   - 某一源中途失败会自动换下一个（保留 `.downloading` 断点；支持 HTTP Range 续传，源不支持则该源整文件重下）；全部失败时提示检查网络 / 魔搭
+   - 下载完成后校验官方 SHA-256，不匹配则**删除并拒绝**该文件，改试下一源
    - 下载成功后会自动填入 `HyMtGgufPath`；缓存已存在且体积看起来完整时会跳过重复下载
    - 也可手动下载后在设置里填写任意 GGUF 路径
    - 后端可选自动 / CPU / Vulkan（Vulkan 约需 4GB 显存）。模型首次使用时懒加载，推理串行排队（模型非线程安全）

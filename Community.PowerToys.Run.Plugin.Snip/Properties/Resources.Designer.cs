@@ -793,7 +793,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to Download recommended 2Bit model.
+        ///   Looks up a localized string similar to Download recommended 2Bit model now.
         /// </summary>
         public static string opt_tr_hymt_download_label {
             get {
@@ -801,7 +801,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
-        ///   Looks up a localized string similar to Check and save to download Hy-MT2-1.8B-2Bit.gguf.
+        ///   Looks up a localized string similar to One-shot action: check this box and click Save to start downloading….
         /// </summary>
         public static string opt_tr_hymt_download_desc {
             get {
@@ -902,6 +902,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string tr_err_download_incomplete {
             get {
                 return ResourceManager.GetString("tr_err_download_incomplete", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download rejected: SHA-256 mismatch….
+        /// </summary>
+        public static string tr_err_download_sha_mismatch {
+            get {
+                return ResourceManager.GetString("tr_err_download_sha_mismatch", resourceCulture);
             }
         }
         /// <summary>

@@ -327,10 +327,10 @@
     <value>Vulkan</value>
   </data>
   <data name="opt_tr_hymt_download_label" xml:space="preserve">
-    <value>下载推荐的 2Bit 模型</value>
+    <value>立即下载推荐的 2Bit 模型</value>
   </data>
   <data name="opt_tr_hymt_download_desc" xml:space="preserve">
-    <value>勾选并保存后，将下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 缓存并自动填入 GGUF 路径；默认优先魔搭 ModelScope，失败再试 hf-mirror / Hugging Face；缓存已存在且完整时会跳过。插件不捆绑权重。</value>
+    <value>一次性操作：勾选后点保存即开始下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 并填入 GGUF 路径；默认优先魔搭 ModelScope，失败再试 hf-mirror / Hugging Face。中断后重试会断点续传。勾选不会保持开启。缓存已完整则跳过。插件不捆绑权重。</value>
   </data>
     <data name="tr_download_title" xml:space="preserve">
     <value>下载 Hy-MT2 模型</value>
@@ -367,6 +367,9 @@
   </data>
   <data name="tr_err_download_incomplete" xml:space="preserve">
     <value>下载失败：文件不完整，请重试。</value>
+  </data>
+  <data name="tr_err_download_sha_mismatch" xml:space="preserve">
+    <value>下载已拒绝：SHA-256 校验失败（已删除文件）。实际哈希：</value>
   </data>
   <data name="tr_err_download_cancelled" xml:space="preserve">
     <value>已取消下载。</value>
