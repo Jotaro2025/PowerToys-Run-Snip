@@ -47,10 +47,31 @@ UI language follows PowerToys (built-in English + Simplified Chinese).
 ## Requirements
 
 - [PowerToys](https://github.com/microsoft/PowerToys) **≥ 0.100** (.NET 10 host)
-- **x64** PowerToys (OCR components are x64-only)
+- **x64** PowerToys (OCR components are x64-only); an ARM64 PowerToys loads the plugin and screenshot / annotate / pin work, but OCR and image translate are unavailable
 - Windows (WPF plugin)
 
 ## Install
+
+### Option 1: installer (recommended)
+
+Download the installer matching your **Windows architecture** from [Releases](https://github.com/Jotaro2025/PowerToys-Run-Snip/releases):
+
+| File | Arch | Contents | Size (approx.) |
+|---|---|---|---|
+| `Snip-Setup-<ver>-x64-slim.exe` | x64 | Same as the slim zip; `wco_data` downloads on first OCR | 7 MB |
+| `Snip-Setup-<ver>-x64-full.exe` | x64 | slim + bundled `wco_data` (~61 MB) for offline OCR / translate | 35 MB |
+| `Snip-Setup-<ver>-arm64-slim.exe` | ARM64 | Same as x64-slim | 7 MB |
+| `Snip-Setup-<ver>-arm64-full.exe` | ARM64 | Same as x64-full (OCR components are x64 and unavailable in an ARM64 process, see below) | 35 MB |
+
+- **Prerequisite: PowerToys ≥ 0.100 must be installed** (the first .NET 10 host; this plugin targets `net10.0-windows`). Setup checks `%LOCALAPPDATA%\PowerToys\`, `%ProgramFiles%\PowerToys\` and the Uninstall registry; if PowerToys is missing or too old it points to [PowerToys Releases](https://github.com/microsoft/PowerToys/releases) / `winget install Microsoft.PowerToys` and exits.
+- **Per-user, no admin rights (no UAC)**; installs to `%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\`.
+- If PowerToys is running, setup asks before closing `PowerToys.exe` / `PowerToys.PowerLauncher` and restarts it from the same path afterwards (only if it was running). Uninstall does the same.
+- The x64 and ARM64 installers are separate; setup refuses to run on the wrong architecture.
+- **Upgrade**: just run the newer installer. The old plugin files are removed before copying (slim and full can replace each other). Settings and downloaded OCR / HyMT data (`%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\`) are never deleted.
+- **Uninstall**: remove *Snip for PowerToys Run* from Settings → Apps. Data is kept by default; uninstall asks whether to delete it too (default *No*). For a silent uninstall pass `/DELETEDATA` to delete it.
+- **The HyMT translation model is not bundled in any installer**: the GGUF model is several GB. It downloads on demand into the data folder above the first time you translate an image.
+
+### Option 2: extract the zip manually
 
 1. Download `Snip-<ver>.zip` (slim, recommended) or `Snip-<ver>-full.zip` from [Releases](https://github.com/Jotaro2025/PowerToys-Run-Snip/releases)
 2. Place the extracted `Snip\` folder at:
@@ -170,6 +191,19 @@ The script Release-builds, stages to `artifacts/staging/Snip/` (skips `.pdb`), s
 
 - **`Snip-<Version>-slim.zip`** / **`Snip-<Version>.zip` (default, recommended)**: no `wco_data`; OCR downloads on demand
 - **`Snip-<Version>-full.zip`**: includes `wco_data` for offline OCR / translate
+
+### Installers (Inno Setup)
+
+Requires [Inno Setup](https://jrsoftware.org/isinfo.php) **6.5+** (`choco install innosetup` / `winget install JRSoftware.InnoSetup`).
+
+```powershell
+.\build\build-installer.ps1 -PowerToysInstallDir "D:\PowerToys"
+# One arch / variant only: -Architectures x64 -Variants slim; explicit ISCC: -IsccPath "C:\...\ISCC.exe"
+```
+
+The script builds `win-x64` and `win-arm64`, stages the slim layout (no `wco_data`, no `.pdb`, same as the slim zip) and the full layout, then compiles the four installers from `installer/Snip.iss` into `artifacts/installer/`. The version comes from `plugin.json` and is passed as `ISCC /DAppVersion=…`. On Linux ISCC can run under wine (pass the Windows-side path as `-IsccPath`).
+
+CI (`.github/workflows/installer.yml`) builds the four installers and the zips on Windows and uploads them as artifacts; pushing a `v*` tag also attaches them to the GitHub Release.
 
 Windows manual checklist: [docs/windows-e2e-checklist.md](docs/windows-e2e-checklist.md).
 
