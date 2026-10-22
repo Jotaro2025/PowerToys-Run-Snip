@@ -84,6 +84,58 @@ public class LightInpaintTests
     {
         var buf = CreateHorizontalGradient();
         Assert.IsFalse(LightInpaint.TryInpaintRect(buf, Stride, Width, Height, 10, 10, 12, 12));
+        Assert.AreEqual(0, LightInpaint.LastRegionMaskLength, "early exit must not allocate a region mask");
+    }
+
+    [TestMethod]
+    public void RegionMaskIsLocalNotFullImage()
+    {
+        // Large canvas, small OCR box — mask must be rw*rh, not W*H.
+        const int bigW = 1920;
+        const int bigH = 1080;
+        const int stride = bigW * 4;
+        var pixels = new byte[stride * bigH];
+        for (int i = 3; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 255;
+            pixels[i - 1] = 120;
+            pixels[i - 2] = 120;
+            pixels[i - 3] = 120;
+        }
+
+        int x0 = 100, y0 = 200, x1 = 140, y1 = 230; // 40×30 = 1200
+        int rw = x1 - x0;
+        int rh = y1 - y0;
+        Assert.IsTrue(LightInpaint.TryInpaintRect(pixels, stride, bigW, bigH, x0, y0, x1, y1));
+        Assert.AreEqual(LightInpaint.RegionMaskLength(rw, rh), LightInpaint.LastRegionMaskLength);
+        Assert.IsTrue(
+            LightInpaint.LastRegionMaskLength < bigW * bigH / 100,
+            $"region mask {LightInpaint.LastRegionMaskLength} should be << full image {bigW * bigH}");
+    }
+
+    [TestMethod]
+    public void RegionMaskLengthHelperMatchesProduct()
+    {
+        Assert.AreEqual(40 * 30, LightInpaint.RegionMaskLength(40, 30));
+        _ = Assert.ThrowsException<ArgumentOutOfRangeException>(() => LightInpaint.RegionMaskLength(0, 10));
+    }
+
+    [TestMethod]
+    public void InpaintFillsEntireBoxLeavingOpaquePixels()
+    {
+        var truth = CreateHorizontalGradient();
+        var buf = (byte[])truth.Clone();
+        int x0 = 20, y0 = 10, x1 = 60, y1 = 30;
+        PaintCheckerText(buf, x0, y0, x1, y1);
+        Assert.IsTrue(LightInpaint.TryInpaintRect(buf, Stride, Width, Height, x0, y0, x1, y1));
+        for (int y = y0; y < y1; y++)
+        {
+            for (int x = x0; x < x1; x++)
+            {
+                int i = (y * Stride) + (x * 4);
+                Assert.AreEqual(255, buf[i + 3], "inpainted pixels stay opaque");
+            }
+        }
     }
 
     private static byte[] CreateHorizontalGradient()

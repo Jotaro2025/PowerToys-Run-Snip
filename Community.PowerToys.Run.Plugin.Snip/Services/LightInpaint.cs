@@ -11,6 +11,8 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// Pure managed Telea-inspired inpaint for small OCR erase masks (no OpenCV).
 /// Onion-peels the unknown region from the known border, estimating each pixel
 /// as a distance-weighted blend of nearby known samples (with a cheap gradient term).
+/// Uses a region-local mask and a frontier queue (no full-image <c>bool[W*H]</c>,
+/// no rescanning the whole rect every band).
 /// </summary>
 public static class LightInpaint
 {
@@ -27,6 +29,20 @@ public static class LightInpaint
     public const int MaxInteriorPixels = 120_000;
 
     private const float Eps = 0.1f;
+
+    /// <summary>
+    /// Length of the region-local unknown mask from the last <see cref="TryInpaintRect"/>
+    /// that allocated one (0 if the call returned early). For unit tests.
+    /// </summary>
+    internal static int LastRegionMaskLength { get; private set; }
+
+    /// <summary>Expected region-local mask length for a rect of size rw×rh.</summary>
+    internal static int RegionMaskLength(int regionWidth, int regionHeight)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(regionWidth);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(regionHeight);
+        return checked(regionWidth * regionHeight);
+    }
 
     /// <summary>
     /// Inpaint the half-open axis-aligned region [<paramref name="x0"/>,<paramref name="x1"/>) ×
@@ -46,6 +62,7 @@ public static class LightInpaint
         int radius = DefaultRadius)
     {
         ArgumentNullException.ThrowIfNull(pixels);
+        LastRegionMaskLength = 0;
         if (width <= 0 || height <= 0 || stride < width * 4)
         {
             return false;
@@ -73,75 +90,97 @@ public static class LightInpaint
             radius = 1;
         }
 
-        // 0 = known, 1 = unknown (still needs fill).
-        var unknown = new bool[width * height];
-        int unknownCount = 0;
-        for (int y = y0; y < y1; y++)
+        // Region-local mask only (not bool[width*height]).
+        var unknown = new bool[interior];
+        LastRegionMaskLength = unknown.Length;
+        for (int i = 0; i < unknown.Length; i++)
         {
-            int row = y * width;
-            for (int x = x0; x < x1; x++)
-            {
-                unknown[row + x] = true;
-                unknownCount++;
-            }
+            unknown[i] = true;
         }
 
-        // Onion-peel: each pass fills unknowns that already touch known pixels.
-        var pending = new List<int>(Math.Min(unknownCount, 4096));
-        var fillOrder = new List<(int X, int Y)>(unknownCount);
+        int unknownCount = interior;
+
+        // Onion-peel frontier: seed from the rect perimeter, then expand via neighbors
+        // of filled pixels (no full-region rescan each band).
+        var frontier = new List<int>(Math.Min(interior, 4096));
+        var nextFrontier = new List<int>(Math.Min(interior, 4096));
+        var queued = new bool[interior];
+        SeedFrontier(unknown, queued, frontier, rw, rh, x0, y0, width, height);
+
         int guard = unknownCount + 8;
         while (unknownCount > 0 && guard-- > 0)
         {
-            pending.Clear();
-            for (int y = y0; y < y1; y++)
-            {
-                int row = y * width;
-                for (int x = x0; x < x1; x++)
-                {
-                    int idx = row + x;
-                    if (!unknown[idx])
-                    {
-                        continue;
-                    }
-
-                    if (HasKnownNeighbor(unknown, width, height, x, y))
-                    {
-                        pending.Add(idx);
-                    }
-                }
-            }
-
-            if (pending.Count == 0)
+            if (frontier.Count == 0)
             {
                 // Isolated islands — cannot propagate; caller should median-fill.
                 return false;
             }
 
-            // Estimate all band pixels from the *current* known set, then commit.
-            var estimates = new byte[pending.Count * 4];
-            for (int i = 0; i < pending.Count; i++)
+            // Estimate all band pixels from the *current* known set, then commit,
+            // then expand the frontier (so same-band neighbors are not re-queued).
+            var estimates = new byte[frontier.Count * 4];
+            for (int i = 0; i < frontier.Count; i++)
             {
-                int idx = pending[i];
-                int x = idx % width;
-                int y = idx / width;
-                EstimatePixel(pixels, unknown, stride, width, height, x, y, radius, estimates, i * 4);
+                int li = frontier[i];
+                int lx = li % rw;
+                int ly = li / rw;
+                int x = x0 + lx;
+                int y = y0 + ly;
+                EstimatePixel(
+                    pixels,
+                    unknown,
+                    stride,
+                    width,
+                    height,
+                    x0,
+                    y0,
+                    rw,
+                    rh,
+                    x,
+                    y,
+                    radius,
+                    estimates,
+                    i * 4);
             }
 
-            for (int i = 0; i < pending.Count; i++)
+            for (int i = 0; i < frontier.Count; i++)
             {
-                int idx = pending[i];
-                int x = idx % width;
-                int y = idx / width;
+                int li = frontier[i];
+                int lx = li % rw;
+                int ly = li / rw;
+                int x = x0 + lx;
+                int y = y0 + ly;
                 int pi = (y * stride) + (x * 4);
                 int ei = i * 4;
                 pixels[pi] = estimates[ei];
                 pixels[pi + 1] = estimates[ei + 1];
                 pixels[pi + 2] = estimates[ei + 2];
                 pixels[pi + 3] = 255;
-                unknown[idx] = false;
+                unknown[li] = false;
+                queued[li] = false;
                 unknownCount--;
-                fillOrder.Add((x, y));
             }
+
+            nextFrontier.Clear();
+            for (int i = 0; i < frontier.Count; i++)
+            {
+                int li = frontier[i];
+                int lx = li % rw;
+                int ly = li / rw;
+                EnqueueUnknownNeighbors(
+                    unknown,
+                    queued,
+                    nextFrontier,
+                    rw,
+                    rh,
+                    lx,
+                    ly);
+            }
+
+            // Swap bands.
+            var swap = frontier;
+            frontier = nextFrontier;
+            nextFrontier = swap;
         }
 
         return unknownCount == 0;
@@ -250,45 +289,173 @@ public static class LightInpaint
         return sum;
     }
 
-    private static bool HasKnownNeighbor(bool[] unknown, int width, int height, int x, int y)
+    /// <summary>
+    /// Seed the first peel band: region perimeter pixels that already touch known
+    /// (outside the OCR box or image-known neighbors).
+    /// </summary>
+    private static void SeedFrontier(
+        bool[] unknown,
+        bool[] queued,
+        List<int> frontier,
+        int rw,
+        int rh,
+        int x0,
+        int y0,
+        int width,
+        int height)
     {
-        if (x > 0 && !unknown[(y * width) + x - 1])
+        void TryAdd(int lx, int ly)
+        {
+            int li = (ly * rw) + lx;
+            if (queued[li] || !unknown[li])
+            {
+                return;
+            }
+
+            int x = x0 + lx;
+            int y = y0 + ly;
+            if (!HasKnownNeighbor(unknown, rw, rh, x0, y0, width, height, x, y))
+            {
+                return;
+            }
+
+            queued[li] = true;
+            frontier.Add(li);
+        }
+
+        for (int lx = 0; lx < rw; lx++)
+        {
+            TryAdd(lx, 0);
+            if (rh > 1)
+            {
+                TryAdd(lx, rh - 1);
+            }
+        }
+
+        for (int ly = 1; ly < rh - 1; ly++)
+        {
+            TryAdd(0, ly);
+            if (rw > 1)
+            {
+                TryAdd(rw - 1, ly);
+            }
+        }
+    }
+
+    private static void EnqueueUnknownNeighbors(
+        bool[] unknown,
+        bool[] queued,
+        List<int> nextFrontier,
+        int rw,
+        int rh,
+        int lx,
+        int ly)
+    {
+        for (int dy = -1; dy <= 1; dy++)
+        {
+            for (int dx = -1; dx <= 1; dx++)
+            {
+                if (dx == 0 && dy == 0)
+                {
+                    continue;
+                }
+
+                int nx = lx + dx;
+                int ny = ly + dy;
+                if (nx < 0 || ny < 0 || nx >= rw || ny >= rh)
+                {
+                    continue;
+                }
+
+                int ni = (ny * rw) + nx;
+                if (!unknown[ni] || queued[ni])
+                {
+                    continue;
+                }
+
+                // Neighbor of a just-filled pixel → touches known; ready for next band.
+                queued[ni] = true;
+                nextFrontier.Add(ni);
+            }
+        }
+    }
+
+    /// <summary>
+    /// True when (x,y) still needs fill. Outside the image → treat as unknown (no sample).
+    /// Outside the OCR region but inside the image → known.
+    /// </summary>
+    private static bool IsUnknown(
+        bool[] unknown,
+        int rw,
+        int rh,
+        int x0,
+        int y0,
+        int width,
+        int height,
+        int x,
+        int y)
+    {
+        if (x < 0 || y < 0 || x >= width || y >= height)
         {
             return true;
         }
 
-        if (x + 1 < width && !unknown[(y * width) + x + 1])
+        if (x < x0 || y < y0 || x >= x0 + rw || y >= y0 + rh)
+        {
+            return false;
+        }
+
+        return unknown[((y - y0) * rw) + (x - x0)];
+    }
+
+    private static bool HasKnownNeighbor(
+        bool[] unknown,
+        int rw,
+        int rh,
+        int x0,
+        int y0,
+        int width,
+        int height,
+        int x,
+        int y)
+    {
+        // 4-neighbors + diagonals (same as before).
+        if (x > 0 && !IsUnknown(unknown, rw, rh, x0, y0, width, height, x - 1, y))
         {
             return true;
         }
 
-        if (y > 0 && !unknown[((y - 1) * width) + x])
+        if (x + 1 < width && !IsUnknown(unknown, rw, rh, x0, y0, width, height, x + 1, y))
         {
             return true;
         }
 
-        if (y + 1 < height && !unknown[((y + 1) * width) + x])
+        if (y > 0 && !IsUnknown(unknown, rw, rh, x0, y0, width, height, x, y - 1))
         {
             return true;
         }
 
-        // Diagonals help thin diagonal fronts.
-        if (x > 0 && y > 0 && !unknown[((y - 1) * width) + x - 1])
+        if (y + 1 < height && !IsUnknown(unknown, rw, rh, x0, y0, width, height, x, y + 1))
         {
             return true;
         }
 
-        if (x + 1 < width && y > 0 && !unknown[((y - 1) * width) + x + 1])
+        if (x > 0 && y > 0 && !IsUnknown(unknown, rw, rh, x0, y0, width, height, x - 1, y - 1))
         {
             return true;
         }
 
-        if (x > 0 && y + 1 < height && !unknown[((y + 1) * width) + x - 1])
+        if (x + 1 < width && y > 0 && !IsUnknown(unknown, rw, rh, x0, y0, width, height, x + 1, y - 1))
         {
             return true;
         }
 
-        if (x + 1 < width && y + 1 < height && !unknown[((y + 1) * width) + x + 1])
+        if (x > 0 && y + 1 < height && !IsUnknown(unknown, rw, rh, x0, y0, width, height, x - 1, y + 1))
+        {
+            return true;
+        }
+
+        if (x + 1 < width && y + 1 < height && !IsUnknown(unknown, rw, rh, x0, y0, width, height, x + 1, y + 1))
         {
             return true;
         }
@@ -302,6 +469,10 @@ public static class LightInpaint
         int stride,
         int width,
         int height,
+        int x0,
+        int y0,
+        int rw,
+        int rh,
         int x,
         int y,
         int radius,
@@ -316,10 +487,9 @@ public static class LightInpaint
 
         for (int qy = yMin; qy <= yMax; qy++)
         {
-            int row = qy * width;
             for (int qx = xMin; qx <= xMax; qx++)
             {
-                if (unknown[row + qx])
+                if (IsUnknown(unknown, rw, rh, x0, y0, width, height, qx, qy))
                 {
                     continue;
                 }
@@ -339,9 +509,9 @@ public static class LightInpaint
 
                 // Cheap gradient at q from known finite differences.
                 float gxB = 0, gyB = 0, gxG = 0, gyG = 0, gxR = 0, gyR = 0;
-                SampleGrad(pixels, unknown, stride, width, height, qx, qy, ref gxB, ref gyB, 0);
-                SampleGrad(pixels, unknown, stride, width, height, qx, qy, ref gxG, ref gyG, 1);
-                SampleGrad(pixels, unknown, stride, width, height, qx, qy, ref gxR, ref gyR, 2);
+                SampleGrad(pixels, unknown, stride, width, height, x0, y0, rw, rh, qx, qy, ref gxB, ref gyB, 0);
+                SampleGrad(pixels, unknown, stride, width, height, x0, y0, rw, rh, qx, qy, ref gxG, ref gyG, 1);
+                SampleGrad(pixels, unknown, stride, width, height, x0, y0, rw, rh, qx, qy, ref gxR, ref gyR, 2);
 
                 int qi = (qy * stride) + (qx * 4);
                 double b = pixels[qi] + (gxB * dx) + (gyB * dy);
@@ -376,16 +546,20 @@ public static class LightInpaint
         int stride,
         int width,
         int height,
+        int x0,
+        int y0,
+        int rw,
+        int rh,
         int x,
         int y,
         ref float gx,
         ref float gy,
         int channel)
     {
-        float left = ChannelOrNaN(pixels, unknown, stride, width, height, x - 1, y, channel);
-        float right = ChannelOrNaN(pixels, unknown, stride, width, height, x + 1, y, channel);
-        float up = ChannelOrNaN(pixels, unknown, stride, width, height, x, y - 1, channel);
-        float down = ChannelOrNaN(pixels, unknown, stride, width, height, x, y + 1, channel);
+        float left = ChannelOrNaN(pixels, unknown, stride, width, height, x0, y0, rw, rh, x - 1, y, channel);
+        float right = ChannelOrNaN(pixels, unknown, stride, width, height, x0, y0, rw, rh, x + 1, y, channel);
+        float up = ChannelOrNaN(pixels, unknown, stride, width, height, x0, y0, rw, rh, x, y - 1, channel);
+        float down = ChannelOrNaN(pixels, unknown, stride, width, height, x0, y0, rw, rh, x, y + 1, channel);
         float center = pixels[(y * stride) + (x * 4) + channel];
 
         if (!float.IsNaN(left) && !float.IsNaN(right))
@@ -429,11 +603,16 @@ public static class LightInpaint
         int stride,
         int width,
         int height,
+        int x0,
+        int y0,
+        int rw,
+        int rh,
         int x,
         int y,
         int channel)
     {
-        if (x < 0 || y < 0 || x >= width || y >= height || unknown[(y * width) + x])
+        if (x < 0 || y < 0 || x >= width || y >= height
+            || IsUnknown(unknown, rw, rh, x0, y0, width, height, x, y))
         {
             return float.NaN;
         }
