@@ -44,6 +44,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
     private readonly Border _busyBadge;
     private readonly ProgressBar _progress;
     private readonly TextBlock _overlayText;
+    private readonly Button _cancelBusyButton;
     private readonly Rectangle _scanLine;
     private readonly Rectangle _shimmer;
     private readonly TranslateTransform _scanTransform;
@@ -192,6 +193,31 @@ public sealed class TranslateResultWindow : Window, IDisposable
         };
         badgeContent.Children.Add(_progress);
         badgeContent.Children.Add(_overlayText);
+        _cancelBusyButton = new Button
+        {
+            Content = Properties.Resources.tr_cancel_busy,
+            MinWidth = 88,
+            Height = 28,
+            Margin = new Thickness(0, 10, 0, 0),
+            HorizontalAlignment = HorizontalAlignment.Center,
+            Padding = new Thickness(12, 0, 12, 0),
+        };
+        _cancelBusyButton.Click += (sender, e) =>
+        {
+            try
+            {
+                if (!_cts.IsCancellationRequested)
+                {
+                    _cts.Cancel();
+                }
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+
+            Close();
+        };
+        badgeContent.Children.Add(_cancelBusyButton);
         _busyBadge = new Border
         {
             Background = new SolidColorBrush(Color.FromArgb(210, 28, 32, 40)),
@@ -500,6 +526,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
         _overlay.Visibility = Visibility.Visible;
         _busyBadge.Visibility = Visibility.Visible;
         _progress.Visibility = Visibility.Visible;
+        _cancelBusyButton.Visibility = Visibility.Visible;
         _overlayText.Text = message;
         _overlayText.Foreground = Brushes.White;
         _editExpander.Visibility = Visibility.Collapsed;
@@ -520,6 +547,8 @@ public sealed class TranslateResultWindow : Window, IDisposable
         Cursor = null;
         _dimLayer.Visibility = Visibility.Visible;
         _progress.Visibility = Visibility.Collapsed;
+        _cancelBusyButton.Visibility = Visibility.Visible;
+        _cancelBusyButton.Content = Properties.Resources.ocr_close;
         _overlay.Visibility = Visibility.Visible;
         _busyBadge.Visibility = Visibility.Visible;
         _overlayText.Text = message;

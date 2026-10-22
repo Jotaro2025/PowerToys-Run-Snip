@@ -612,4 +612,7 @@
   <data name="settings_unload_hymt" xml:space="preserve">
     <value>立即卸载模型</value>
   </data>
+  <data name="tr_cancel_busy" xml:space="preserve">
+    <value>取消</value>
+  </data>
 </root>
