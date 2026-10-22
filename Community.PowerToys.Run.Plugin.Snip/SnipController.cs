@@ -43,6 +43,50 @@ public static class SnipController
         dispatcher.BeginInvoke(new Action(() => _ = RunAsync(settings, notify)), DispatcherPriority.Normal);
     }
 
+    /// <summary>
+    /// Runs <paramref name="action"/> on the dedicated STA UI dispatcher
+    /// (same thread as the snip editor). Returns immediately.
+    /// </summary>
+    public static void InvokeOnUiThread(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        EnsureUiDispatcher().BeginInvoke(action, DispatcherPriority.Normal);
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> synchronously on the dedicated STA UI dispatcher.
+    /// </summary>
+    public static void InvokeOnUiThreadSync(Action action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        var dispatcher = EnsureUiDispatcher();
+        if (dispatcher.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        dispatcher.Invoke(action, DispatcherPriority.Normal);
+    }
+
+    /// <summary>
+    /// Shows the dedicated settings window on the STA UI thread.
+    /// When the user saves, <paramref name="onSaved"/> runs on that same thread.
+    /// </summary>
+    public static void ShowSettingsWindow(SnipSettings settings, Action onSaved)
+    {
+        ArgumentNullException.ThrowIfNull(settings);
+        InvokeOnUiThread(() =>
+        {
+            var window = new SnipSettingsWindow(settings);
+            var ok = window.ShowDialog() == true;
+            if (ok)
+            {
+                onSaved?.Invoke();
+            }
+        });
+    }
+
     private static Dispatcher EnsureUiDispatcher()
     {
         if (_uiDispatcher != null)

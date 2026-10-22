@@ -11,7 +11,7 @@ namespace Community.PowerToys.Run.Plugin.Snip;
 
 /// <summary>
 /// Plugin options, persisted by PowerToys Run through the additional options
-/// of <see cref="Wox.Plugin.ISettingProvider"/>.
+/// of <see cref="Wox.Plugin.ISettingProvider"/> and the dedicated settings window.
 /// </summary>
 public sealed class SnipSettings
 {
@@ -26,6 +26,12 @@ public sealed class SnipSettings
 
     /// <summary>Delay before the capture starts, giving PowerToys Run time to hide.</summary>
     public int CaptureDelayMs { get; set; } = 150;
+
+    /// <summary>
+    /// Global hotkey to start a region snip without typing in Run
+    /// (e.g. <c>Ctrl+Shift+S</c>). Empty = disabled (default).
+    /// </summary>
+    public string GlobalHotkey { get; set; } = string.Empty;
 
     /// <summary>Translator used by the image-translate toolbar action.</summary>
     public TranslatorProvider TranslatorProvider { get; set; } = TranslatorProvider.Off;
@@ -57,4 +63,44 @@ public sealed class SnipSettings
     /// <summary>Fallback directory when <see cref="SaveDirectory"/> is not set.</summary>
     public static string DefaultSaveFolder
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Snip");
+
+    /// <summary>Deep-enough copy for the settings editor draft.</summary>
+    public SnipSettings Clone()
+    {
+        return new SnipSettings
+        {
+            SaveDirectory = SaveDirectory,
+            CopyAfterCapture = CopyAfterCapture,
+            AutoSaveAfterCapture = AutoSaveAfterCapture,
+            CaptureDelayMs = CaptureDelayMs,
+            GlobalHotkey = GlobalHotkey,
+            TranslatorProvider = TranslatorProvider,
+            TargetLanguage = TargetLanguage,
+            HttpBaseUrl = HttpBaseUrl,
+            HttpApiKey = HttpApiKey,
+            HttpModel = HttpModel,
+            HyMtGgufPath = HyMtGgufPath,
+            HyMtBackend = HyMtBackend,
+            HyMtCustomDownloadUrl = HyMtCustomDownloadUrl,
+        };
+    }
+
+    /// <summary>Copies every option from <paramref name="other"/> into this instance.</summary>
+    public void CopyFrom(SnipSettings other)
+    {
+        ArgumentNullException.ThrowIfNull(other);
+        SaveDirectory = other.SaveDirectory;
+        CopyAfterCapture = other.CopyAfterCapture;
+        AutoSaveAfterCapture = other.AutoSaveAfterCapture;
+        CaptureDelayMs = other.CaptureDelayMs;
+        GlobalHotkey = other.GlobalHotkey;
+        TranslatorProvider = other.TranslatorProvider;
+        TargetLanguage = other.TargetLanguage;
+        HttpBaseUrl = other.HttpBaseUrl;
+        HttpApiKey = other.HttpApiKey;
+        HttpModel = other.HttpModel;
+        HyMtGgufPath = other.HyMtGgufPath;
+        HyMtBackend = other.HyMtBackend;
+        HyMtCustomDownloadUrl = other.HyMtCustomDownloadUrl;
+    }
 }

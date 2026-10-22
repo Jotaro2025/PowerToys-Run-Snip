@@ -51,15 +51,17 @@ public class MainTests
     }
 
     [TestMethod]
-    public void QueryWithoutSearchReturnsRegionCommandOnly()
+    public void QueryWithoutSearchReturnsRegionAndSettingsCommands()
     {
         var main = CreateMain();
 
         var results = main.Query(new Query(string.Empty));
 
-        Assert.HasCount(1, results);
+        Assert.HasCount(2, results);
         Assert.AreEqual(Properties.Resources.cmd_region_title, results[0].Title);
+        Assert.AreEqual(Properties.Resources.cmd_settings_title, results[1].Title);
         Assert.IsNotNull(results[0].Action);
+        Assert.IsNotNull(results[1].Action);
     }
 
     [TestMethod]
@@ -95,6 +97,7 @@ public class MainTests
                 new PluginAdditionalOption { Key = "CopyAfterCapture", Value = false },
                 new PluginAdditionalOption { Key = "AutoSaveAfterCapture", Value = true },
                 new PluginAdditionalOption { Key = "CaptureDelayMs", NumberValue = 300 },
+                new PluginAdditionalOption { Key = "GlobalHotkey", TextValue = "Ctrl+Shift+S" },
             },
         };
 
@@ -105,6 +108,18 @@ public class MainTests
         Assert.IsFalse(current["CopyAfterCapture"].Value);
         Assert.IsTrue(current["AutoSaveAfterCapture"].Value);
         Assert.AreEqual(300, current["CaptureDelayMs"].NumberValue);
+        Assert.AreEqual("Ctrl+Shift+S", current["GlobalHotkey"].TextValue);
+    }
+
+    [TestMethod]
+    public void QueryFiltersSettingsCommand()
+    {
+        var main = CreateMain();
+
+        var results = main.Query(new Query("set"));
+
+        Assert.HasCount(1, results);
+        Assert.AreEqual(Properties.Resources.cmd_settings_title, results[0].Title);
     }
 
     [TestMethod]
@@ -127,7 +142,7 @@ public class MainTests
 
         main.UpdateSettings(null);
 
-        Assert.HasCount(12, main.AdditionalOptions.ToList());
+        Assert.HasCount(13, main.AdditionalOptions.ToList());
     }
 
     [TestMethod]

@@ -452,4 +452,79 @@
   <data name="ocr_err_download_all_sources" xml:space="preserve">
     <value>OCR download failed from all sources (nuget.org / Azure China CDN). Check the network, or install Snip-*-full.zip.</value>
   </data>
+  <data name="cmd_settings_title" xml:space="preserve">
+    <value>Settings</value>
+  </data>
+  <data name="cmd_settings_subtitle" xml:space="preserve">
+    <value>Open the Snip settings window (hotkey, translator, about)</value>
+  </data>
+  <data name="opt_hotkey_label" xml:space="preserve">
+    <value>Global hotkey</value>
+  </data>
+  <data name="opt_hotkey_desc" xml:space="preserve">
+    <value>Start a region snip without typing in Run. Leave empty to disable (default). Example: Ctrl+Shift+S. Works while the plugin is loaded; does not replace the PowerToys Run launcher hotkey.</value>
+  </data>
+  <data name="opt_hotkey_placeholder" xml:space="preserve">
+    <value>Empty = disabled (e.g. Ctrl+Shift+S)</value>
+  </data>
+  <data name="settings_window_title" xml:space="preserve">
+    <value>Snip Settings</value>
+  </data>
+  <data name="settings_tab_general" xml:space="preserve">
+    <value>General</value>
+  </data>
+  <data name="settings_tab_hotkey" xml:space="preserve">
+    <value>Hotkey</value>
+  </data>
+  <data name="settings_tab_translate" xml:space="preserve">
+    <value>Translate</value>
+  </data>
+  <data name="settings_tab_about" xml:space="preserve">
+    <value>About</value>
+  </data>
+  <data name="settings_save" xml:space="preserve">
+    <value>Save</value>
+  </data>
+  <data name="settings_cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="settings_browse" xml:space="preserve">
+    <value>Browse…</value>
+  </data>
+  <data name="settings_hotkey_hint" xml:space="preserve">
+    <value>Click the box and press a modifier combination (Ctrl / Alt / Shift / Win + key). Empty means disabled so Snip does not steal keys unexpectedly.</value>
+  </data>
+  <data name="settings_hotkey_clear" xml:space="preserve">
+    <value>Clear</value>
+  </data>
+  <data name="settings_hotkey_disabled" xml:space="preserve">
+    <value>Hotkey disabled (default). Set one to start snip without typing snip in Run.</value>
+  </data>
+  <data name="settings_hotkey_current" xml:space="preserve">
+    <value>Current: {0}</value>
+  </data>
+  <data name="settings_hotkey_need_modifier" xml:space="preserve">
+    <value>Include at least one modifier (Ctrl / Alt / Shift / Win).</value>
+  </data>
+  <data name="settings_hotkey_invalid" xml:space="preserve">
+    <value>Invalid hotkey.</value>
+  </data>
+  <data name="settings_tr_fold_hint" xml:space="preserve">
+    <value>Engine-specific fields are shown only for the selected translator (unlike PowerToys AdditionalOptions, which cannot fold).</value>
+  </data>
+  <data name="settings_about_version" xml:space="preserve">
+    <value>Version</value>
+  </data>
+  <data name="settings_about_author" xml:space="preserve">
+    <value>Author</value>
+  </data>
+  <data name="settings_about_github" xml:space="preserve">
+    <value>GitHub</value>
+  </data>
+  <data name="settings_about_ocr_note" xml:space="preserve">
+    <value>The WeChatOcr NuGet package (and its bundled OCR components) is intended for learning / research. Review compliance yourself before any commercial use.</value>
+  </data>
+  <data name="hotkey_register_failed" xml:space="preserve">
+    <value>Failed to register Snip global hotkey</value>
+  </data>
 </root>
