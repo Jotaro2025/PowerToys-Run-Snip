@@ -650,6 +650,11 @@ public sealed class SnipWindow : Window
             return;
         }
 
+        if (!EnsureHyMtModelReady())
+        {
+            return;
+        }
+
         var error = TranslatorFactory.Validate(_settings);
         if (error != null)
         {
@@ -681,6 +686,54 @@ public sealed class SnipWindow : Window
         }
 
         Close();
+    }
+
+    /// <summary>
+    /// When HyMT2Sharp is selected and no usable GGUF is configured, offer to
+    /// download the recommended 2Bit model into LocalAppData and fill the path.
+    /// </summary>
+    private bool EnsureHyMtModelReady()
+    {
+        if (_settings.TranslatorProvider != TranslatorProvider.HyMT2Sharp)
+        {
+            return true;
+        }
+
+        var resolved = HyMtModelDownloader.ResolveGgufPath(_settings);
+        if (resolved != null)
+        {
+            _settings.HyMtGgufPath = resolved;
+            return true;
+        }
+
+        var answer = MessageBox.Show(
+            Properties.Resources.tr_download_prompt,
+            Properties.Resources.tip_translate,
+            MessageBoxButton.YesNo,
+            MessageBoxImage.Question);
+        if (answer != MessageBoxResult.Yes)
+        {
+            MessageBox.Show(
+                Properties.Resources.tr_err_gguf_path,
+                Properties.Resources.tip_translate,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        var (ok, path, downloadError) = HyMtModelDownloadDialog.ShowDialogAndDownload(owner: this);
+        if (!ok || string.IsNullOrWhiteSpace(path))
+        {
+            MessageBox.Show(
+                downloadError ?? Properties.Resources.tr_err_download_network,
+                Properties.Resources.tr_download_title,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return false;
+        }
+
+        _settings.HyMtGgufPath = path;
+        return true;
     }
 
     private async Task DoSaveAsync()
