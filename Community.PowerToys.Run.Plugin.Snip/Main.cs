@@ -87,6 +87,10 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             NumberBoxSmallChange = 10,
             NumberBoxLargeChange = 100,
         },
+
+        // PowerToys Run AdditionalOptions has no IsVisible / conditional-fold API
+        // (settings UI shows every option). Engine-specific fields use «HTTP ·» /
+        // «HyMT ·» label prefixes so Off / HTTP / HyMT groups stay scannable.
         new PluginAdditionalOption()
         {
             Key = OptionTranslatorProvider,

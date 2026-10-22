@@ -1,6 +1,6 @@
 # Snip — PowerToys Run 截屏插件
 
-PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移植自 [TDS](https://github.com/) 的区域截屏工具。纯 C#/WPF 实现，不依赖 TDS 本体，也不修改 PowerToys。
+PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选标注、OCR 文字提取、图片翻译、钉住浮窗。功能移植自 [TDS](https://github.com/) 的区域截屏工具。纯 C#/WPF 实现，不依赖 TDS 本体，也不修改 PowerToys。
 
 > **学习向说明：** 文字提取依赖的 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr) NuGet 包（及其随包 OCR 组件）按包说明面向学习/研究场景；商业产品请自行评估合规与替代方案。详见文末「代码来源与许可」。
 
@@ -8,7 +8,7 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 
 ## 功能
 
-在 PowerToys Run 中输入关键词 `snip`，挂载**区域截屏**一条命令（拖拽框选；需要整屏时框选整块显示器即可，不再单独提供全屏到剪贴板 / 全屏保存入口）。
+在 PowerToys Run 中输入关键词 `snip`，挂载**区域截屏**一条命令（遮罩框选 + 标注 / OCR / 译图 / 钉住；需要整屏时框选整块显示器即可，不再单独提供全屏到剪贴板 / 全屏保存入口）。仓库与插件描述以区域为主。
 
 区域截屏编辑器能力：
 
@@ -32,9 +32,10 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 区域截屏后自动保存
 - 截屏延迟（毫秒，默认 150，给 PowerToys Run 隐藏窗口的时间）
 - **图片翻译引擎**：`关闭` / `HTTP（OpenAI 兼容）` / `HyMT2Sharp（本地 GGUF）`（默认关闭）
-- 目标语言（自由文本，默认 `简体中文`）
-- HTTP：Base URL、可选 API Key、模型名
-- HyMT2Sharp：GGUF 路径、**下载推荐的 2Bit 模型**（勾选后保存触发）、后端（自动 / CPU / Vulkan）
+- 目标语言（标签前缀 `翻译 ·`）
+- HTTP 相关项标签前缀 `HTTP ·`：Base URL、可选 API Key、模型名
+- HyMT 相关项标签前缀 `HyMT ·`：GGUF 路径、**下载推荐的 2Bit 模型**（勾选后保存触发）、自定义下载 URL、后端（自动 / CPU / Vulkan）
+- **设置折叠限制**：PowerToys Run 的 `AdditionalOptions` **不能**按引擎动态隐藏字段（无 `IsVisible` / 条件折叠 API；改引擎后设置页也不会即时重刷选项列表）。因此采用前缀分组降低噪音；引擎说明里也有同一提示
 
 界面语言跟随 PowerToys（内置英文 + 简体中文）。
 
