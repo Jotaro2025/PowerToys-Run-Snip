@@ -265,3 +265,12 @@ dotnet_diagnostic.CA2022.severity = suggestion
 
 # CA2263: Prefer generic overload when type is known
 dotnet_diagnostic.CA2263.severity = suggestion
+
+
+# Adapted from TDS scroll stitcher / correlator — keep algorithm close to upstream.
+[Community.PowerToys.Run.Plugin.Snip/Core/ScrollStitcher.cs]
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.severity = none
+dotnet_diagnostic.SA0001.severity = none
+
+[Community.PowerToys.Run.Plugin.Snip/Core/ScrollPhaseCorrelator.cs]
+dotnet_analyzer_diagnostic.category-StyleCop.CSharp.severity = none

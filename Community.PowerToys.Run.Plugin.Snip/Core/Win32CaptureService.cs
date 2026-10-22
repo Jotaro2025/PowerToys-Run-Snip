@@ -199,4 +199,154 @@ public sealed class Win32CaptureService : ICaptureService
             }
         }
     }
+
+    /// <summary>
+    /// Deliver <c>WM_MOUSEWHEEL</c> to the scroll target under a screen point,
+    /// skipping the overlay HWND. Cursor position is irrelevant.
+    /// </summary>
+    public static bool TrySendWheelAt(
+        int physicalX,
+        int physicalY,
+        int delta,
+        IntPtr skipOverlayHwnd = default)
+    {
+        if (delta == 0)
+        {
+            return false;
+        }
+
+        var pt = new Win32.POINT { X = physicalX, Y = physicalY };
+        IntPtr target = ResolveScrollTargetAt(pt, skipOverlayHwnd);
+        if (target == IntPtr.Zero)
+        {
+            return false;
+        }
+
+#pragma warning disable CA2020 // WM_MOUSEWHEEL packs signed delta / coords into WPARAM/LPARAM bits.
+        IntPtr wParam = unchecked((IntPtr)((delta << 16) & 0xFFFFFFFF));
+        IntPtr lParam = unchecked((IntPtr)((uint)(((physicalY & 0xFFFF) << 16) | (physicalX & 0xFFFF))));
+#pragma warning restore CA2020
+        _ = Win32.SendMessage(target, Win32.WmMouseWheel, wParam, lParam);
+        return true;
+    }
+
+    private static IntPtr ResolveScrollTargetAt(Win32.POINT pt, IntPtr skipOverlayHwnd)
+    {
+        IntPtr hit = Win32.WindowFromPoint(pt);
+        if (hit == IntPtr.Zero || hit == skipOverlayHwnd)
+        {
+            return IntPtr.Zero;
+        }
+
+        IntPtr root = Win32.GetAncestor(hit, Win32.GaRoot);
+        if (root == IntPtr.Zero || root == skipOverlayHwnd)
+        {
+            return IntPtr.Zero;
+        }
+
+        return FindDeepestChildAt(root, pt);
+    }
+
+    private static IntPtr FindDeepestChildAt(IntPtr root, Win32.POINT screenPt)
+    {
+        IntPtr current = root;
+        for (int i = 0; i < 32; i++)
+        {
+            var clientPt = screenPt;
+            _ = Win32.ScreenToClient(current, ref clientPt);
+            IntPtr child = Win32.ChildWindowFromPoint(current, clientPt);
+            if (child == IntPtr.Zero || child == current)
+            {
+                break;
+            }
+
+            current = child;
+        }
+
+        return current;
+    }
+
+    /// <inheritdoc />
+    public CapturedFrame CaptureScreenRectPixels(int physicalX, int physicalY, int width, int height)
+    {
+        if (width <= 0 || height <= 0)
+        {
+            throw new ArgumentException("Capture rect has zero area.", nameof(width));
+        }
+
+        _ = Win32.DwmFlush();
+
+        IntPtr screenDc = Win32.GetDC(IntPtr.Zero);
+        if (screenDc == IntPtr.Zero)
+        {
+            throw new InvalidOperationException("GetDC(NULL) failed.");
+        }
+
+        IntPtr memDc = IntPtr.Zero;
+        IntPtr dib = IntPtr.Zero;
+        IntPtr old = IntPtr.Zero;
+        try
+        {
+            memDc = Win32.CreateCompatibleDC(screenDc);
+            if (memDc == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("CreateCompatibleDC failed.");
+            }
+
+            var bmi = CaptureBuffers.CreateTopDownBgraInfo(width, height);
+            dib = Win32.CreateDIBSection(screenDc, ref bmi, Win32.DibRgbColors, out IntPtr bits, IntPtr.Zero, 0);
+            if (dib == IntPtr.Zero || bits == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("CreateDIBSection failed.");
+            }
+
+            old = Win32.SelectObject(memDc, dib);
+            if (!Win32.BitBlt(
+                    memDc,
+                    0,
+                    0,
+                    width,
+                    height,
+                    screenDc,
+                    physicalX,
+                    physicalY,
+                    Win32.SrcCopy | (int)Win32.CaptureBlt))
+            {
+                throw new InvalidOperationException("BitBlt failed.");
+            }
+
+            if (old != IntPtr.Zero)
+            {
+                _ = Win32.SelectObject(memDc, old);
+                old = IntPtr.Zero;
+            }
+
+            int stride = CaptureBuffers.BgraStride(width);
+            var frame = new CapturedFrame(dib, bits, width, height, stride);
+            dib = IntPtr.Zero;
+            return frame;
+        }
+        finally
+        {
+            if (old != IntPtr.Zero && memDc != IntPtr.Zero)
+            {
+                _ = Win32.SelectObject(memDc, old);
+            }
+
+            if (dib != IntPtr.Zero)
+            {
+                _ = Win32.DeleteObject(dib);
+            }
+
+            if (memDc != IntPtr.Zero)
+            {
+                _ = Win32.DeleteDC(memDc);
+            }
+
+            if (screenDc != IntPtr.Zero)
+            {
+                _ = Win32.ReleaseDC(IntPtr.Zero, screenDc);
+            }
+        }
+    }
 }

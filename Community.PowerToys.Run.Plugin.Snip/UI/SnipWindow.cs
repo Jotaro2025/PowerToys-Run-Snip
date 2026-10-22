@@ -35,7 +35,6 @@ public sealed class SnipWindow : Window
     /// <summary>Stronger dim outside the selected region.</summary>
     private readonly SolidColorBrush _selectionDimBrush = new SolidColorBrush(Color.FromArgb(210, 0, 0, 0));
 
-    private readonly System.Windows.Media.Imaging.WriteableBitmap _source;
     private readonly Int32Rect _physicalBounds;
     private readonly Size _logicalSize;
     private readonly Canvas _root;
@@ -47,7 +46,9 @@ public sealed class SnipWindow : Window
     private readonly SelectionAdorner _adorner;
     private readonly SnipToolbar _toolbar;
     private readonly SnipSettings _settings;
+    private readonly ICaptureService _captureService = CaptureFactory.Create();
 
+    private System.Windows.Media.Imaging.WriteableBitmap _source;
     private double _dpiScale;
     private Rect _selection;
     private bool _hasSelection;
@@ -63,6 +64,8 @@ public sealed class SnipWindow : Window
 
     /// <summary>True when the overlay was <see cref="Window.Hide"/> for a session child.</summary>
     private bool _hiddenForSessionChild;
+
+    private ScrollCaptureController _scrollController;
 
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
@@ -154,6 +157,7 @@ public sealed class SnipWindow : Window
         _toolbar.PinClicked += async (sender, e) => await DoPinAsync();
         _toolbar.CancelClicked += (sender, e) => Cancel();
         _toolbar.ConfirmClicked += async (sender, e) => await DoConfirmAsync();
+        _toolbar.ScrollCaptureClicked += OnScrollCaptureToggled;
 
         _root = new Canvas { ClipToBounds = true, Background = Brushes.Transparent };
         _root.Children.Add(_screenshotImage);
@@ -459,6 +463,24 @@ public sealed class SnipWindow : Window
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
+        if (_scrollController is { IsActive: true } or { HasTiles: true })
+        {
+            if (e.Key == Key.Enter)
+            {
+                _ = FinishScrollCaptureAndConfirmAsync();
+                e.Handled = true;
+                return;
+            }
+
+            if (e.Key == Key.Escape && _scrollController.IsActive)
+            {
+                // Stop capturing but keep tiles (toolbar Stop / Esc).
+                _ = StopScrollCaptureAsync();
+                e.Handled = true;
+                return;
+            }
+        }
+
         if (e.Key == Key.Escape)
         {
             Cancel();
@@ -505,11 +527,306 @@ public sealed class SnipWindow : Window
     }
 
     // -----------------------------------------------------------------------------------
+    //  Scroll capture mode (adapted from TDS ScreenshotWindow)
+    // -----------------------------------------------------------------------------------
+    private void OnScrollCaptureToggled(object sender, EventArgs e)
+    {
+        try
+        {
+            if (_scrollController is { IsActive: true })
+            {
+                _ = StopScrollCaptureAsync();
+            }
+            else if (_hasSelection)
+            {
+                StartScrollCapture();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow scroll toggle failed: {ex.Message}", ex, GetType());
+            EnsureScrollUiRecovered();
+        }
+    }
+
+    private void StartScrollCapture()
+    {
+        if (!_hasSelection)
+        {
+            return;
+        }
+
+        var physicalRect = new Int32Rect(
+            _physicalBounds.X + (int)(_selection.X * _dpiScale),
+            _physicalBounds.Y + (int)(_selection.Y * _dpiScale),
+            Math.Max(1, (int)(_selection.Width * _dpiScale)),
+            Math.Max(1, (int)(_selection.Height * _dpiScale)));
+
+        _scrollController = new ScrollCaptureController(
+            _captureService,
+            _root,
+            physicalRect,
+            TryGetHwnd());
+        _scrollController.CapturingStopped += OnScrollCapturingStopped;
+        _scrollController.Cancelled += OnScrollCaptureCancelled;
+        _toolbar.SetScrollCaptureActive(true);
+
+        _screenshotImage.Visibility = Visibility.Collapsed;
+        _dimPath.Fill = _selectionDimBrush;
+        var outer = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
+        var inner = new RectangleGeometry(_selection);
+        _dimPath.Data = new CombinedGeometry(GeometryCombineMode.Xor, outer, inner);
+        _dimPath.Visibility = Visibility.Visible;
+        _dimPath.IsHitTestVisible = false;
+        _inputCatcher.IsHitTestVisible = false;
+        _annoCanvas.IsHitTestVisible = false;
+        _annoCanvas.Visibility = Visibility.Collapsed;
+        _annoCanvas.Clip = null;
+        _toolbar.IsHitTestVisible = true;
+        _adorner.IsVisible = false;
+        _adorner.UpdateLayout();
+        _root.Background = Brushes.Transparent;
+        UpdateLayout();
+
+        ApplyScrollCaptureHole();
+        _scrollController.Begin();
+    }
+
+    private void ApplyScrollCaptureHole()
+    {
+        var hwnd = TryGetHwnd();
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        int clientW = Math.Max(1, (int)Math.Round(_logicalSize.Width * _dpiScale));
+        int clientH = Math.Max(1, (int)Math.Round(_logicalSize.Height * _dpiScale));
+        if (Win32WindowRegion.TryGetClientSize(hwnd, out int cw, out int ch))
+        {
+            clientW = cw;
+            clientH = ch;
+        }
+
+        int holeX = (int)Math.Round(_selection.X * _dpiScale);
+        int holeY = (int)Math.Round(_selection.Y * _dpiScale);
+        int holeW = Math.Max(1, (int)Math.Round(_selection.Width * _dpiScale));
+        int holeH = Math.Max(1, (int)Math.Round(_selection.Height * _dpiScale));
+
+        Win32WindowRegion.ApplySelectionHole(hwnd, clientW, clientH, holeX, holeY, holeW, holeH);
+    }
+
+    private void ClearScrollCaptureHole()
+    {
+        var hwnd = TryGetHwnd();
+        if (hwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        Win32WindowRegion.Clear(hwnd);
+    }
+
+    private async Task StopScrollCaptureAsync()
+    {
+        try
+        {
+            var ctl = _scrollController;
+            if (ctl == null || !ctl.IsActive)
+            {
+                return;
+            }
+
+            await ctl.StopCapturingAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow StopScrollCaptureAsync: {ex.Message}", ex, GetType());
+            EnsureScrollUiRecovered();
+        }
+    }
+
+    private async Task FinishScrollCaptureAndConfirmAsync()
+    {
+        try
+        {
+            var ctl = _scrollController;
+            if (ctl == null || (!ctl.IsActive && !ctl.HasTiles))
+            {
+                return;
+            }
+
+            if (ctl.IsActive)
+            {
+                await ctl.StopCapturingAsync().ConfigureAwait(true);
+            }
+
+            if (ctl.TileCount < 1)
+            {
+                return;
+            }
+
+            var stitched = await ctl.StitchAsync().ConfigureAwait(true);
+            if (stitched.PixelWidth < 1 || stitched.PixelHeight < 1)
+            {
+                return;
+            }
+
+            ApplyStitchedScrollResult(stitched);
+            _scrollController = null;
+            await DoConfirmAsync().ConfigureAwait(true);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow FinishScrollCaptureAndConfirmAsync: {ex.Message}", ex, GetType());
+            EnsureScrollUiRecovered();
+        }
+    }
+
+    private async Task<System.Windows.Media.Imaging.WriteableBitmap> StitchScrollTilesForExportAsync()
+    {
+        try
+        {
+            var ctl = _scrollController;
+            if (ctl == null || (!ctl.IsActive && !ctl.HasTiles))
+            {
+                return null;
+            }
+
+            if (ctl.IsActive)
+            {
+                await ctl.StopCapturingAsync().ConfigureAwait(true);
+            }
+
+            if (ctl.TileCount < 1)
+            {
+                return null;
+            }
+
+            var stitched = await ctl.StitchAsync().ConfigureAwait(true);
+            if (stitched.PixelWidth < 1 || stitched.PixelHeight < 1)
+            {
+                return null;
+            }
+
+            ApplyStitchedScrollResult(stitched);
+            _scrollController = null;
+            return stitched;
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow StitchScrollTilesForExportAsync: {ex.Message}", ex, GetType());
+            EnsureScrollUiRecovered();
+            return null;
+        }
+    }
+
+    private void OnScrollCapturingStopped(int tileCount)
+    {
+        try
+        {
+            _toolbar.SetScrollCaptureActive(false);
+            RestorePassthroughUi();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow OnScrollCapturingStopped: {ex.Message}", ex, GetType());
+            EnsureScrollUiRecovered();
+        }
+    }
+
+    private void ApplyStitchedScrollResult(System.Windows.Media.Imaging.WriteableBitmap stitched)
+    {
+        _source = stitched;
+
+        double newW = _source.PixelWidth / _dpiScale;
+        double newH = _source.PixelHeight / _dpiScale;
+        _selection = new Rect(0, 0, newW, newH);
+        _hasSelection = true;
+
+        _screenshotImage.Source = stitched;
+        _annoCanvas.SourceBitmap = stitched;
+        _annoCanvas.SourceDpiScale = _dpiScale;
+        _annoCanvas.SourceOffset = new Point(0, 0);
+        RestorePassthroughUi();
+    }
+
+    private void OnScrollCaptureCancelled()
+    {
+        try
+        {
+            RestorePassthroughUi();
+            _toolbar.SetScrollCaptureActive(false);
+            _scrollController = null;
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow OnScrollCaptureCancelled: {ex.Message}", ex, GetType());
+            EnsureScrollUiRecovered();
+            _scrollController = null;
+        }
+    }
+
+    private void RestorePassthroughUi()
+    {
+        ClearScrollCaptureHole();
+        _dimPath.IsHitTestVisible = false;
+        if (_source != null)
+        {
+            _screenshotImage.Source = BitmapPreview.ForOverlay(_source);
+            _annoCanvas.SourceBitmap = _source;
+            _screenshotImage.Visibility = Visibility.Visible;
+        }
+
+        _inputCatcher.IsHitTestVisible = true;
+        _annoCanvas.IsHitTestVisible = true;
+        _toolbar.IsHitTestVisible = true;
+        UpdateSelectionVisuals();
+    }
+
+    private void EnsureScrollUiRecovered()
+    {
+        try
+        {
+            _toolbar.SetScrollCaptureActive(false);
+            ClearScrollCaptureHole();
+            RestorePassthroughUi();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow EnsureScrollUiRecovered: {ex.Message}", ex, GetType());
+        }
+    }
+
+    private IntPtr TryGetHwnd()
+    {
+        try
+        {
+            return new WindowInteropHelper(this).Handle;
+        }
+        catch
+        {
+            return IntPtr.Zero;
+        }
+    }
+
+    // -----------------------------------------------------------------------------------
     //  Output
     // -----------------------------------------------------------------------------------
     private void Cancel()
     {
         DismissSessionChild(restoreOverlay: false);
+        try
+        {
+            _scrollController?.Cancel();
+        }
+        catch
+        {
+            // ignore
+        }
+
+        _scrollController = null;
+        ClearScrollCaptureHole();
         Result = new EditResult { Outcome = EditOutcome.Cancelled };
         Close();
     }
@@ -1024,6 +1341,15 @@ public sealed class SnipWindow : Window
         Cursor = Cursors.Wait;
         try
         {
+            if (_scrollController is { HasTiles: true } or { IsActive: true })
+            {
+                var stitched = await StitchScrollTilesForExportAsync().ConfigureAwait(true);
+                if (stitched == null)
+                {
+                    return null;
+                }
+            }
+
             var bmp = BuildResultBitmap(_selection);
             var png = await PngEncoder.EncodeAsync(bmp).ConfigureAwait(true);
             return (bmp, png);
@@ -1053,6 +1379,18 @@ public sealed class SnipWindow : Window
         }
 
         _disposed = true;
+
+        try
+        {
+            _scrollController?.Cancel();
+        }
+        catch
+        {
+            // ignore
+        }
+
+        _scrollController = null;
+        ClearScrollCaptureHole();
 
         // Drop all references to the full-screen capture; WPF bitmaps are
         // reclaimed by the GC (they can be tens of MB).

@@ -13,7 +13,7 @@ This plugin targets / depends on the official host and references the following 
 | Project | Role | License / notes |
 |---------|------|-----------------|
 | **[microsoft/PowerToys](https://github.com/microsoft/PowerToys)** | PowerToys Run plugin host; references shipped assemblies such as `Wox.Plugin` | MIT |
-| **[LdotJdot/TDS](https://github.com/LdotJdot/TDS)** ([`TDSAot/ScreenShot/`](https://github.com/LdotJdot/TDS/tree/main/TDSAot/ScreenShot)) | Region screenshot capture, overlay, and annotation ideas; this repo is a pure C#/WPF reimplementation for PowerToys Run | Does **not** depend on the TDS binary; does **not** modify PowerToys |
+| **[LdotJdot/TDS](https://github.com/LdotJdot/TDS)** ([`TDSAot/ScreenShot/`](https://github.com/LdotJdot/TDS/tree/main/TDSAot/ScreenShot)) | Region screenshot capture, overlay, annotation, and **scroll-capture stitching** ideas; this repo is a pure C#/WPF reimplementation for PowerToys Run | Does **not** depend on the TDS binary; does **not** modify PowerToys |
 | **[WeChatOcr](https://github.com/ZGGSONG/WeChatOcr)** ([NuGet](https://www.nuget.org/packages/WeChatOcr/)) | OCR for text extraction / image translation | Package reference only; package states “Study only, do not use for commercial purposes”; OCR binaries from the WeChat ecosystem |
 | **[Sdcb.HyMT2Sharp](https://github.com/sdcb/HyMT2Sharp)** ([NuGet](https://www.nuget.org/packages/Sdcb.HyMT2Sharp), Apache-2.0) | Optional in-process local translation; alternatively HTTP OpenAI-compatible | Recommended weights: **Tencent Hunyuan Hy-MT2** GGUF ([ModelScope](https://www.modelscope.cn/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF) / [Hugging Face](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF), Apache-2.0); **weights are not bundled** |
 | New code in this repo | Plugin itself | [MIT](LICENSE) |
@@ -34,7 +34,8 @@ You can also configure a **global hotkey** in settings to start a region capture
 - Drag to select, eight-handle resize, live size tip
 - Annotations: rectangle, ellipse, arrow, pen, text, mosaic
 - 7-color palette + 4 stroke widths; undo / redo
-- Shortcuts: Enter finish, Esc cancel, Ctrl+C copy, Ctrl+S save, Ctrl+Z undo, Ctrl+Y redo, Delete remove selected annotation
+- Shortcuts: Enter finish, Esc cancel, right-click cancel, Ctrl+C copy, Ctrl+S save, Ctrl+Z undo, Ctrl+Y redo, Delete remove selected annotation
+- **Scroll capture** (UX from TDS): after selecting a region, use the toolbar **Scroll capture** button — hole-punch the overlay, auto-wheel, then Done/Save stitches once (MathNet.Numerics; apps that ignore `WM_MOUSEWHEEL` may not scroll)
 - **Text extraction (OCR)**: recognize text in the selection; editable result window; closing returns to the overlay
 - **Pin image**: lightweight always-on-top window (drag to move; Esc / double-click / right-click to close); does not end the capture session
 - **Image translation**: OCR boxes → translate → erase original and redraw translated text; “re-render” / “save image”

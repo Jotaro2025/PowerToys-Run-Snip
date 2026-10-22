@@ -533,4 +533,53 @@
   <data name="hotkey_register_failed" xml:space="preserve">
     <value>Failed to register Snip global hotkey</value>
   </data>
+
+  <data name="tip_scroll" xml:space="preserve">
+    <value>Scroll capture</value>
+  </data>
+  <data name="tip_scroll_stop" xml:space="preserve">
+    <value>Stop scroll capture</value>
+  </data>
+  <data name="tip_scroll_cancel" xml:space="preserve">
+    <value>Cancel scroll (Esc / Right-click)</value>
+  </data>
+  <data name="tip_scroll_done" xml:space="preserve">
+    <value>Stitch and finish</value>
+  </data>
+  <data name="tip_scroll_save" xml:space="preserve">
+    <value>Stitch and save</value>
+  </data>
+  <data name="scroll_hint_title" xml:space="preserve">
+    <value>Scroll capturing…</value>
+  </data>
+  <data name="scroll_hint_title_count" xml:space="preserve">
+    <value>Scroll capturing…  {0} frames</value>
+  </data>
+  <data name="scroll_hint_subtitle" xml:space="preserve">
+    <value>Auto-scroll in selection · click button to stop</value>
+  </data>
+  <data name="scroll_hint_subtitle_active" xml:space="preserve">
+    <value>Capture → wheel → wait · Done/Save stitches once</value>
+  </data>
+  <data name="scroll_hint_capturing" xml:space="preserve">
+    <value>Capturing…  frame {0}</value>
+  </data>
+  <data name="scroll_hint_capturing_sub" xml:space="preserve">
+    <value>Capturing current view</value>
+  </data>
+  <data name="scroll_hint_stopped" xml:space="preserve">
+    <value>Scroll capture stopped</value>
+  </data>
+  <data name="scroll_hint_stopped_count" xml:space="preserve">
+    <value>Scroll capture stopped · {0} frames</value>
+  </data>
+  <data name="scroll_hint_stopped_sub" xml:space="preserve">
+    <value>Done or Save to stitch the long image</value>
+  </data>
+  <data name="scroll_hint_stitching" xml:space="preserve">
+    <value>Stitching…</value>
+  </data>
+  <data name="scroll_hint_stitching_sub" xml:space="preserve">
+    <value>Building the long screenshot, please wait</value>
+  </data>
 </root>

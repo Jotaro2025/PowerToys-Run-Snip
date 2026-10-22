@@ -38,10 +38,19 @@ public sealed class SnipToolbar : Border
     private readonly Dictionary<Color, Border> _colorChips = new();
     private readonly Dictionary<double, Border> _widthChips = new();
     private readonly List<double> _widthPresets = [2, 3, 5, 8];
+    private readonly List<UIElement> _hiddenDuringScroll = new();
+    private readonly ToolbarButton _scrollButton;
+    private readonly ToolbarButton _cancelButton;
+    private readonly ToolbarButton _confirmButton;
+    private readonly ToolbarButton _saveButton;
+    private string _tipCancelDefault;
+    private string _tipDoneDefault;
+    private string _tipSaveDefault;
 
     public SnipToolbar(EditRequest request)
     {
         ShowSaveButton = request.ShowSaveButton;
+        EnableScrollCapture = request.EnableScrollCapture;
         CurrentStroke = request.DefaultStroke ?? Color.FromRgb(238, 32, 77);
         CurrentStrokeWidth = request.DefaultStrokeWidth;
         ActiveTool = request.InitialTool;
@@ -64,47 +73,88 @@ public sealed class SnipToolbar : Border
         AddTool(tools, ToolIds.Text, ToolIcons.Text, Properties.Resources.tip_text);
         AddTool(tools, ToolIds.Mosaic, ToolIcons.Mosaic, Properties.Resources.tip_mosaic);
         root.Children.Add(toolGroup);
+        _hiddenDuringScroll.Add(toolGroup);
 
-        root.Children.Add(Separator());
+        var sepTools = Separator();
+        root.Children.Add(sepTools);
+        _hiddenDuringScroll.Add(sepTools);
 
         var colorGroup = CreateGroup(out var colors);
         AddColorChips(colors);
         root.Children.Add(colorGroup);
+        _hiddenDuringScroll.Add(colorGroup);
 
-        root.Children.Add(Separator());
+        var sepColors = Separator();
+        root.Children.Add(sepColors);
+        _hiddenDuringScroll.Add(sepColors);
 
         var widthGroup = CreateGroup(out var widths);
         AddWidthChips(widths);
         root.Children.Add(widthGroup);
+        _hiddenDuringScroll.Add(widthGroup);
 
-        root.Children.Add(Separator());
+        var sepWidths = Separator();
+        root.Children.Add(sepWidths);
+        _hiddenDuringScroll.Add(sepWidths);
 
         var actionGroup = CreateGroup(out var actions);
         _undoButton = AddIcon(actions, ToolIcons.Undo, Properties.Resources.tip_undo);
         _undoButton.IsEnabled = false;
         _undoButton.Opacity = 0.38;
         _undoButton.Click += (sender, e) => UndoClicked?.Invoke(this, EventArgs.Empty);
+        _hiddenDuringScroll.Add(_undoButton);
 
         _redoButton = AddIcon(actions, ToolIcons.Redo, Properties.Resources.tip_redo);
         _redoButton.IsEnabled = false;
         _redoButton.Opacity = 0.38;
         _redoButton.Click += (sender, e) => RedoClicked?.Invoke(this, EventArgs.Empty);
+        _hiddenDuringScroll.Add(_redoButton);
 
-        AddIcon(actions, ToolIcons.Ocr, Properties.Resources.tip_ocr).Click += (sender, e) => ExtractTextClicked?.Invoke(this, EventArgs.Empty);
-        AddIcon(actions, ToolIcons.Translate, Properties.Resources.tip_translate).Click += (sender, e) => TranslateImageClicked?.Invoke(this, EventArgs.Empty);
-        AddIcon(actions, ToolIcons.Pin, Properties.Resources.tip_pin).Click += (sender, e) => PinClicked?.Invoke(this, EventArgs.Empty);
+        var ocrBtn = AddIcon(actions, ToolIcons.Ocr, Properties.Resources.tip_ocr);
+        ocrBtn.Click += (sender, e) => ExtractTextClicked?.Invoke(this, EventArgs.Empty);
+        _hiddenDuringScroll.Add(ocrBtn);
+        var trBtn = AddIcon(actions, ToolIcons.Translate, Properties.Resources.tip_translate);
+        trBtn.Click += (sender, e) => TranslateImageClicked?.Invoke(this, EventArgs.Empty);
+        _hiddenDuringScroll.Add(trBtn);
+        var pinBtn = AddIcon(actions, ToolIcons.Pin, Properties.Resources.tip_pin);
+        pinBtn.Click += (sender, e) => PinClicked?.Invoke(this, EventArgs.Empty);
+        _hiddenDuringScroll.Add(pinBtn);
 
+        _tipSaveDefault = Properties.Resources.tip_save;
         if (ShowSaveButton)
         {
-            AddIcon(actions, ToolIcons.Save, Properties.Resources.tip_save).Click += (sender, e) => SaveClicked?.Invoke(this, EventArgs.Empty);
+            _saveButton = AddIcon(actions, ToolIcons.Save, _tipSaveDefault);
+            _saveButton.Click += (sender, e) => SaveClicked?.Invoke(this, EventArgs.Empty);
+        }
+        else
+        {
+            _saveButton = null;
         }
 
-        AddIcon(actions, ToolIcons.Cancel, Properties.Resources.tip_cancel).Click += (sender, e) => CancelClicked?.Invoke(this, EventArgs.Empty);
+        _tipCancelDefault = Properties.Resources.tip_cancel;
+        _cancelButton = AddIcon(actions, ToolIcons.Cancel, _tipCancelDefault);
+        _cancelButton.Click += (sender, e) => CancelClicked?.Invoke(this, EventArgs.Empty);
 
-        var done = AddIcon(actions, ToolIcons.Done, Properties.Resources.tip_done);
-        done.IsAccent = true;
-        done.Click += (sender, e) => ConfirmClicked?.Invoke(this, EventArgs.Empty);
+        _tipDoneDefault = Properties.Resources.tip_done;
+        _confirmButton = AddIcon(actions, ToolIcons.Done, _tipDoneDefault);
+        _confirmButton.IsAccent = true;
+        _confirmButton.Click += (sender, e) => ConfirmClicked?.Invoke(this, EventArgs.Empty);
         root.Children.Add(actionGroup);
+
+        if (EnableScrollCapture)
+        {
+            var sepScroll = Separator();
+            root.Children.Add(sepScroll);
+
+            var scrollGroup = CreateGroup(out var scrollActions);
+            _scrollButton = AddIcon(scrollActions, ToolIcons.ScrollCapture, Properties.Resources.tip_scroll);
+            _scrollButton.Click += (sender, e) => ScrollCaptureClicked?.Invoke(this, EventArgs.Empty);
+            root.Children.Add(scrollGroup);
+        }
+        else
+        {
+            _scrollButton = null;
+        }
 
         UpdateActiveTool();
         UpdateColorChips();
@@ -129,6 +179,8 @@ public sealed class SnipToolbar : Border
 
     public event EventHandler ConfirmClicked;
 
+    public event EventHandler ScrollCaptureClicked;
+
     public event EventHandler<Color> ColorChanged;
 
     public event EventHandler<double> StrokeWidthChanged;
@@ -136,6 +188,8 @@ public sealed class SnipToolbar : Border
     public string ActiveTool { get; private set; }
 
     public bool ShowSaveButton { get; }
+
+    public bool EnableScrollCapture { get; }
 
     public Color CurrentStroke { get; private set; }
 
@@ -159,6 +213,42 @@ public sealed class SnipToolbar : Border
         ActiveTool = id;
         UpdateActiveTool();
         ToolChanged?.Invoke(this, id);
+    }
+
+    /// <summary>Hide annotation tools while scroll capture is running; toggle scroll tip.</summary>
+    public void SetScrollCaptureActive(bool active)
+    {
+        foreach (var c in _hiddenDuringScroll)
+        {
+            c.Visibility = active ? Visibility.Collapsed : Visibility.Visible;
+        }
+
+        if (_scrollButton != null)
+        {
+            _scrollButton.IsActive = active;
+            _scrollButton.ToolTip = active
+                ? Properties.Resources.tip_scroll_stop
+                : Properties.Resources.tip_scroll;
+        }
+
+        if (active)
+        {
+            _cancelButton.ToolTip = Properties.Resources.tip_scroll_cancel;
+            _confirmButton.ToolTip = Properties.Resources.tip_scroll_done;
+            if (_saveButton != null)
+            {
+                _saveButton.ToolTip = Properties.Resources.tip_scroll_save;
+            }
+        }
+        else
+        {
+            _cancelButton.ToolTip = _tipCancelDefault;
+            _confirmButton.ToolTip = _tipDoneDefault;
+            if (_saveButton != null)
+            {
+                _saveButton.ToolTip = _tipSaveDefault;
+            }
+        }
     }
 
     private static Border CreateGroup(out StackPanel inner)
