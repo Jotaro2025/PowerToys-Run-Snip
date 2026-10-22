@@ -15,11 +15,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
 /// WeChat-style v1 image translate rendering: sample background near each OCR
-/// box, fill a rectangle to cover the original text, pick a contrasting text
-/// color, and draw the translation with an adaptive font size.
+/// region, cover the original text (axis-aligned box or corner quad), pick a
+/// contrasting text color, and draw the translation with an adaptive font size.
+/// Quad path uses a pure WPF affine transform — no OpenCV.
 /// </summary>
 public static class ImageTranslateRenderer
 {
+    private const double MinQuadArea = 8.0;
+    private const double MinEdgeLength = 2.0;
+
     private static readonly Typeface Typeface = new Typeface(
         new FontFamily("Microsoft YaHei UI, Segoe UI, Arial"),
         FontStyles.Normal,
@@ -74,30 +78,14 @@ public static class ImageTranslateRenderer
                         continue;
                     }
 
-                    var box = Clamp(lines[i].Box, width, height);
-                    if (box.Width < 2 || box.Height < 2)
+                    if (TryGetUsableQuad(lines[i], width, height, out var quad, out double localW, out double localH))
                     {
-                        continue;
+                        DrawQuad(dc, pixels, stride, width, height, quad, localW, localH, text);
                     }
-
-                    var bg = SampleBackground(pixels, stride, width, height, box);
-                    var fg = ContrastingText(bg);
-                    dc.DrawRectangle(new SolidColorBrush(bg), null, box);
-
-                    var fontSize = FitFontSize(text, box.Width - 2, box.Height - 2);
-                    var ft = new FormattedText(
-                        text,
-                        CultureInfo.CurrentUICulture,
-                        FlowDirection.LeftToRight,
-                        Typeface,
-                        fontSize,
-                        new SolidColorBrush(fg),
-                        1.0);
-
-                    // Center vertically within the box; slight left padding.
-                    double x = box.X + 1;
-                    double y = box.Y + Math.Max(0, (box.Height - ft.Height) / 2);
-                    dc.DrawText(ft, new Point(x, y));
+                    else
+                    {
+                        DrawAxisAligned(dc, pixels, stride, width, height, lines[i].Box, text);
+                    }
                 }
             }
 
@@ -112,6 +100,222 @@ public static class ImageTranslateRenderer
         }
     }
 
+    private static void DrawAxisAligned(
+        DrawingContext dc,
+        byte[] pixels,
+        int stride,
+        int width,
+        int height,
+        Rect rawBox,
+        string text)
+    {
+        var box = Clamp(rawBox, width, height);
+        if (box.Width < 2 || box.Height < 2)
+        {
+            return;
+        }
+
+        var bg = SampleBackground(pixels, stride, width, height, box);
+        var fg = ContrastingText(bg);
+        dc.DrawRectangle(new SolidColorBrush(bg), null, box);
+
+        var fontSize = FitFontSize(text, box.Width - 2, box.Height - 2);
+        var ft = new FormattedText(
+            text,
+            CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight,
+            Typeface,
+            fontSize,
+            new SolidColorBrush(fg),
+            1.0);
+
+        double x = box.X + 1;
+        double y = box.Y + Math.Max(0, (box.Height - ft.Height) / 2);
+        dc.DrawText(ft, new Point(x, y));
+    }
+
+    private static void DrawQuad(
+        DrawingContext dc,
+        byte[] pixels,
+        int stride,
+        int width,
+        int height,
+        Point[] quad,
+        double localW,
+        double localH,
+        string text)
+    {
+        var bounds = BoundsOf(quad);
+        bounds = Clamp(bounds, width, height);
+        var bg = SampleBackground(pixels, stride, width, height, bounds);
+        var fg = ContrastingText(bg);
+
+        var matrix = CreateAffineFromQuad(quad, localW, localH);
+        dc.PushTransform(new MatrixTransform(matrix));
+        try
+        {
+            dc.DrawRectangle(new SolidColorBrush(bg), null, new Rect(0, 0, localW, localH));
+
+            var fontSize = FitFontSize(text, localW - 2, localH - 2);
+            var ft = new FormattedText(
+                text,
+                CultureInfo.CurrentUICulture,
+                FlowDirection.LeftToRight,
+                Typeface,
+                fontSize,
+                new SolidColorBrush(fg),
+                1.0);
+
+            double x = 1;
+            double y = Math.Max(0, (localH - ft.Height) / 2);
+            dc.DrawText(ft, new Point(x, y));
+        }
+        finally
+        {
+            dc.Pop();
+        }
+    }
+
+    /// <summary>
+    /// Returns true when <paramref name="line"/> has a usable 4-corner quad after clamping.
+    /// </summary>
+    internal static bool TryGetUsableQuad(
+        OcrTextLine line,
+        int imageWidth,
+        int imageHeight,
+        out Point[] quad,
+        out double localWidth,
+        out double localHeight)
+    {
+        quad = null;
+        localWidth = 0;
+        localHeight = 0;
+        if (line?.Corners == null || line.Corners.Count < 4)
+        {
+            return false;
+        }
+
+        var pts = new Point[4];
+        for (int i = 0; i < 4; i++)
+        {
+            var p = line.Corners[i];
+            if (double.IsNaN(p.X) || double.IsNaN(p.Y) || double.IsInfinity(p.X) || double.IsInfinity(p.Y))
+            {
+                return false;
+            }
+
+            pts[i] = new Point(
+                Math.Clamp(p.X, 0, imageWidth),
+                Math.Clamp(p.Y, 0, imageHeight));
+        }
+
+        if (!IsUsableQuad(pts, out localWidth, out localHeight))
+        {
+            return false;
+        }
+
+        quad = pts;
+        return true;
+    }
+
+    /// <summary>
+    /// True when four corners form a non-degenerate quad (enough area / edge length).
+    /// Assumes order TL → TR → BR → BL.
+    /// </summary>
+    internal static bool IsUsableQuad(IReadOnlyList<Point> corners, out double localWidth, out double localHeight)
+    {
+        localWidth = 0;
+        localHeight = 0;
+        if (corners == null || corners.Count < 4)
+        {
+            return false;
+        }
+
+        double area = Math.Abs(Shoelace(corners));
+        if (area < MinQuadArea)
+        {
+            return false;
+        }
+
+        localWidth = Distance(corners[0], corners[1]);
+        localHeight = Distance(corners[0], corners[3]);
+        if (localWidth < MinEdgeLength || localHeight < MinEdgeLength)
+        {
+            // Try the other pair of adjacent edges (TR→BR, TL→BL already tried height).
+            double w2 = Distance(corners[3], corners[2]);
+            double h2 = Distance(corners[1], corners[2]);
+            localWidth = Math.Max(localWidth, w2);
+            localHeight = Math.Max(localHeight, h2);
+        }
+
+        return localWidth >= MinEdgeLength && localHeight >= MinEdgeLength;
+    }
+
+    /// <summary>
+    /// Affine matrix mapping local rectangle (0,0)-(w,h) onto quad corners TL/TR/BL
+    /// (indices 0, 1, 3). BR is not independently constrained (affine).
+    /// </summary>
+    internal static Matrix CreateAffineFromQuad(IReadOnlyList<Point> quad, double localWidth, double localHeight)
+    {
+        ArgumentNullException.ThrowIfNull(quad);
+        if (quad.Count < 4)
+        {
+            throw new ArgumentException("Quad needs 4 corners.", nameof(quad));
+        }
+
+        if (localWidth < MinEdgeLength || localHeight < MinEdgeLength)
+        {
+            throw new ArgumentException("Local size is degenerate.");
+        }
+
+        Point tl = quad[0];
+        Point tr = quad[1];
+        Point bl = quad[3];
+
+        // (0,0)->TL, (w,0)->TR, (0,h)->BL
+        double a = (tr.X - tl.X) / localWidth;
+        double d = (tr.Y - tl.Y) / localWidth;
+        double b = (bl.X - tl.X) / localHeight;
+        double e = (bl.Y - tl.Y) / localHeight;
+        double c = tl.X;
+        double f = tl.Y;
+        return new Matrix(a, d, b, e, c, f);
+    }
+
+    private static double Shoelace(IReadOnlyList<Point> pts)
+    {
+        double sum = 0;
+        for (int i = 0; i < 4; i++)
+        {
+            var a = pts[i];
+            var b = pts[(i + 1) % 4];
+            sum += (a.X * b.Y) - (b.X * a.Y);
+        }
+
+        return sum / 2.0;
+    }
+
+    private static double Distance(Point a, Point b)
+    {
+        double dx = a.X - b.X;
+        double dy = a.Y - b.Y;
+        return Math.Sqrt((dx * dx) + (dy * dy));
+    }
+
+    private static Rect BoundsOf(IReadOnlyList<Point> pts)
+    {
+        double minX = pts[0].X, maxX = pts[0].X, minY = pts[0].Y, maxY = pts[0].Y;
+        for (int i = 1; i < pts.Count; i++)
+        {
+            minX = Math.Min(minX, pts[i].X);
+            maxX = Math.Max(maxX, pts[i].X);
+            minY = Math.Min(minY, pts[i].Y);
+            maxY = Math.Max(maxY, pts[i].Y);
+        }
+
+        return new Rect(minX, minY, maxX - minX, maxY - minY);
+    }
+
     private static Rect Clamp(Rect box, int width, int height)
     {
         double x = Math.Clamp(box.X, 0, width);
@@ -123,7 +327,6 @@ public static class ImageTranslateRenderer
 
     private static Color SampleBackground(byte[] pixels, int stride, int width, int height, Rect box)
     {
-        // Sample a few pixels just outside the box (and a couple inside as fallback).
         long sumB = 0, sumG = 0, sumR = 0;
         int count = 0;
 
@@ -176,7 +379,6 @@ public static class ImageTranslateRenderer
 
     private static Color ContrastingText(Color bg)
     {
-        // Relative luminance (sRGB approx).
         double luminance = ((0.2126 * bg.R) + (0.7152 * bg.G) + (0.0722 * bg.B)) / 255.0;
         return luminance > 0.55 ? Colors.Black : Colors.White;
     }

@@ -31,6 +31,9 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
     private HunyuanDenseModel _model;
     private bool _disposed;
 
+    /// <summary>Raised once when the GGUF is about to be loaded (first inference).</summary>
+    public event EventHandler ModelLoading;
+
     public HyMT2SharpTranslator(string ggufPath, HyMtBackendKind backendKind)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(ggufPath);
@@ -101,6 +104,7 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 
             try
             {
+                ModelLoading?.Invoke(this, EventArgs.Empty);
                 IComputeBackend backend = CreateBackend(_backendKind);
                 _model = new HunyuanDenseModel(_ggufPath, backend: backend);
             }

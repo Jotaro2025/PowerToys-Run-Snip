@@ -221,6 +221,9 @@
   <data name="tr_busy_render" xml:space="preserve">
     <value>Rendering translated image…</value>
   </data>
+  <data name="tr_busy_loading_model" xml:space="preserve">
+    <value>Loading model…</value>
+  </data>
   <data name="tr_copy_all" xml:space="preserve">
     <value>Copy all</value>
   </data>

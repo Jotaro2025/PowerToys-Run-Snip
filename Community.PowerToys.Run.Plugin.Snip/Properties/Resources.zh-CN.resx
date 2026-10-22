@@ -221,6 +221,9 @@
   <data name="tr_busy_render" xml:space="preserve">
     <value>正在生成翻译图片…</value>
   </data>
+  <data name="tr_busy_loading_model" xml:space="preserve">
+    <value>正在加载模型…</value>
+  </data>
   <data name="tr_copy_all" xml:space="preserve">
     <value>全部复制</value>
   </data>
