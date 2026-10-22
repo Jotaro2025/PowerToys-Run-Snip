@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
-# Build the Snip PowerToys Run plugin (Release) and zip it for distribution.
+# Build the Snip PowerToys Run plugin (Release) and zip slim + full packages.
 # Works on Windows (Git Bash) and on Linux with -p:EnableWindowsTargeting=true.
+#
+# Outputs (under artifacts/):
+#   Snip-<ver>-slim.zip  — no wco_data (~61 MB saved); OCR downloads on first use
+#   Snip-<ver>-full.zip  — includes wco_data (offline OCR)
+#   Snip-<ver>.zip       — alias of slim (default / recommended)
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
@@ -64,13 +69,16 @@ assert_exists() {
   echo "  OK  $rel"
 }
 
-echo "==> Self-check"
+echo "==> Self-check (common)"
 assert_exists "plugin.json"
 assert_exists "Community.PowerToys.Run.Plugin.Snip.dll"
 assert_exists "Images/Snip.dark.png"
 assert_exists "Images/Snip.light.png"
 assert_exists "WeChatOcr.dll"
 assert_exists "Sdcb.HyMT2Sharp.dll"
+assert_exists "zh-CN/Community.PowerToys.Run.Plugin.Snip.resources.dll"
+
+# Build output still contains wco_data (NuGet content); full zip keeps it, slim strips it.
 assert_exists "wco_data"
 assert_exists "wco_data/WeChatOCR.exe"
 WCO_COUNT="$(find "$STAGE_PLUGIN/wco_data" -type f | wc -l | tr -d ' ')"
@@ -78,8 +86,7 @@ if [[ "$WCO_COUNT" -lt 3 ]]; then
   echo "Self-check failed: wco_data looks incomplete ($WCO_COUNT files)" >&2
   exit 1
 fi
-echo "  OK  wco_data ($WCO_COUNT files)"
-assert_exists "zh-CN/Community.PowerToys.Run.Plugin.Snip.resources.dll"
+echo "  OK  wco_data ($WCO_COUNT files) — will ship in full zip only"
 
 python3 - "$STAGE_PLUGIN/plugin.json" "$VERSION" <<'PY'
 import json, sys
@@ -96,18 +103,17 @@ print(f"  OK  plugin.json Author={author} Version={version}")
 PY
 
 mkdir -p "$OUTPUT_DIR"
-ZIP_PATH="$OUTPUT_DIR/Snip-$VERSION.zip"
-rm -f "$ZIP_PATH"
 
-echo "==> Zipping $ZIP_PATH"
-# zip so the archive root contains Snip/
-(
-  cd "$STAGE_ROOT"
-  if command -v zip >/dev/null 2>&1; then
-    zip -qr "$ZIP_PATH" Snip
-  else
-    python3 - "$ZIP_PATH" <<'PY'
-import sys, zipfile, os
+zip_plugin() {
+  local zip_path="$1"
+  rm -f "$zip_path"
+  (
+    cd "$STAGE_ROOT"
+    if command -v zip >/dev/null 2>&1; then
+      zip -qr "$zip_path" Snip
+    else
+      python3 - "$zip_path" <<'PY'
+import sys, zipfile
 from pathlib import Path
 zip_path = Path(sys.argv[1])
 root = Path("Snip")
@@ -117,10 +123,37 @@ with zipfile.ZipFile(zip_path, "w", zipfile.ZIP_DEFLATED) as zf:
             zf.write(p, p.as_posix())
 print("zipped via python")
 PY
-  fi
-)
+    fi
+  )
+  local size
+  size="$(python3 -c "import os; print(round(os.path.getsize(r'''$zip_path''')/1024/1024, 1))")"
+  echo "  -> $zip_path (${size} MB)"
+}
 
-SIZE="$(python3 -c "import os; print(round(os.path.getsize(r'''$ZIP_PATH''')/1024/1024, 1))")"
-echo "==> Done: $ZIP_PATH (${SIZE} MB)"
+FULL_ZIP="$OUTPUT_DIR/Snip-$VERSION-full.zip"
+SLIM_ZIP="$OUTPUT_DIR/Snip-$VERSION-slim.zip"
+DEFAULT_ZIP="$OUTPUT_DIR/Snip-$VERSION.zip"
+
+echo "==> Zipping FULL (with wco_data)"
+zip_plugin "$FULL_ZIP"
+
+echo "==> Stripping wco_data for SLIM package"
+rm -rf "$STAGE_PLUGIN/wco_data"
+if [[ -e "$STAGE_PLUGIN/wco_data" ]]; then
+  echo "Failed to remove wco_data for slim package" >&2
+  exit 1
+fi
+echo "  OK  wco_data removed from staging"
+
+echo "==> Zipping SLIM (no wco_data; OCR on-demand)"
+zip_plugin "$SLIM_ZIP"
+
+# Default zip name = slim (recommended for most users).
+cp -f "$SLIM_ZIP" "$DEFAULT_ZIP"
+echo "  -> $DEFAULT_ZIP (copy of slim)"
+
+echo "==> Done"
+echo "  slim (default): $SLIM_ZIP  /  $DEFAULT_ZIP"
+echo "  full (offline OCR): $FULL_ZIP"
 echo "Unzip into: %LOCALAPPDATA%\\Microsoft\\PowerToys\\PowerToys Run\\Plugins\\"
 echo "Then restart PowerToys. Folder name inside the zip is Snip\\."

@@ -6,7 +6,8 @@
 
 - [ ] 已用 `scripts/pack-release.ps1`（或 `pack-release.sh`）打出 zip，并解压到  
       `%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\`
-- [ ] 已重启 PowerToys；PowerToys Run 中输入 `snip` 能看到三条命令
+- [ ] 已知所用包类型：**slim**（默认 `Snip-<ver>.zip` / `*-slim.zip`）或 **full**（`*-full.zip`）
+- [ ] 已重启 PowerToys；PowerToys Run 中输入 `snip` 能看到区域截屏一条命令
 - [ ] 插件设置里按需配置保存目录、翻译引擎
 
 ## S1 — 区域截屏基础
@@ -18,9 +19,11 @@
 
 ## OCR（文字提取）
 
+- [ ] **slim**：首次「文字提取」弹出下载确认 → 进度框能完成 → 之后识别正常；取消下载时有明确「需安装 OCR」提示
+- [ ] **full**：插件目录存在 `wco_data\WeChatOCR.exe`，无需下载即可识别
 - [ ] 工具栏「文字提取」能识别选区内文字
 - [ ] 结果窗口可编辑/复制；无文字时有提示
-- [ ] 确认插件目录存在 `wco_data\WeChatOCR.exe`（打包自检应已覆盖）
+- [ ] 仅 x64 PowerToys；非 x64 有架构提示
 
 ## 图片翻译 — HTTP
 

@@ -51,8 +51,9 @@
 
     <!--
       Text extraction (OCR). The package ships its OCR component (WeChatOCR.exe,
-      mmmojo DLLs, model files) as content files that are copied to wco_data\
-      in the output folder; the plugin runs OCR from there.
+      mmmojo DLLs, model files) as content files copied to wco_data\ on build.
+      Release pack scripts emit a slim zip without wco_data (OCR downloads on
+      first use into LocalAppData) and a full zip that keeps wco_data.
     -->
     <PackageReference Include="WeChatOcr" Version="1.0.5" />
 

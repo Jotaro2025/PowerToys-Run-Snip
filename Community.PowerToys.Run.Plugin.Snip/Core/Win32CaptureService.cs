@@ -7,7 +7,6 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Windows;
-using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Core;
@@ -102,6 +101,13 @@ public sealed class Win32CaptureService : ICaptureService
     }
 
     public WriteableBitmap CaptureScreen(ScreenInfo screen)
+        => CaptureScreenPixels(screen).ToWriteableBitmap();
+
+    /// <summary>
+    /// BitBlt + GetDIBits into a managed BGRA buffer. Safe off the UI thread —
+    /// no <see cref="WriteableBitmap"/> is created here.
+    /// </summary>
+    public CapturedFrame CaptureScreenPixels(ScreenInfo screen)
     {
         int w = (int)screen.Bounds.Width;
         int h = (int)screen.Bounds.Height;
@@ -157,41 +163,9 @@ public sealed class Win32CaptureService : ICaptureService
                 throw new InvalidOperationException("GetDIBits failed.");
             }
 
-            // 96 DPI so one pixel in the bitmap maps to one device pixel on screen.
-            var wb = new WriteableBitmap(
-                w,
-                h,
-                96,
-                96,
-                PixelFormats.Bgra32,
-                null);
-            wb.Lock();
-            try
-            {
-                unsafe
-                {
-                    byte* src = (byte*)bits.ToPointer();
-                    byte* dst = (byte*)wb.BackBuffer;
-                    int srcStride = stride;
-                    int dstStride = wb.BackBufferStride;
-                    int rowBytes = Math.Min(srcStride, dstStride);
-                    for (int y = 0; y < h; y++)
-                    {
-                        Buffer.MemoryCopy(
-                            src + ((long)y * srcStride),
-                            dst + ((long)y * dstStride),
-                            rowBytes,
-                            rowBytes);
-                    }
-                }
-            }
-            finally
-            {
-                wb.AddDirtyRect(new Int32Rect(0, 0, w, h));
-                wb.Unlock();
-            }
-
-            return wb;
+            var pixels = new byte[bufLen];
+            Marshal.Copy(bits, pixels, 0, bufLen);
+            return new CapturedFrame(pixels, w, h, stride);
         }
         finally
         {

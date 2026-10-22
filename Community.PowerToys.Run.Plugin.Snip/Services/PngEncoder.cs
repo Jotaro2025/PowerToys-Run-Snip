@@ -4,6 +4,8 @@
 
 using System;
 using System.IO;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Media.Imaging;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
@@ -23,5 +25,28 @@ public static class PngEncoder
         using var ms = new MemoryStream();
         encoder.Save(ms);
         return ms.ToArray();
+    }
+
+    /// <summary>
+    /// Freezes a snapshot on the calling (UI) thread, then PNG-encodes on the
+    /// thread pool so large captures do not stall the STA dispatcher.
+    /// </summary>
+    public static Task<byte[]> EncodeAsync(BitmapSource bitmap, CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+
+        // Snapshot must happen on the bitmap's dispatcher thread (normally UI).
+        BitmapSource frozen;
+        if (bitmap.IsFrozen)
+        {
+            frozen = bitmap;
+        }
+        else
+        {
+            frozen = bitmap.Clone();
+            frozen.Freeze();
+        }
+
+        return Task.Run(() => Encode(frozen), cancellationToken);
     }
 }

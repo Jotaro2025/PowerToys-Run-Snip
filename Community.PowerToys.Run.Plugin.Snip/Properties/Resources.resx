@@ -72,25 +72,13 @@
     <value>Snip</value>
   </data>
   <data name="plugin_description" xml:space="preserve">
-    <value>Capture a region or the full screen with annotations</value>
+    <value>Capture a region with annotations</value>
   </data>
   <data name="cmd_region_title" xml:space="preserve">
     <value>Region snip</value>
   </data>
   <data name="cmd_region_subtitle" xml:space="preserve">
     <value>Drag to select an area, annotate it, then copy or save</value>
-  </data>
-  <data name="cmd_full_clipboard_title" xml:space="preserve">
-    <value>Full screen to clipboard</value>
-  </data>
-  <data name="cmd_full_clipboard_subtitle" xml:space="preserve">
-    <value>Capture the screen under the cursor and copy it to the clipboard</value>
-  </data>
-  <data name="cmd_full_save_title" xml:space="preserve">
-    <value>Full screen and save</value>
-  </data>
-  <data name="cmd_full_save_subtitle" xml:space="preserve">
-    <value>Capture the screen under the cursor and save it as a PNG file</value>
   </data>
   <data name="opt_save_dir_label" xml:space="preserve">
     <value>Save directory</value>
@@ -115,12 +103,6 @@
   </data>
   <data name="msg_saved" xml:space="preserve">
     <value>Screenshot saved</value>
-  </data>
-  <data name="msg_full_copied" xml:space="preserve">
-    <value>Full screen copied to clipboard</value>
-  </data>
-  <data name="msg_full_saved" xml:space="preserve">
-    <value>Full screen saved</value>
   </data>
   <data name="msg_failed" xml:space="preserve">
     <value>Screenshot failed</value>
@@ -207,7 +189,7 @@
     <value>Text extraction failed:</value>
   </data>
   <data name="ocr_err_component_missing" xml:space="preserve">
-    <value>The bundled OCR component is incomplete; reinstall the plugin. Missing file:</value>
+    <value>OCR component incomplete. Use the full package, or download OCR assets on first use. Missing file:</value>
   </data>
   <data name="tip_translate" xml:space="preserve">
     <value>Image translate</value>
@@ -430,5 +412,44 @@
   </data>
   <data name="tr_err_download_all_sources" xml:space="preserve">
     <value>Download failed from all sources (ModelScope / hf-mirror / Hugging Face). Please check your network or try ModelScope (魔搭) manually.</value>
+  </data>
+  <data name="ocr_err_need_install" xml:space="preserve">
+    <value>OCR assets are not installed. Use Snip-*-full.zip, or allow the download (~61 MB) when prompted. Study-only WeChat OCR component (x64).</value>
+  </data>
+  <data name="ocr_download_title" xml:space="preserve">
+    <value>Download OCR component</value>
+  </data>
+  <data name="ocr_download_body" xml:space="preserve">
+    <value>Downloading the WeChatOcr package (~61 MB) and extracting wco_data into LocalAppData. Study / research use only — not for commercial products without your own compliance review.</value>
+  </data>
+  <data name="ocr_download_prompt" xml:space="preserve">
+    <value>Text extraction needs the OCR component (~61 MB, x64). This slim install does not include it. Download from NuGet (nuget.org / Azure China CDN) now?</value>
+  </data>
+  <data name="ocr_download_starting" xml:space="preserve">
+    <value>Starting OCR download…</value>
+  </data>
+  <data name="ocr_download_progress" xml:space="preserve">
+    <value>[{2}] Downloaded {0} MB / {1} MB</value>
+  </data>
+  <data name="ocr_download_progress_unknown" xml:space="preserve">
+    <value>[{1}] Downloaded {0} MB…</value>
+  </data>
+  <data name="ocr_download_extracting" xml:space="preserve">
+    <value>[{0}] Extracting OCR assets…</value>
+  </data>
+  <data name="ocr_download_done" xml:space="preserve">
+    <value>OCR component ready.</value>
+  </data>
+  <data name="ocr_download_cancel" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
+  <data name="ocr_err_download_network" xml:space="preserve">
+    <value>OCR download failed (network error):</value>
+  </data>
+  <data name="ocr_err_download_cancelled" xml:space="preserve">
+    <value>OCR download cancelled.</value>
+  </data>
+  <data name="ocr_err_download_all_sources" xml:space="preserve">
+    <value>OCR download failed from all sources (nuget.org / Azure China CDN). Check the network, or install Snip-*-full.zip.</value>
   </data>
 </root>
