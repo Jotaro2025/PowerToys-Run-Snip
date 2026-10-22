@@ -34,10 +34,7 @@ internal static partial class TranslatorBatch
     public static string BuildNumberedPrompt(string targetLanguage, IReadOnlyList<string> lines)
     {
         ArgumentNullException.ThrowIfNull(lines);
-        if (string.IsNullOrWhiteSpace(targetLanguage))
-        {
-            throw new ArgumentException("Target language is required.", nameof(targetLanguage));
-        }
+        ArgumentException.ThrowIfNullOrWhiteSpace(targetLanguage);
 
         if (lines.Count == 0)
         {
