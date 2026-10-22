@@ -889,8 +889,9 @@ public sealed class SnipWindow : Window
         {
             return new WindowInteropHelper(this).Handle;
         }
-        catch
+        catch (Exception ex)
         {
+            Log.Exception($"SnipWindow TryGetHwnd failed: {ex.Message}", ex, GetType());
             return IntPtr.Zero;
         }
     }
@@ -905,9 +906,10 @@ public sealed class SnipWindow : Window
         {
             _scrollController?.Cancel();
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore
+            // Best-effort; keep going with teardown.
+            Log.Exception($"SnipWindow scroll cancel failed: {ex.Message}", ex, GetType());
         }
 
         _scrollController = null;
@@ -1469,9 +1471,10 @@ public sealed class SnipWindow : Window
         {
             _scrollController?.Cancel();
         }
-        catch
+        catch (Exception ex)
         {
-            // ignore
+            // Best-effort; keep going with teardown.
+            Log.Exception($"SnipWindow scroll cancel failed: {ex.Message}", ex, GetType());
         }
 
         _scrollController = null;

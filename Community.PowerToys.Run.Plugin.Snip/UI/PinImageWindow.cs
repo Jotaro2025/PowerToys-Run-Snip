@@ -11,6 +11,7 @@ using System.Windows.Media.Imaging;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
 using Community.PowerToys.Run.Plugin.Snip.Services;
+using Wox.Plugin.Logger;
 
 namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
@@ -97,9 +98,10 @@ public sealed class PinImageWindow : Window
                 cursorY = pt.Y / dpi;
             }
         }
-        catch (Exception)
+        catch (Exception ex)
         {
             // Fall back to primary work area / center.
+            Log.Exception($"Pin window placement probe failed: {ex.Message}", ex, GetType());
         }
 
         double left = cursorX + 12;
