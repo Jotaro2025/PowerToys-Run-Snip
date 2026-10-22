@@ -127,7 +127,7 @@ public static class SnipController
         {
             if (settings.CopyAfterCapture)
             {
-                TryCopy(result.Result);
+                TryCopy(result.Result, result.PngBytes);
             }
 
             notify(Properties.Resources.msg_saved, result.SavedPath);
@@ -137,7 +137,7 @@ public static class SnipController
         // Confirmed: apply the user's clipboard / auto-save preferences.
         if (settings.CopyAfterCapture)
         {
-            TryCopy(result.Result);
+            TryCopy(result.Result, result.PngBytes);
         }
 
         if (settings.AutoSaveAfterCapture)
@@ -162,7 +162,7 @@ public static class SnipController
         }
     }
 
-    private static void TryCopy(System.Windows.Media.Imaging.BitmapSource bitmap)
+    private static void TryCopy(System.Windows.Media.Imaging.BitmapSource bitmap, byte[] pngBytes = null)
     {
         if (bitmap == null)
         {
@@ -171,7 +171,7 @@ public static class SnipController
 
         try
         {
-            ClipboardService.CopyBitmap(bitmap);
+            ClipboardService.CopyBitmap(bitmap, pngBytes);
         }
         catch (Exception ex)
         {

@@ -104,8 +104,10 @@ public sealed class Win32CaptureService : ICaptureService
         => CaptureScreenPixels(screen).ToWriteableBitmap();
 
     /// <summary>
-    /// BitBlt + GetDIBits into a managed BGRA buffer. Safe off the UI thread —
+    /// BitBlt into a top-down BGRA <c>CreateDIBSection</c>, then one copy into a
+    /// managed <see cref="CapturedFrame"/> buffer. Safe off the UI thread —
     /// no <see cref="WriteableBitmap"/> is created here.
+    /// Avoids the old AllocHGlobal + Marshal.Copy staging buffer (2–3× peak).
     /// </summary>
     public CapturedFrame CaptureScreenPixels(ScreenInfo screen)
     {
@@ -123,65 +125,58 @@ public sealed class Win32CaptureService : ICaptureService
         }
 
         IntPtr memDc = IntPtr.Zero;
-        IntPtr bmp = IntPtr.Zero;
+        IntPtr dib = IntPtr.Zero;
         IntPtr old = IntPtr.Zero;
-        IntPtr bits = IntPtr.Zero;
         try
         {
             memDc = Win32.CreateCompatibleDC(screenDc);
-            bmp = Win32.CreateCompatibleBitmap(screenDc, w, h);
-            old = Win32.SelectObject(memDc, bmp);
+            if (memDc == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("CreateCompatibleDC failed.");
+            }
 
-            if (!Win32.BitBlt(memDc, 0, 0, w, h, screenDc, (int)screen.Bounds.X, (int)screen.Bounds.Y, Win32.SrcCopy | (int)Win32.CaptureBlt))
+            // Top-down 32bpp DIB: BitBlt writes final pixels here (no GetDIBits
+            // into a second native buffer). Bounds are physical pixels (per-monitor DPI).
+            var bmi = CaptureBuffers.CreateTopDownBgraInfo(w, h);
+            dib = Win32.CreateDIBSection(screenDc, ref bmi, Win32.DibRgbColors, out IntPtr bits, IntPtr.Zero, 0);
+            if (dib == IntPtr.Zero || bits == IntPtr.Zero)
+            {
+                throw new InvalidOperationException("CreateDIBSection failed.");
+            }
+
+            old = Win32.SelectObject(memDc, dib);
+            if (!Win32.BitBlt(
+                    memDc,
+                    0,
+                    0,
+                    w,
+                    h,
+                    screenDc,
+                    (int)screen.Bounds.X,
+                    (int)screen.Bounds.Y,
+                    Win32.SrcCopy | (int)Win32.CaptureBlt))
             {
                 throw new InvalidOperationException("BitBlt failed.");
             }
 
-            // GetDIBits requires positive biHeight for bottom-up bitmaps; a negative
-            // biHeight gives us a top-down BGRA buffer, which is what WPF's
-            // Bgra32 WriteableBitmap expects.
-            var bmi = new Win32.BITMAPINFO
-            {
-                BmiHeader = new Win32.BITMAPINFOHEADER
-                {
-                    BiSize = (uint)Marshal.SizeOf<Win32.BITMAPINFOHEADER>(),
-                    BiWidth = w,
-                    BiHeight = -h,
-                    BiPlanes = 1,
-                    BiBitCount = 32,
-                    BiCompression = Win32.BiRgb,
-                },
-            };
-
-            int stride = w * 4;
-            int bufLen = stride * h;
-            bits = Marshal.AllocHGlobal(bufLen);
-
-            int lines = Win32.GetDIBits(memDc, bmp, 0, (uint)h, bits, ref bmi, Win32.DibRgbColors);
-            if (lines == 0)
-            {
-                throw new InvalidOperationException("GetDIBits failed.");
-            }
-
+            int stride = CaptureBuffers.BgraStride(w);
+            int bufLen = CaptureBuffers.BgraByteCount(w, h);
             var pixels = new byte[bufLen];
+
+            // Single copy: DIB bits → managed CapturedFrame (thread-pool safe for #16).
             Marshal.Copy(bits, pixels, 0, bufLen);
             return new CapturedFrame(pixels, w, h, stride);
         }
         finally
         {
-            if (bits != IntPtr.Zero)
-            {
-                Marshal.FreeHGlobal(bits);
-            }
-
             if (old != IntPtr.Zero && memDc != IntPtr.Zero)
             {
                 Win32.SelectObject(memDc, old);
             }
 
-            if (bmp != IntPtr.Zero)
+            if (dib != IntPtr.Zero)
             {
-                Win32.DeleteObject(bmp);
+                Win32.DeleteObject(dib);
             }
 
             if (memDc != IntPtr.Zero)
