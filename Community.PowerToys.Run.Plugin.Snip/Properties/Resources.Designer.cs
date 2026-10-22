@@ -548,6 +548,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("ocr_err_download_all_sources", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to OCR package from {0} failed the SHA-256 check (got {1}, expected {2}); the download was discarded..
+        /// </summary>
+        public static string ocr_err_download_sha_mismatch {
+            get {
+                return ResourceManager.GetString("ocr_err_download_sha_mismatch", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to Image translate.
         /// </summary>

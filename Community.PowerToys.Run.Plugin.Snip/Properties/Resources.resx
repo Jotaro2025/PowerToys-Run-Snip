@@ -455,6 +455,9 @@
   <data name="ocr_err_download_all_sources" xml:space="preserve">
     <value>OCR download failed from all sources (nuget.org / Azure China CDN). Check the network, or install Snip-*-full.zip.</value>
   </data>
+  <data name="ocr_err_download_sha_mismatch" xml:space="preserve">
+    <value>OCR package from {0} failed the SHA-256 check (got {1}, expected {2}); the download was discarded.</value>
+  </data>
   <data name="cmd_settings_title" xml:space="preserve">
     <value>Settings</value>
   </data>

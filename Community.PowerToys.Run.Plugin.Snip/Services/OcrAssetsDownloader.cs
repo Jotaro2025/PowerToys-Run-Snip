@@ -31,6 +31,13 @@ public static class OcrAssetsDownloader
     /// <summary>Must match PackageReference Include="WeChatOcr" Version.</summary>
     public const string PackageVersion = "1.0.5";
 
+    /// <summary>
+    /// SHA-256 of <c>wechatocr.1.0.5.nupkg</c> (lowercase hex). Computed from the nuget.org
+    /// flat-container download and identical to the local NuGet cache copy; every source must
+    /// serve these exact bytes. Update together with <see cref="PackageVersion"/>.
+    /// </summary>
+    public const string ExpectedSha256 = "21a608b07f3ad8b5a7604dc1905f3af9b443cc23c3b064d9997f599c24117c4f";
+
     /// <summary>Entries under this prefix in the nupkg become the on-disk <c>wco_data</c> tree.</summary>
     public const string NupkgContentPrefix = "content/wco_data/";
 
@@ -70,15 +77,28 @@ public static class OcrAssetsDownloader
         => EnsureDownloadedAsync(Http, DefaultCacheDirectory, progress, force, cancellationToken);
 
     /// <summary>Test / DI entry with injectable client and target directory.</summary>
+    internal static Task<(bool Ok, string Path, string Error)> EnsureDownloadedAsync(
+        HttpClient httpClient,
+        string cacheDirectory,
+        IProgress<OcrAssetsDownloadProgress> progress = null,
+        bool force = false,
+        CancellationToken cancellationToken = default)
+        => EnsureDownloadedAsync(httpClient, cacheDirectory, ExpectedSha256, DownloadSources, progress, force, cancellationToken);
+
+    /// <summary>Test entry: injectable expected hash and download sources.</summary>
     internal static async Task<(bool Ok, string Path, string Error)> EnsureDownloadedAsync(
         HttpClient httpClient,
         string cacheDirectory,
+        string expectedSha256,
+        (string Name, string Url)[] sources,
         IProgress<OcrAssetsDownloadProgress> progress = null,
         bool force = false,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(httpClient);
         ArgumentException.ThrowIfNullOrWhiteSpace(cacheDirectory);
+        ArgumentException.ThrowIfNullOrWhiteSpace(expectedSha256);
+        ArgumentNullException.ThrowIfNull(sources);
 
         if (!force)
         {
@@ -118,13 +138,14 @@ public static class OcrAssetsDownloader
             Directory.CreateDirectory(staging);
 
             Exception lastError = null;
-            foreach (var (name, url) in DownloadSources)
+            foreach (var (name, url) in sources)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 try
                 {
                     progress?.Report(new OcrAssetsDownloadProgress(0, null, done: false, phase: "download", sourceName: name));
                     await DownloadNupkgAsync(httpClient, url, nupkgPath, name, progress, cancellationToken).ConfigureAwait(false);
+                    await VerifyNupkgAsync(nupkgPath, expectedSha256, name, cancellationToken).ConfigureAwait(false);
 
                     progress?.Report(new OcrAssetsDownloadProgress(0, null, done: false, phase: "extract", sourceName: name));
                     ExtractWcoData(nupkgPath, staging);
@@ -172,6 +193,32 @@ public static class OcrAssetsDownloader
         {
             TryDeleteDirectory(staging);
             TryDeleteFile(nupkgPath);
+        }
+    }
+
+    /// <summary>
+    /// Rejects a downloaded nupkg whose SHA-256 differs from <paramref name="expectedSha256"/>
+    /// (reuses the Hy-MT2 GGUF hash helpers). Nothing is extracted from a rejected file.
+    /// </summary>
+    /// <exception cref="InvalidDataException">Hash mismatch; message is user-facing.</exception>
+    internal static async Task VerifyNupkgAsync(
+        string nupkgPath,
+        string expectedSha256,
+        string sourceName,
+        CancellationToken cancellationToken)
+    {
+        string actual = await HyMtModelDownloader.ComputeSha256HexAsync(nupkgPath, cancellationToken).ConfigureAwait(false);
+        if (!HyMtModelDownloader.HashesMatch(actual, expectedSha256))
+        {
+            Log.Warn(
+                $"Snip OCR nupkg SHA-256 mismatch from {sourceName} (got {actual}, expected {expectedSha256}); rejected.",
+                typeof(OcrAssetsDownloader));
+            throw new InvalidDataException(string.Format(
+                System.Globalization.CultureInfo.CurrentCulture,
+                System.Text.CompositeFormat.Parse(Properties.Resources.ocr_err_download_sha_mismatch),
+                sourceName,
+                actual,
+                expectedSha256));
         }
     }
 
