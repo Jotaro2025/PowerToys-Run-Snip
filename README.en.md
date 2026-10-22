@@ -47,7 +47,7 @@ UI language follows PowerToys (built-in English + Simplified Chinese).
 ## Requirements
 
 - [PowerToys](https://github.com/microsoft/PowerToys) **≥ 0.100** (.NET 10 host)
-- **x64** PowerToys (OCR components are x64-only); an ARM64 PowerToys loads the plugin and screenshot / annotate / pin work, but OCR and image translate are unavailable
+- **x64** or **ARM64** PowerToys: the WeChat OCR component is x64-only; ARM64 (or when chosen) uses the built-in **Windows OCR**, which needs an installed OCR language (see Text extraction)
 - Windows (WPF plugin)
 
 ## Install
@@ -61,7 +61,7 @@ Download the installer matching your **Windows architecture** from [Releases](ht
 | `Snip-Setup-<ver>-x64-slim.exe` | x64 | Same as the slim zip; `wco_data` downloads on first OCR | 7 MB |
 | `Snip-Setup-<ver>-x64-full.exe` | x64 | slim + bundled `wco_data` (~61 MB) for offline OCR / translate | 35 MB |
 | `Snip-Setup-<ver>-arm64-slim.exe` | ARM64 | Same as x64-slim | 7 MB |
-| `Snip-Setup-<ver>-arm64-full.exe` | ARM64 | Same as x64-full (OCR components are x64 and unavailable in an ARM64 process, see below) | 35 MB |
+| `Snip-Setup-<ver>-arm64-full.exe` | ARM64 | Same as x64-full; on ARM64 OCR uses Windows OCR and the bundled `wco_data` is unused, so slim is usually enough | 35 MB |
 
 - **Prerequisite: PowerToys ≥ 0.100 must be installed** (the first .NET 10 host; this plugin targets `net10.0-windows`). Setup checks `%LOCALAPPDATA%\PowerToys\`, `%ProgramFiles%\PowerToys\` and the Uninstall registry; if PowerToys is missing or too old it points to [PowerToys Releases](https://github.com/microsoft/PowerToys/releases) / `winget install Microsoft.PowerToys` and exits.
 - **Per-user, no admin rights (no UAC)**; installs to `%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\`.
@@ -132,7 +132,19 @@ PowerToys Settings → PowerToys Run → Snip **AdditionalOptions** still work. 
 
 ## Text extraction (OCR)
 
-Uses the [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/) NuGet package (see Acknowledgments). **WeChat app install is not required**; recognition runs locally.
+Two engines, both local; their results feed both Text extract and Image translate. Setting **OCR engine** (dedicated settings window → General / PowerToys settings page):
+
+| Option | Behavior |
+|---|---|
+| **Auto** (default) | x64 with the WeChat OCR component present (full pack or downloaded) → WeChat OCR; otherwise → Windows OCR (no download prompt) |
+| **WeChat OCR** | Always WeChat OCR; the slim pack prompts to download the component on first use |
+| **Windows OCR** | Always the built-in `Windows.Media.Ocr` |
+
+An ARM64 PowerToys always uses Windows OCR (WeChat OCR ships only x64 native code).
+
+### WeChat OCR
+
+Uses the [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/) NuGet package (see Acknowledgments). **WeChat app install is not required**.
 
 - **Slim pack (default `Snip-<ver>.zip`)**: no `wco_data`; first “Text extract” or “Image translate” prompts to download the WeChatOcr NuGet package into  
   `%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\wco_data\`
@@ -140,6 +152,14 @@ Uses the [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/) NuGet package (s
 - Managed DLLs (`WeChatOcr.dll`, etc., ~1.3 MB) ship in both packs
 - **x64 only**; missing / timeout / failed OCR shows a message in the result window
 - Closing the result window cancels in-flight recognition; a busy engine shows a wait hint
+
+### Windows OCR
+
+- Built into Windows, no download, native on x64 and ARM64; Chinese accuracy is usually below WeChat OCR, and it gives no rotated quads (translated text is drawn into axis-aligned boxes)
+- Needs an installed OCR language: Settings → Time & language → Language & region → add **Chinese (Simplified, China)** (or the language you need) and make sure its "Optical character recognition" feature is installed; or run in an elevated PowerShell  
+  `Add-WindowsCapability -Online -Name "Language.OCR~~~zh-CN~0.0.1.0"`, then restart PowerToys
+- The recognizer language follows your Windows language list (first language with OCR installed), falling back to Simplified Chinese
+- Very tall scroll captures are recognized in strips (each limited by `OcrEngine.MaxImageDimension`)
 
 ## Image translation
 

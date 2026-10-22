@@ -23,7 +23,11 @@
 - [ ] **full**：插件目录存在 `wco_data\WeChatOCR.exe`，无需下载即可识别
 - [ ] 工具栏「文字提取」能识别选区内文字
 - [ ] 结果窗口可编辑/复制；无文字时有提示
-- [ ] 仅 x64 PowerToys；非 x64 有架构提示
+- [ ] 设置「OCR 引擎」= 自动：full / 已下载时走微信 OCR；slim 未下载时直接走 Windows OCR（不弹下载）
+- [ ] 设置「OCR 引擎」= Windows OCR：文字提取与图片翻译均可用；中文语言包未装时提示添加「光学字符识别」语言的步骤
+- [ ] 设置「OCR 引擎」= 微信 OCR：slim 未下载时弹下载确认
+- [ ] ARM64 PowerToys：任何设置下都走 Windows OCR，文字提取与图片翻译可用
+- [ ] 超长滚动截图（高于 10000 px）用 Windows OCR 识别：无重复行、无明显漏行
 
 ## 图片翻译 — HTTP
 

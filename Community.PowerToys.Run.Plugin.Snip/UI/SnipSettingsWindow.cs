@@ -51,6 +51,7 @@ public sealed class SnipSettingsWindow : Window
     private TextBox _hymtCustomUrl;
     private ComboBox _hymtBackend;
     private ComboBox _uiLanguage;
+    private ComboBox _ocrEngine;
     private TabControl _tabs;
     private bool _suppressLanguageChanged;
 
@@ -213,6 +214,18 @@ public sealed class SnipSettingsWindow : Window
         _scrollMaxTiles = new TextBox { Width = 100, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
         panel.Children.Add(_scrollMaxTiles);
         panel.Children.Add(Hint(Properties.Resources.opt_scroll_maxtiles_desc));
+
+        panel.Children.Add(Label(Properties.Resources.opt_ocr_engine_label));
+        _ocrEngine = new ComboBox
+        {
+            Margin = new Thickness(0, 0, 0, 4),
+            MinHeight = 28,
+        };
+        _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_auto, Tag = OcrEngineKind.Auto });
+        _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_wechat, Tag = OcrEngineKind.WeChat });
+        _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_windows, Tag = OcrEngineKind.Windows });
+        panel.Children.Add(_ocrEngine);
+        panel.Children.Add(Hint(Properties.Resources.opt_ocr_engine_desc));
 
         return new ScrollViewer
         {
@@ -447,6 +460,7 @@ public sealed class SnipSettingsWindow : Window
             ? Properties.Resources.settings_hotkey_disabled
             : Properties.Resources.settings_hotkey_current.Replace("{0}", hotkey, StringComparison.Ordinal);
 
+        SelectOcrEngine(_draft.OcrEngine);
         SelectProvider(_draft.TranslatorProvider);
         _targetLang.Text = _draft.TargetLanguage ?? string.Empty;
         _httpUrl.Text = _draft.HttpBaseUrl ?? string.Empty;
@@ -513,6 +527,7 @@ public sealed class SnipSettingsWindow : Window
 
         _draft.HyMtIdleUnloadMinutes = Math.Clamp(idleUnload, 0, HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes);
         _draft.GlobalHotkey = HotkeyParser.Normalize(hotkeyText);
+        _draft.OcrEngine = SelectedOcrEngine();
         _draft.TranslatorProvider = SelectedProvider();
         _draft.TargetLanguage = string.IsNullOrWhiteSpace(_targetLang.Text) ? "简体中文" : _targetLang.Text.Trim();
         var uiLang = SelectedUiLanguage();
@@ -642,6 +657,22 @@ public sealed class SnipSettingsWindow : Window
             ? Visibility.Visible
             : Visibility.Collapsed;
     }
+
+    private void SelectOcrEngine(OcrEngineKind engine)
+    {
+        _ocrEngine.SelectedIndex = 0;
+        for (var i = 0; i < _ocrEngine.Items.Count; i++)
+        {
+            if (_ocrEngine.Items[i] is ComboBoxItem item && item.Tag is OcrEngineKind k && k == engine)
+            {
+                _ocrEngine.SelectedIndex = i;
+                return;
+            }
+        }
+    }
+
+    private OcrEngineKind SelectedOcrEngine()
+        => _ocrEngine?.SelectedItem is ComboBoxItem item && item.Tag is OcrEngineKind k ? k : OcrEngineKind.Auto;
 
     private void SelectProvider(TranslatorProvider provider)
     {

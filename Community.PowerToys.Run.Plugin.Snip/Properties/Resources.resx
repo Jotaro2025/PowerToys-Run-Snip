@@ -314,6 +314,21 @@
   <data name="opt_tr_provider_hymt" xml:space="preserve">
     <value>HyMT2Sharp (local GGUF)</value>
   </data>
+  <data name="opt_ocr_engine_label" xml:space="preserve">
+    <value>OCR engine</value>
+  </data>
+  <data name="opt_ocr_engine_desc" xml:space="preserve">
+    <value>Auto: WeChat OCR on x64 when its component is installed (full package or already downloaded), otherwise Windows OCR. ARM64 always uses Windows OCR (WeChat OCR is x64-only).</value>
+  </data>
+  <data name="opt_ocr_engine_auto" xml:space="preserve">
+    <value>Auto</value>
+  </data>
+  <data name="opt_ocr_engine_wechat" xml:space="preserve">
+    <value>WeChat OCR</value>
+  </data>
+  <data name="opt_ocr_engine_windows" xml:space="preserve">
+    <value>Windows OCR (built-in)</value>
+  </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>Translate · Target language</value>
   </data>
@@ -457,6 +472,12 @@
   </data>
   <data name="ocr_err_download_sha_mismatch" xml:space="preserve">
     <value>OCR package from {0} failed the SHA-256 check (got {1}, expected {2}); the download was discarded.</value>
+  </data>
+  <data name="ocr_err_windows_no_language" xml:space="preserve">
+    <value>Windows OCR has no recognition language installed. Open Settings → Time &amp; language → Language &amp; region, add "Chinese (Simplified, China)" (or the language you need) and make sure its "Optical character recognition" feature is installed. Or run in an elevated PowerShell: Add-WindowsCapability -Online -Name "Language.OCR~~~zh-CN~0.0.1.0". Then restart PowerToys.</value>
+  </data>
+  <data name="ocr_hint_switch_wechat" xml:space="preserve">
+    <value>Alternatively, set the OCR engine to "WeChat OCR" in Snip settings (first use downloads ~61 MB).</value>
   </data>
   <data name="cmd_settings_title" xml:space="preserve">
     <value>Settings</value>

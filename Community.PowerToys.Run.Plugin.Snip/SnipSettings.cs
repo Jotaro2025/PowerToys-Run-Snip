@@ -39,6 +39,9 @@ public sealed class SnipSettings
     /// </summary>
     public string GlobalHotkey { get; set; } = string.Empty;
 
+    /// <summary>OCR engine for text extraction and image translate (see <see cref="OcrEngineKind"/>).</summary>
+    public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.Auto;
+
     /// <summary>Translator used by the image-translate toolbar action.</summary>
     public TranslatorProvider TranslatorProvider { get; set; } = TranslatorProvider.Off;
 
@@ -93,6 +96,7 @@ public sealed class SnipSettings
             ScrollIntervalMs = ScrollIntervalMs,
             ScrollMaxTiles = ScrollMaxTiles,
             GlobalHotkey = GlobalHotkey,
+            OcrEngine = OcrEngine,
             TranslatorProvider = TranslatorProvider,
             TargetLanguage = TargetLanguage,
             UiLanguage = UiLanguage,
@@ -117,6 +121,7 @@ public sealed class SnipSettings
         ScrollIntervalMs = other.ScrollIntervalMs;
         ScrollMaxTiles = other.ScrollMaxTiles;
         GlobalHotkey = other.GlobalHotkey;
+        OcrEngine = other.OcrEngine;
         TranslatorProvider = other.TranslatorProvider;
         TargetLanguage = other.TargetLanguage;
         UiLanguage = other.UiLanguage;

@@ -36,15 +36,17 @@ public sealed class OcrResultWindow : Window, IDisposable
     private readonly Button _copyButton;
     private readonly Button _copyAllButton;
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+    private readonly SnipSettings _settings;
     private bool _closed;
     private bool _disposed;
 
-    public OcrResultWindow(BitmapSource image, byte[] png)
+    public OcrResultWindow(BitmapSource image, byte[] png, SnipSettings settings)
     {
         ArgumentNullException.ThrowIfNull(image);
         ArgumentNullException.ThrowIfNull(png);
 
         _png = png;
+        _settings = settings ?? new SnipSettings();
 
         Title = Properties.Resources.ocr_window_title;
         Width = 760;
@@ -187,12 +189,12 @@ public sealed class OcrResultWindow : Window, IDisposable
 
     private async Task RecognizeAsync()
     {
-        SetBusy(WeChatOcrService.IsBusy
+        SetBusy(OcrService.IsBusy(_settings)
             ? Properties.Resources.ocr_busy_waiting
             : Properties.Resources.ocr_busy);
         try
         {
-            var text = await WeChatOcrService.RecognizeAsync(_png, _cts.Token);
+            var text = await OcrService.RecognizeAsync(_png, _settings, _cts.Token);
             if (_closed)
             {
                 return;
