@@ -204,8 +204,9 @@ public static class ImageTranslateRenderer
     {
         double contentWidth = Math.Max(1, paintBox.Width - (TextPaddingX * 2));
         double contentHeight = Math.Max(1, paintBox.Height - (TextPaddingY * 2));
-        var fontSize = FitFontSize(text, contentWidth, contentHeight);
-        var ft = CreateLaidOutText(text, fontSize, contentWidth, contentHeight, fg);
+        var cache = new TextMeasureCache();
+        var fontSize = FitFontSize(text, contentWidth, contentHeight, cache);
+        var ft = CreateLaidOutText(text, fontSize, contentWidth, contentHeight, fg, cache);
 
         double x = paintBox.X + TextPaddingX;
         double y = paintBox.Y + TextPaddingY + Math.Max(0, (contentHeight - ft.Height) / 2);
@@ -226,8 +227,9 @@ public static class ImageTranslateRenderer
         {
             double contentWidth = Math.Max(1, localW - (TextPaddingX * 2));
             double contentHeight = Math.Max(1, localH - (TextPaddingY * 2));
-            var fontSize = FitFontSize(text, contentWidth, contentHeight);
-            var ft = CreateLaidOutText(text, fontSize, contentWidth, contentHeight, fg);
+            var cache = new TextMeasureCache();
+            var fontSize = FitFontSize(text, contentWidth, contentHeight, cache);
+            var ft = CreateLaidOutText(text, fontSize, contentWidth, contentHeight, fg, cache);
 
             double x = TextPaddingX;
             double y = TextPaddingY + Math.Max(0, (contentHeight - ft.Height) / 2);
@@ -546,6 +548,11 @@ public static class ImageTranslateRenderer
             return text;
         }
 
+        return WrapTextCore(text, maxWidth, fontSize, new TextMeasureCache());
+    }
+
+    private static string WrapTextCore(string text, double maxWidth, double fontSize, TextMeasureCache cache)
+    {
         var paragraphs = text.Replace("\r\n", "\n", StringComparison.Ordinal)
             .Replace('\r', '\n')
             .Split('\n');
@@ -560,18 +567,18 @@ public static class ImageTranslateRenderer
 
             if (paragraph.Any(char.IsWhiteSpace))
             {
-                lines.AddRange(WrapByWords(paragraph, maxWidth, fontSize));
+                lines.AddRange(WrapByWords(paragraph, maxWidth, fontSize, cache));
             }
             else
             {
-                lines.AddRange(WrapByCharacters(paragraph, maxWidth, fontSize));
+                lines.AddRange(WrapByCharacters(paragraph, maxWidth, fontSize, cache));
             }
         }
 
         return string.Join("\n", lines);
     }
 
-    private static List<string> WrapByWords(string paragraph, double maxWidth, double fontSize)
+    private static List<string> WrapByWords(string paragraph, double maxWidth, double fontSize, TextMeasureCache cache)
     {
         var tokens = TokenizeWords(paragraph);
         var lines = new List<string>();
@@ -592,20 +599,20 @@ public static class ImageTranslateRenderer
         {
             if (current.Length == 0)
             {
-                if (MeasureWidth(token, fontSize) <= maxWidth)
+                if (cache.MeasureWidth(token, fontSize) <= maxWidth)
                 {
                     current.Append(token);
                 }
                 else
                 {
-                    lines.AddRange(WrapByCharacters(token, maxWidth, fontSize));
+                    lines.AddRange(WrapByCharacters(token, maxWidth, fontSize, cache));
                 }
 
                 continue;
             }
 
             string candidate = current + token;
-            if (MeasureWidth(candidate, fontSize) <= maxWidth)
+            if (cache.MeasureWidth(candidate, fontSize) <= maxWidth)
             {
                 current.Append(token);
                 continue;
@@ -618,13 +625,13 @@ public static class ImageTranslateRenderer
                 continue;
             }
 
-            if (MeasureWidth(next, fontSize) <= maxWidth)
+            if (cache.MeasureWidth(next, fontSize) <= maxWidth)
             {
                 current.Append(next);
             }
             else
             {
-                lines.AddRange(WrapByCharacters(next, maxWidth, fontSize));
+                lines.AddRange(WrapByCharacters(next, maxWidth, fontSize, cache));
             }
         }
 
@@ -632,7 +639,7 @@ public static class ImageTranslateRenderer
         return lines;
     }
 
-    private static List<string> WrapByCharacters(string text, double maxWidth, double fontSize)
+    private static List<string> WrapByCharacters(string text, double maxWidth, double fontSize, TextMeasureCache cache)
     {
         var lines = new List<string>();
         if (string.IsNullOrEmpty(text))
@@ -641,16 +648,19 @@ public static class ImageTranslateRenderer
         }
 
         var current = new StringBuilder();
+        double currentWidth = 0;
         foreach (var ch in text)
         {
-            string candidate = current.ToString() + ch;
-            if (current.Length > 0 && MeasureWidth(candidate, fontSize) > maxWidth)
+            double chWidth = cache.MeasureCharWidth(ch, fontSize);
+            if (current.Length > 0 && (currentWidth + chWidth) > maxWidth)
             {
                 lines.Add(current.ToString());
                 current.Clear();
+                currentWidth = 0;
             }
 
             current.Append(ch);
+            currentWidth += chWidth;
         }
 
         if (current.Length > 0)
@@ -695,34 +705,20 @@ public static class ImageTranslateRenderer
         return tokens;
     }
 
-    private static double MeasureWidth(string text, double fontSize)
-    {
-        if (string.IsNullOrEmpty(text))
-        {
-            return 0;
-        }
-
-        var ft = new FormattedText(
-            text,
-            CultureInfo.CurrentUICulture,
-            FlowDirection.LeftToRight,
-            Typeface,
-            fontSize,
-            Brushes.Black,
-            1.0);
-        return ft.WidthIncludingTrailingWhitespace;
-    }
-
     internal static double FitFontSize(string text, double maxWidth, double maxHeight)
+        => FitFontSize(text, maxWidth, maxHeight, new TextMeasureCache());
+
+    private static double FitFontSize(string text, double maxWidth, double maxHeight, TextMeasureCache cache)
     {
         double lo = MinFontSize;
         double hi = Math.Max(MinFontSize + 0.5, Math.Min(MaxFontSize, maxHeight));
         double best = MinFontSize;
 
+        // One cache shared across binary-search iterations + wrap measurements.
         for (int i = 0; i < 12; i++)
         {
             double mid = (lo + hi) / 2;
-            var ft = CreateLaidOutText(text, mid, maxWidth, maxHeight, Colors.Black);
+            var ft = CreateLaidOutText(text, mid, maxWidth, maxHeight, Colors.Black, cache);
             if (ft.Width <= maxWidth + 0.5 && ft.Height <= maxHeight + 0.5)
             {
                 best = mid;
@@ -742,21 +738,106 @@ public static class ImageTranslateRenderer
         double fontSize,
         double maxWidth,
         double maxHeight,
-        Color foreground)
+        Color foreground,
+        TextMeasureCache cache)
     {
-        var display = WrapText(text, maxWidth, fontSize);
+        var display = WrapTextCore(text, maxWidth, fontSize, cache);
+        Brush brush = foreground == Colors.Black ? Brushes.Black : new SolidColorBrush(foreground);
         return new FormattedText(
             display,
             CultureInfo.CurrentUICulture,
             FlowDirection.LeftToRight,
             Typeface,
             fontSize,
-            new SolidColorBrush(foreground),
+            brush,
             1.0)
         {
             MaxTextWidth = maxWidth,
             MaxTextHeight = maxHeight,
             Trimming = TextTrimming.None,
         };
+    }
+
+    /// <summary>
+    /// Per fit/wrap pass cache of FormattedText widths (and GlyphTypeface advances
+    /// for CJK character peeling) so FitFontSize / WrapText do not rebuild metrics
+    /// for the same string×size repeatedly.
+    /// </summary>
+    private sealed class TextMeasureCache
+    {
+        private readonly Dictionary<(string Text, int SizeKey), double> _stringWidths = new();
+        private readonly Dictionary<(int Char, int SizeKey), double> _charWidths = new();
+        private GlyphTypeface _glyphTypeface;
+        private bool _glyphResolved;
+
+        public double MeasureWidth(string text, double fontSize)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            int sizeKey = SizeKey(fontSize);
+            var key = (text, sizeKey);
+            if (_stringWidths.TryGetValue(key, out double cached))
+            {
+                return cached;
+            }
+
+            var ft = new FormattedText(
+                text,
+                CultureInfo.CurrentUICulture,
+                FlowDirection.LeftToRight,
+                Typeface,
+                fontSize,
+                Brushes.Black,
+                1.0);
+            double width = ft.WidthIncludingTrailingWhitespace;
+            _stringWidths[key] = width;
+            return width;
+        }
+
+        /// <summary>
+        /// Prefer GlyphTypeface advance (CJK-safe, no FormattedText alloc); fall back
+        /// to a single-char FormattedText cached by codepoint×size.
+        /// </summary>
+        public double MeasureCharWidth(char ch, double fontSize)
+        {
+            int sizeKey = SizeKey(fontSize);
+            var key = ((int)ch, sizeKey);
+            if (_charWidths.TryGetValue(key, out double cached))
+            {
+                return cached;
+            }
+
+            double width;
+            if (TryGetGlyphTypeface(out GlyphTypeface glyph)
+                && glyph.CharacterToGlyphMap.TryGetValue(ch, out ushort glyphIndex))
+            {
+                width = glyph.AdvanceWidths[glyphIndex] * fontSize;
+            }
+            else
+            {
+                width = MeasureWidth(ch.ToString(), fontSize);
+            }
+
+            _charWidths[key] = width;
+            return width;
+        }
+
+        private bool TryGetGlyphTypeface(out GlyphTypeface glyph)
+        {
+            if (!_glyphResolved)
+            {
+                _glyphResolved = true;
+                _ = Typeface.TryGetGlyphTypeface(out _glyphTypeface);
+            }
+
+            glyph = _glyphTypeface;
+            return glyph != null;
+        }
+
+        private static int SizeKey(double fontSize)
+            => (int)Math.Round(fontSize * 100.0);
     }
 }

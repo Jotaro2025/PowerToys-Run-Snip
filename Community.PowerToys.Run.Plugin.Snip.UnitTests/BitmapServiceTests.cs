@@ -317,6 +317,23 @@ public class BitmapServiceTests
             Assert.IsTrue(preview.PixelWidth <= BitmapPreview.MaxPreviewEdge);
             Assert.IsTrue(preview.PixelHeight <= BitmapPreview.MaxPreviewEdge);
             Assert.AreEqual(BitmapPreview.MaxPreviewEdge, Math.Max(preview.PixelWidth, preview.PixelHeight));
+            Assert.IsTrue(preview.IsFrozen, "downsampled overlay must be materialized + frozen");
+            Assert.IsInstanceOfType(preview, typeof(WriteableBitmap));
+        });
+    }
+
+    [TestMethod]
+    public void BitmapPreviewForPinReturnsFrozenIndependentCopy()
+    {
+        RunOnStaThread(() =>
+        {
+            var bitmap = CreateTestBitmap(64, 48);
+            var pin = BitmapPreview.ForPin(bitmap);
+            Assert.AreNotSame(bitmap, pin, "pin must not alias the export bitmap");
+            Assert.IsTrue(pin.IsFrozen);
+            Assert.IsInstanceOfType(pin, typeof(WriteableBitmap));
+            Assert.AreEqual(64, pin.PixelWidth);
+            Assert.AreEqual(48, pin.PixelHeight);
         });
     }
 }
