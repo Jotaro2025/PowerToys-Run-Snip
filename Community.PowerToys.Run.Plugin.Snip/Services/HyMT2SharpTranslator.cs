@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Runtime.CompilerServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -22,7 +23,8 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// never bundled: the user points <see cref="SnipSettings.HyMtGgufPath"/> at a
 /// local GGUF file. Prefer obtaining instances via
 /// <see cref="HyMT2SharpTranslatorCache"/> so the ~multi-GB model is not reloaded
-/// after every translation.
+/// after every translation. Multiple OCR lines are batched into numbered prompts in
+/// small chunks to cut Generate round-trips (no multi-segment API in HyMT2Sharp).
 /// </summary>
 public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 {
@@ -68,18 +70,60 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
             var results = new string[texts.Count];
             for (int i = 0; i < texts.Count; i++)
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var source = texts[i] ?? string.Empty;
-                if (string.IsNullOrWhiteSpace(source))
+                if (string.IsNullOrWhiteSpace(texts[i]))
                 {
                     results[i] = string.Empty;
+                }
+            }
+
+            var work = TranslatorBatch.CollectNonEmpty(texts);
+            if (work.Count == 0)
+            {
+                return results;
+            }
+
+            if (work.Count == 1)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                results[work[0].Index] = await GenerateAsync(
+                    TranslatorPrompts.Build(targetLanguage, work[0].Text),
+                    maxTokens: Math.Clamp(work[0].Text.Length * 4, 64, 512),
+                    cancellationToken).ConfigureAwait(false);
+                return results;
+            }
+
+            var chunks = TranslatorBatch.Chunk(work, TranslatorBatch.HyMtMaxLines, TranslatorBatch.HyMtMaxChars);
+            foreach (var chunk in chunks)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var lines = chunk.Select(c => c.Text).ToList();
+                var prompt = TranslatorBatch.BuildNumberedPrompt(targetLanguage, lines);
+                var reply = await GenerateAsync(
+                    prompt,
+                    maxTokens: Math.Clamp(lines.Sum(l => l.Length) * 4, 128, 1024),
+                    cancellationToken).ConfigureAwait(false);
+
+                if (TranslatorBatch.TryParseNumberedReply(reply, lines.Count, out var parsed))
+                {
+                    for (int i = 0; i < chunk.Count; i++)
+                    {
+                        results[chunk[i].Index] = parsed[i];
+                    }
+
                     continue;
                 }
 
-                results[i] = await GenerateAsync(
-                    TranslatorPrompts.Build(targetLanguage, source),
-                    maxTokens: Math.Clamp(source.Length * 4, 64, 512),
-                    cancellationToken).ConfigureAwait(false);
+                Log.Info(
+                    $"Snip HyMT2Sharp batch parse failed for {lines.Count} lines; falling back to per-line.",
+                    typeof(HyMT2SharpTranslator));
+                foreach (var (index, text) in chunk)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    results[index] = await GenerateAsync(
+                        TranslatorPrompts.Build(targetLanguage, text),
+                        maxTokens: Math.Clamp(text.Length * 4, 64, 512),
+                        cancellationToken).ConfigureAwait(false);
+                }
             }
 
             return results;

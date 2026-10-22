@@ -277,6 +277,10 @@ public sealed class TranslateResultWindow : Window, IDisposable
                 ShowMessage(ex.Message, isError: true);
             }
         }
+        catch (OperationCanceledException)
+        {
+            // Window closed (or external cancel) — swallow without error UI.
+        }
         catch (Exception ex)
         {
             if (_closed)
