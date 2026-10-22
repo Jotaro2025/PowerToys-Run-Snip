@@ -137,6 +137,7 @@ public sealed class SnipWindow : Window
         _toolbar.SaveClicked += async (sender, e) => await DoSaveAsync();
         _toolbar.ExtractTextClicked += (sender, e) => DoExtractText();
         _toolbar.TranslateImageClicked += (sender, e) => DoTranslateImage();
+        _toolbar.PinClicked += (sender, e) => DoPin();
         _toolbar.CancelClicked += (sender, e) => Cancel();
         _toolbar.ConfirmClicked += (sender, e) => DoConfirm();
 
@@ -734,6 +735,38 @@ public sealed class SnipWindow : Window
 
         _settings.HyMtGgufPath = path;
         return true;
+    }
+
+    /// <summary>
+    /// Pins the current selection as a floating topmost image, then closes the editor.
+    /// </summary>
+    private void DoPin()
+    {
+        if (!_hasSelection)
+        {
+            return;
+        }
+
+        try
+        {
+            var bmp = BuildResultBitmap(_selection);
+            var png = PngEncoder.Encode(bmp);
+            Result = new EditResult
+            {
+                Outcome = EditOutcome.Pinned,
+                Selection = _selection,
+                Annotations = _annoCanvas.Items.ToArray(),
+                Result = bmp,
+                PngBytes = png,
+            };
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow DoPin failed: {ex.Message}", ex, GetType());
+            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+        }
+
+        Close();
     }
 
     private async Task DoSaveAsync()

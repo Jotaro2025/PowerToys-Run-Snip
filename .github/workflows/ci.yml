@@ -1,0 +1,33 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+jobs:
+  build-test:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: "10.0.x"
+
+      - name: Cache NuGet
+        uses: actions/cache@v4
+        with:
+          path: ~/.nuget/packages
+          key: ${{ runner.os }}-nuget-${{ hashFiles('**/*.csproj') }}
+          restore-keys: |
+            ${{ runner.os }}-nuget-
+
+      - name: Build and test
+        run: >
+          dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests/Community.PowerToys.Run.Plugin.Snip.UnitTests.csproj
+          -c Release
+          -p:EnableWindowsTargeting=true
+          -p:PowerToysInstallDir="${{ github.workspace }}\build\PowerToysRefs"

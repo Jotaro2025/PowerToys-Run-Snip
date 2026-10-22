@@ -206,6 +206,15 @@
   <data name="tip_translate" xml:space="preserve">
     <value>Image translate</value>
   </data>
+  <data name="tip_pin" xml:space="preserve">
+    <value>Pin image</value>
+  </data>
+  <data name="pin_window_title" xml:space="preserve">
+    <value>Pinned image</value>
+  </data>
+  <data name="pin_menu_close" xml:space="preserve">
+    <value>Close</value>
+  </data>
   <data name="tr_window_title" xml:space="preserve">
     <value>Image Translate</value>
   </data>
