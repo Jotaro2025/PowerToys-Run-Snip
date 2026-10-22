@@ -77,7 +77,12 @@ public static class TranslatorFactory
         }
     }
 
-    /// <summary>Builds a translator for the current settings. Caller owns disposal when applicable.</summary>
+    /// <summary>
+    /// Builds a translator for the current settings.
+    /// HTTP instances are owned by the caller (dispose after use).
+    /// HyMT2Sharp returns a process-wide cached instance — do not dispose;
+    /// call <see cref="HyMT2SharpTranslatorCache.Unload"/> on plugin shutdown.
+    /// </summary>
     public static ITranslator Create(SnipSettings settings)
     {
         ArgumentNullException.ThrowIfNull(settings);
@@ -94,7 +99,7 @@ public static class TranslatorFactory
                 settings.HttpBaseUrl.Trim(),
                 settings.HttpApiKey?.Trim() ?? string.Empty,
                 settings.HttpModel.Trim()),
-            TranslatorProvider.HyMT2Sharp => new HyMT2SharpTranslator(
+            TranslatorProvider.HyMT2Sharp => HyMT2SharpTranslatorCache.GetOrCreate(
                 settings.HyMtGgufPath.Trim(),
                 settings.HyMtBackend),
             _ => throw new TranslatorException(Properties.Resources.tr_err_provider_off),
