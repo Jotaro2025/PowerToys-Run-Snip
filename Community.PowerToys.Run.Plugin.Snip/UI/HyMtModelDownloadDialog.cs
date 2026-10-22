@@ -24,6 +24,7 @@ public sealed class HyMtModelDownloadDialog : Window, IDisposable
     private readonly TextBlock _status;
     private readonly Button _cancelButton;
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
+    private readonly string _customDownloadUrl;
     private bool _finished;
     private bool _disposed;
 
@@ -33,8 +34,9 @@ public sealed class HyMtModelDownloadDialog : Window, IDisposable
 
     public string ErrorMessage { get; private set; }
 
-    public HyMtModelDownloadDialog()
+    public HyMtModelDownloadDialog(string customDownloadUrl = null)
     {
+        _customDownloadUrl = customDownloadUrl;
         Title = Properties.Resources.tr_download_title;
         Width = 420;
         Height = 180;
@@ -109,9 +111,11 @@ public sealed class HyMtModelDownloadDialog : Window, IDisposable
     /// Shows the dialog, downloads (or reuses cache), and returns the outcome.
     /// Must be called on an STA UI thread.
     /// </summary>
-    public static (bool Ok, string Path, string Error) ShowDialogAndDownload(Window owner = null)
+    public static (bool Ok, string Path, string Error) ShowDialogAndDownload(
+        Window owner = null,
+        string customDownloadUrl = null)
     {
-        using var dialog = new HyMtModelDownloadDialog();
+        using var dialog = new HyMtModelDownloadDialog(customDownloadUrl);
         if (owner != null)
         {
             dialog.Owner = owner;
@@ -149,6 +153,7 @@ public sealed class HyMtModelDownloadDialog : Window, IDisposable
             var (ok, path, error) = await HyMtModelDownloader.EnsureDownloadedAsync(
                 progress,
                 force: false,
+                _customDownloadUrl,
                 _cts.Token).ConfigureAwait(true);
 
             _finished = true;

@@ -17,7 +17,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// <summary>
 /// Downloads the recommended Hy-MT2 2Bit GGUF into a LocalAppData cache.
 /// Weights are never shipped with the plugin. Sources are tried in order
-/// (ModelScope → hf-mirror → Hugging Face) so mainland China can fetch without HF.
+/// (optional custom HTTPS → ModelScope → hf-mirror → Hugging Face) so mainland China can fetch without HF.
 /// </summary>
 public static class HyMtModelDownloader
 {
@@ -105,8 +105,57 @@ public static class HyMtModelDownloader
             }
         }
 
+        var sidecar = HyMtGgufPathPersister.TryReadSidecarPath();
+        if (sidecar != null)
+        {
+            return sidecar;
+        }
+
         var cache = DefaultCachePath;
         return IsValidCachedFile(cache) ? cache : null;
+    }
+
+    /// <summary>
+    /// Builds the download source list. A non-empty HTTPS <paramref name="customUrl"/>
+    /// is tried first; otherwise (or when invalid) the China-friendly defaults remain.
+    /// </summary>
+    public static (string Name, string Url)[] BuildDownloadSources(string customUrl = null)
+    {
+        if (TryNormalizeHttpsUrl(customUrl, out var url, out _))
+        {
+            return new[]
+            {
+                ("Custom", url),
+                ("ModelScope", ModelScopeUrl),
+                ("hf-mirror", HfMirrorUrl),
+                ("Hugging Face", HuggingFaceUrl),
+            };
+        }
+
+        return DownloadSources;
+    }
+
+    /// <summary>Accepts only absolute <c>https://</c> URLs (rejects http / relative).</summary>
+    public static bool TryNormalizeHttpsUrl(string raw, out string url, out string error)
+    {
+        url = null;
+        error = null;
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            error = "empty";
+            return false;
+        }
+
+        if (!Uri.TryCreate(raw.Trim(), UriKind.Absolute, out var uri)
+            || uri.Scheme != Uri.UriSchemeHttps
+            || string.IsNullOrWhiteSpace(uri.Host))
+        {
+            error = "https required";
+            return false;
+        }
+
+        url = uri.AbsoluteUri;
+        return true;
     }
 
     /// <summary>
@@ -118,6 +167,7 @@ public static class HyMtModelDownloader
     public static async Task<(bool Ok, string Path, string Error)> EnsureDownloadedAsync(
         IProgress<HyMtDownloadProgress> progress = null,
         bool force = false,
+        string customDownloadUrl = null,
         CancellationToken cancellationToken = default)
     {
         var target = DefaultCachePath;
@@ -153,7 +203,7 @@ public static class HyMtModelDownloader
 
         try
         {
-            foreach (var (name, url) in DownloadSources)
+            foreach (var (name, url) in BuildDownloadSources(customDownloadUrl))
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 TryDelete(tempPath);

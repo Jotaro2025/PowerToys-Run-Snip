@@ -332,6 +332,12 @@
   <data name="opt_tr_hymt_download_desc" xml:space="preserve">
     <value>勾选并保存后，将下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 缓存并自动填入 GGUF 路径；默认优先魔搭 ModelScope，失败再试 hf-mirror / Hugging Face；缓存已存在且完整时会跳过。插件不捆绑权重。</value>
   </data>
+  <data name="opt_tr_hymt_custom_url_label" xml:space="preserve">
+    <value>自定义 GGUF 下载地址（可选）</value>
+  </data>
+  <data name="opt_tr_hymt_custom_url_desc" xml:space="preserve">
+    <value>下载推荐 2Bit GGUF 时优先尝试此 HTTPS 地址，失败再回退魔搭 / hf-mirror / Hugging Face。留空则使用默认国内优先链路。体积与 SHA 校验仍生效。</value>
+  </data>
     <data name="tr_download_title" xml:space="preserve">
     <value>下载 Hy-MT2 模型</value>
   </data>

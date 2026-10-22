@@ -37,6 +37,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionHyMtGgufPath = "HyMtGgufPath";
     private const string OptionHyMtBackend = "HyMtBackend";
     private const string OptionDownloadHyMt = "DownloadRecommendedHyMtModel";
+    private const string OptionHyMtCustomDownloadUrl = "HyMtCustomDownloadUrl";
 
     private PluginInitContext _context;
     private string _iconPath;
@@ -157,6 +158,15 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         },
         new PluginAdditionalOption()
         {
+            Key = OptionHyMtCustomDownloadUrl,
+            DisplayLabel = Properties.Resources.opt_tr_hymt_custom_url_label,
+            DisplayDescription = Properties.Resources.opt_tr_hymt_custom_url_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.HyMtCustomDownloadUrl,
+            PlaceholderText = "https://…/Hy-MT2-1.8B-2Bit.gguf",
+        },
+        new PluginAdditionalOption()
+        {
             Key = OptionHyMtBackend,
             DisplayLabel = Properties.Resources.opt_tr_hymt_backend_label,
             DisplayDescription = Properties.Resources.opt_tr_hymt_backend_desc,
@@ -274,6 +284,8 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         _settings.HttpModel = options.FirstOrDefault(x => x.Key == OptionHttpModel)?.TextValue
             ?? _settings.HttpModel;
         _settings.HyMtGgufPath = options.FirstOrDefault(x => x.Key == OptionHyMtGgufPath)?.TextValue ?? string.Empty;
+        _settings.HyMtCustomDownloadUrl = options.FirstOrDefault(x => x.Key == OptionHyMtCustomDownloadUrl)?.TextValue
+            ?? string.Empty;
 
         var backendOpt = options.FirstOrDefault(x => x.Key == OptionHyMtBackend);
         if (backendOpt != null
@@ -302,7 +314,8 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     {
         try
         {
-            var (ok, path, error) = HyMtModelDownloadDialog.ShowDialogAndDownload();
+            var (ok, path, error) = HyMtModelDownloadDialog.ShowDialogAndDownload(
+                customDownloadUrl: _settings.HyMtCustomDownloadUrl);
             if (ok && !string.IsNullOrWhiteSpace(path))
             {
                 ApplyGgufPath(options, path);
@@ -342,6 +355,9 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         {
             pathOpt.TextValue = path;
         }
+
+        // Persist into PowerToys Run settings.json (+ sidecar) so restart shows the path.
+        HyMtGgufPathPersister.Persist(path);
     }
 
     public void ReloadData()

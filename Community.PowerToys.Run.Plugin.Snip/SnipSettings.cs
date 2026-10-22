@@ -48,6 +48,12 @@ public sealed class SnipSettings
     /// <summary>HyMT2Sharp backend selection.</summary>
     public HyMtBackendKind HyMtBackend { get; set; } = HyMtBackendKind.Auto;
 
+    /// <summary>
+    /// Optional HTTPS URL for the recommended GGUF, tried before ModelScope / mirrors.
+    /// Empty keeps the default China-friendly chain.
+    /// </summary>
+    public string HyMtCustomDownloadUrl { get; set; } = string.Empty;
+
     /// <summary>Fallback directory when <see cref="SaveDirectory"/> is not set.</summary>
     public static string DefaultSaveFolder
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Snip");
