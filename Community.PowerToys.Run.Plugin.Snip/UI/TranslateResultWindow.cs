@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -23,7 +24,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 /// WeChat-style image translate window: translated image on the left, editable
 /// translation list on the right. Runs OCR → translate → erase+repaint on open.
 /// </summary>
-public sealed class TranslateResultWindow : Window
+public sealed class TranslateResultWindow : Window, IDisposable
 {
     private static readonly Color Accent = Color.FromRgb(72, 210, 110);
     private static readonly Color ErrorColor = Color.FromRgb(214, 48, 49);
@@ -41,6 +42,7 @@ public sealed class TranslateResultWindow : Window
     private readonly Button _copyAllButton;
     private readonly Button _copyImageButton;
     private readonly List<TextBox> _translationBoxes = new();
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private bool _closed;
     private IReadOnlyList<OcrTextLine> _lines = Array.Empty<OcrTextLine>();
 
@@ -192,7 +194,7 @@ public sealed class TranslateResultWindow : Window
         ITranslator translator = null;
         try
         {
-            _lines = await WeChatOcrService.RecognizeLinesAsync(_png);
+            _lines = await WeChatOcrService.RecognizeLinesAsync(_png, _cts.Token);
             if (_closed)
             {
                 return;
@@ -207,7 +209,7 @@ public sealed class TranslateResultWindow : Window
             SetBusy(Properties.Resources.tr_busy_translate);
             translator = TranslatorFactory.Create(_settings);
             var sources = _lines.Select(l => l.Text).ToList();
-            var translations = await translator.TranslateAsync(sources, _settings.TargetLanguage);
+            var translations = await translator.TranslateAsync(sources, _settings.TargetLanguage, _cts.Token);
             if (_closed)
             {
                 return;
@@ -237,6 +239,10 @@ public sealed class TranslateResultWindow : Window
         catch (TranslatorException ex)
         {
             ShowMessage(ex.Message, isError: true);
+        }
+        catch (OperationCanceledException)
+        {
+            // Window closed (or external cancel) — swallow without error UI.
         }
         catch (Exception ex)
         {
@@ -408,6 +414,26 @@ public sealed class TranslateResultWindow : Window
 
     private void OnClosed(object sender, EventArgs e)
     {
+        Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (_closed)
+        {
+            return;
+        }
+
         _closed = true;
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        _cts.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

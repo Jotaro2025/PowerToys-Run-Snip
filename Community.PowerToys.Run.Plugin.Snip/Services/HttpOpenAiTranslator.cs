@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -17,14 +18,10 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
 /// OpenAI-compatible <c>/chat/completions</c> translator (HyMT2Sharp.Server or any compatible API).
+/// Batches numbered lines into one (or few) requests; falls back to per-line if parsing fails.
 /// </summary>
 public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
 {
-    private static readonly JsonSerializerOptions JsonOptions = new()
-    {
-        PropertyNameCaseInsensitive = true,
-    };
-
     private readonly HttpClient _http;
     private readonly string _model;
     private readonly bool _ownsClient;
@@ -73,15 +70,66 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
         var results = new string[texts.Count];
         for (int i = 0; i < texts.Count; i++)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var source = texts[i] ?? string.Empty;
-            if (string.IsNullOrWhiteSpace(source))
+            if (string.IsNullOrWhiteSpace(texts[i]))
             {
                 results[i] = string.Empty;
-                continue;
+            }
+        }
+
+        var work = TranslatorBatch.CollectNonEmpty(texts);
+        if (work.Count == 0)
+        {
+            return results;
+        }
+
+        // Single line: keep the classic one-shot prompt (no numbering overhead).
+        if (work.Count == 1)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            results[work[0].Index] = await TranslateOneAsync(work[0].Text, targetLanguage, cancellationToken)
+                .ConfigureAwait(false);
+            return results;
+        }
+
+        var chunks = TranslatorBatch.Chunk(work, TranslatorBatch.HttpMaxLines, TranslatorBatch.HttpMaxChars);
+        foreach (var chunk in chunks)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            var lines = chunk.Select(c => c.Text).ToList();
+            try
+            {
+                var reply = await CompleteAsync(
+                    TranslatorBatch.BuildNumberedPrompt(targetLanguage, lines),
+                    maxTokens: Math.Clamp(lines.Sum(l => l.Length) * 4, 128, 4096),
+                    cancellationToken).ConfigureAwait(false);
+
+                if (TranslatorBatch.TryParseNumberedReply(reply, lines.Count, out var parsed))
+                {
+                    for (int i = 0; i < chunk.Count; i++)
+                    {
+                        results[chunk[i].Index] = parsed[i];
+                    }
+
+                    continue;
+                }
+
+                Log.Info(
+                    $"Snip HTTP translator batch parse failed for {lines.Count} lines; falling back to per-line.",
+                    typeof(HttpOpenAiTranslator));
+            }
+            catch (TranslatorException)
+            {
+                // Fall through to per-line for this chunk.
+                Log.Info(
+                    $"Snip HTTP translator batch request failed for {lines.Count} lines; falling back to per-line.",
+                    typeof(HttpOpenAiTranslator));
             }
 
-            results[i] = await TranslateOneAsync(source, targetLanguage, cancellationToken).ConfigureAwait(false);
+            foreach (var (index, text) in chunk)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                results[index] = await TranslateOneAsync(text, targetLanguage, cancellationToken).ConfigureAwait(false);
+            }
         }
 
         return results;
@@ -89,12 +137,19 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
 
     private async Task<string> TranslateOneAsync(string text, string targetLanguage, CancellationToken cancellationToken)
     {
-        var prompt = TranslatorPrompts.Build(targetLanguage, text);
+        return await CompleteAsync(
+            TranslatorPrompts.Build(targetLanguage, text),
+            maxTokens: Math.Clamp(text.Length * 4, 64, 1024),
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private async Task<string> CompleteAsync(string prompt, int maxTokens, CancellationToken cancellationToken)
+    {
         var body = new
         {
             model = _model,
             temperature = 0,
-            max_tokens = Math.Clamp(text.Length * 4, 64, 1024),
+            max_tokens = maxTokens,
             messages = new[]
             {
                 new { role = "user", content = prompt },

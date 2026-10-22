@@ -99,4 +99,8 @@
     <AdditionalFiles Include="$(MSBuildThisFileDirectory)..\StyleCop.json" Link="StyleCop.json" />
     <Compile Include="$(MSBuildThisFileDirectory)..\GlobalSuppressions.cs" Link="GlobalSuppressions.cs" />
   </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="Community.PowerToys.Run.Plugin.Snip.UnitTests" />
+  </ItemGroup>
 </Project>
