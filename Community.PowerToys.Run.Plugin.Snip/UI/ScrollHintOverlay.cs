@@ -104,6 +104,13 @@ public sealed class ScrollHintOverlay : Border
         Subtitle = _statsSubtitle;
     }
 
+    /// <summary>Capture paused because the cursor left the selection.</summary>
+    public void ShowPaused()
+    {
+        Title = Properties.Resources.scroll_hint_paused;
+        Subtitle = Properties.Resources.scroll_hint_paused_sub;
+    }
+
     public void ShowStitchingInProgress()
     {
         BorderBrush = new SolidColorBrush(Color.FromArgb(200, 120, 200, 255));

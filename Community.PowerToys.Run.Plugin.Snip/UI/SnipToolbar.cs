@@ -40,6 +40,7 @@ public sealed class SnipToolbar : Border
     private readonly List<double> _widthPresets = [2, 3, 5, 8];
     private readonly List<UIElement> _hiddenDuringScroll = new();
     private readonly ToolbarButton _scrollButton;
+    private readonly ToolbarButton _scrollUpButton;
     private readonly ToolbarButton _cancelButton;
     private readonly ToolbarButton _confirmButton;
     private readonly ToolbarButton _saveButton;
@@ -150,11 +151,14 @@ public sealed class SnipToolbar : Border
             var scrollGroup = CreateGroup(out var scrollActions);
             _scrollButton = AddIcon(scrollActions, ToolIcons.ScrollCapture, Properties.Resources.tip_scroll);
             _scrollButton.Click += (sender, e) => ScrollCaptureClicked?.Invoke(this, EventArgs.Empty);
+            _scrollUpButton = AddIcon(scrollActions, ToolIcons.ScrollCaptureUp, Properties.Resources.tip_scroll_up);
+            _scrollUpButton.Click += (sender, e) => ScrollUpCaptureClicked?.Invoke(this, EventArgs.Empty);
             root.Children.Add(scrollGroup);
         }
         else
         {
             _scrollButton = null;
+            _scrollUpButton = null;
         }
 
         UpdateActiveTool();
@@ -181,6 +185,9 @@ public sealed class SnipToolbar : Border
     public event EventHandler ConfirmClicked;
 
     public event EventHandler ScrollCaptureClicked;
+
+    /// <summary>Start (or stop) a scroll capture that scrolls content upward.</summary>
+    public event EventHandler ScrollUpCaptureClicked;
 
     public event EventHandler<Color> ColorChanged;
 
@@ -217,7 +224,7 @@ public sealed class SnipToolbar : Border
     }
 
     /// <summary>Hide annotation tools while scroll capture is running; toggle scroll tip.</summary>
-    public void SetScrollCaptureActive(bool active)
+    public void SetScrollCaptureActive(bool active, bool scrollUp = false)
     {
         foreach (var c in _hiddenDuringScroll)
         {
@@ -226,10 +233,18 @@ public sealed class SnipToolbar : Border
 
         if (_scrollButton != null)
         {
-            _scrollButton.IsActive = active;
+            _scrollButton.IsActive = active && !scrollUp;
             _scrollButton.ToolTip = active
                 ? Properties.Resources.tip_scroll_stop
                 : Properties.Resources.tip_scroll;
+        }
+
+        if (_scrollUpButton != null)
+        {
+            _scrollUpButton.IsActive = active && scrollUp;
+            _scrollUpButton.ToolTip = active
+                ? Properties.Resources.tip_scroll_stop
+                : Properties.Resources.tip_scroll_up;
         }
 
         if (active)

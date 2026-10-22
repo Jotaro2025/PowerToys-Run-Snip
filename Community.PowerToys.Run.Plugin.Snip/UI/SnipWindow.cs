@@ -168,6 +168,7 @@ public sealed class SnipWindow : Window
         };
         _toolbar.ConfirmClicked += async (sender, e) => await DoConfirmAsync();
         _toolbar.ScrollCaptureClicked += OnScrollCaptureToggled;
+        _toolbar.ScrollUpCaptureClicked += OnScrollUpCaptureToggled;
 
         _root = new Canvas { ClipToBounds = true, Background = Brushes.Transparent };
         _root.Children.Add(_screenshotImage);
@@ -560,7 +561,11 @@ public sealed class SnipWindow : Window
     // -----------------------------------------------------------------------------------
     //  Scroll capture mode (adapted from TDS ScreenshotWindow)
     // -----------------------------------------------------------------------------------
-    private void OnScrollCaptureToggled(object sender, EventArgs e)
+    private void OnScrollCaptureToggled(object sender, EventArgs e) => ToggleScrollCapture(scrollUp: false);
+
+    private void OnScrollUpCaptureToggled(object sender, EventArgs e) => ToggleScrollCapture(scrollUp: true);
+
+    private void ToggleScrollCapture(bool scrollUp)
     {
         try
         {
@@ -570,7 +575,7 @@ public sealed class SnipWindow : Window
             }
             else if (_hasSelection)
             {
-                StartScrollCapture();
+                StartScrollCapture(scrollUp);
             }
         }
         catch (Exception ex)
@@ -580,7 +585,7 @@ public sealed class SnipWindow : Window
         }
     }
 
-    private void StartScrollCapture()
+    private void StartScrollCapture(bool scrollUp = false)
     {
         if (!_hasSelection)
         {
@@ -599,10 +604,11 @@ public sealed class SnipWindow : Window
             physicalRect,
             TryGetHwnd(),
             scrollIntervalMs: Math.Clamp(_settings.ScrollIntervalMs, 50, 1000),
+            scrollUp: scrollUp,
             maxTiles: Math.Clamp(_settings.ScrollMaxTiles, 10, 500));
         _scrollController.CapturingStopped += OnScrollCapturingStopped;
         _scrollController.Cancelled += OnScrollCaptureCancelled;
-        _toolbar.SetScrollCaptureActive(true);
+        _toolbar.SetScrollCaptureActive(true, scrollUp);
 
         _screenshotImage.Visibility = Visibility.Collapsed;
         _dimPath.Fill = _selectionDimBrush;
