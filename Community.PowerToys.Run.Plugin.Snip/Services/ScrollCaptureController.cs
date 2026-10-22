@@ -22,9 +22,13 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// <summary>
 /// Automatic scroll-capture loop: capture tile → SendWheel at selection center → delay → repeat.
 /// Stitching happens once on confirm/save via <see cref="ScrollStitcher"/>.
+/// Auto-stops after consecutive near-identical tiles (page reached the end).
 /// </summary>
 public sealed class ScrollCaptureController
 {
+    /// <summary>Stop when this many consecutive full-duplicate tiles are seen.</summary>
+    internal const int ConsecutiveDuplicateStopThreshold = 2;
+
     private readonly ICaptureService _capture;
     private readonly Panel _overlayHost;
     private readonly ScrollHintOverlay _overlay;
@@ -41,6 +45,8 @@ public sealed class ScrollCaptureController
     private bool _active;
     private int _captureBusy;
     private bool _stitchingOverlayActive;
+    private bool _stoppedPending;
+    private int _stopNotified;
 
     public event Action<int> CapturingStopped;
 
@@ -51,6 +57,9 @@ public sealed class ScrollCaptureController
     public int TileCount => _tiles.Count;
 
     public bool HasTiles => _tiles.Count > 0;
+
+    /// <summary>True after capture stopped (manual/auto) while tiles are kept for stitch.</summary>
+    public bool IsStoppedPending => _stoppedPending && _tiles.Count > 0;
 
     public ScrollCaptureController(
         ICaptureService capture,
@@ -85,6 +94,8 @@ public sealed class ScrollCaptureController
         }
 
         _active = true;
+        _stoppedPending = false;
+        Interlocked.Exchange(ref _stopNotified, 0);
         Interlocked.Exchange(ref _captureBusy, 0);
         _tiles.Clear();
 
@@ -98,13 +109,14 @@ public sealed class ScrollCaptureController
 
     private async Task AutoScrollLoopAsync(CancellationToken ct)
     {
+        int consecutiveDups = 0;
         var first = await CaptureOnceSafeAsync().ConfigureAwait(false);
         if (first != null && _active && !ct.IsCancellationRequested)
         {
             _tiles.Add(first);
         }
 
-        while (!ct.IsCancellationRequested && _active && _tiles.Count <= _maxTiles)
+        while (!ct.IsCancellationRequested && _active && _tiles.Count < _maxTiles)
         {
             PostToOverlay(() => _overlay.ShowCapturing(_tiles.Count + 1));
 
@@ -125,15 +137,36 @@ public sealed class ScrollCaptureController
                 break;
             }
 
+            // Compare on UI STA — WriteableBitmap.Lock affinity.
+            bool duplicate = false;
+            if (_tiles.Count > 0)
+            {
+                var prev = _tiles[_tiles.Count - 1];
+                duplicate = await _dispatcher.InvokeAsync(() => ScrollStitcher.IsNearlyIdentical(prev, bmp))
+                    .Task.ConfigureAwait(false);
+            }
+
+            if (duplicate)
+            {
+                consecutiveDups++;
+                Debug.WriteLine($"[scroll] duplicate tile (streak={consecutiveDups}) — not kept");
+                if (consecutiveDups >= ConsecutiveDuplicateStopThreshold)
+                {
+                    Debug.WriteLine("[scroll] auto-stop — page no longer scrolling");
+                    break;
+                }
+
+                continue;
+            }
+
+            consecutiveDups = 0;
             _tiles.Add(bmp);
             PostToOverlay(() => _overlay.ShowManualCapturing(_tiles.Count));
             Debug.WriteLine($"[scroll] tile #{_tiles.Count} captured");
         }
 
         _active = false;
-        HideOverlay();
-        Debug.WriteLine($"[scroll] loop ended — {_tiles.Count} tile(s)");
-        await InvokeCapturingStoppedAsync(_tiles.Count).ConfigureAwait(false);
+        await FinishCapturingUiAsync(autoStopped: !ct.IsCancellationRequested).ConfigureAwait(false);
     }
 
     private void SimulateWheelAtCenter()
@@ -150,7 +183,7 @@ public sealed class ScrollCaptureController
 
     public async Task StopCapturingAsync()
     {
-        if (!_active && _cts == null)
+        if (!_active && _cts == null && !_stoppedPending)
         {
             return;
         }
@@ -161,31 +194,56 @@ public sealed class ScrollCaptureController
             _cts?.Dispose();
             _cts = null;
             _active = false;
-            HideOverlay();
             Debug.WriteLine($"[scroll] stopped — {_tiles.Count} raw tile(s) kept");
-            await InvokeCapturingStoppedAsync(_tiles.Count).ConfigureAwait(false);
+            await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             Debug.WriteLine($"[scroll] stop failed: {ex}");
             _active = false;
+            await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>Show stopped hint (keep overlay) and raise CapturingStopped once.</summary>
+    private async Task FinishCapturingUiAsync(bool autoStopped)
+    {
+        if (_tiles.Count > 0)
+        {
+            _stoppedPending = true;
             try
             {
-                HideOverlay();
+                await _dispatcher.InvokeAsync(() =>
+                {
+                    EnsureOverlayAttached();
+                    _overlay.Visibility = Visibility.Visible;
+                    _overlay.ShowManualStopped(_tiles.Count);
+                    LayoutOverlay();
+                });
             }
-            catch
+            catch (Exception ex)
             {
-                // ignore
+                Debug.WriteLine($"[scroll] ShowManualStopped failed: {ex.Message}");
             }
 
-            await InvokeCapturingStoppedAsync(_tiles.Count).ConfigureAwait(false);
+            Debug.WriteLine(autoStopped
+                ? $"[scroll] auto-stopped — {_tiles.Count} tile(s), pending stitch"
+                : $"[scroll] manually stopped — {_tiles.Count} tile(s), pending stitch");
         }
+        else
+        {
+            _stoppedPending = false;
+            HideOverlay();
+        }
+
+        await NotifyCapturingStoppedOnceAsync().ConfigureAwait(false);
     }
 
     /// <summary>One-shot stitch of stored tiles for confirm/save.</summary>
     public async Task<WriteableBitmap> StitchAsync()
     {
         _stitchingOverlayActive = true;
+        _stoppedPending = false;
         WriteableBitmap resultBitmap = null;
         try
         {
@@ -230,7 +288,7 @@ public sealed class ScrollCaptureController
 
     public async Task CancelAsync()
     {
-        if (!_active && _tiles.Count == 0)
+        if (!_active && _tiles.Count == 0 && !_stoppedPending)
         {
             return;
         }
@@ -241,6 +299,7 @@ public sealed class ScrollCaptureController
             _cts?.Dispose();
             _cts = null;
             _active = false;
+            _stoppedPending = false;
             HideOverlay();
             DisposeTiles();
             await InvokeCancelledAsync().ConfigureAwait(false);
@@ -249,6 +308,7 @@ public sealed class ScrollCaptureController
         {
             Debug.WriteLine($"[scroll] cancel failed: {ex}");
             _active = false;
+            _stoppedPending = false;
             try
             {
                 HideOverlay();
@@ -343,17 +403,29 @@ public sealed class ScrollCaptureController
     private void DisposeTiles()
     {
         _tiles.Clear();
+        _stoppedPending = false;
     }
 
     private async Task ShowStitchingUiAsync()
     {
         await _dispatcher.InvokeAsync(() =>
         {
+            EnsureOverlayAttached();
+            _overlay.Visibility = Visibility.Visible;
             _overlay.ShowStitchingInProgress();
             LayoutOverlay();
         });
         await _dispatcher.InvokeAsync(() => { }, DispatcherPriority.Render);
         await Task.Delay(32).ConfigureAwait(true);
+    }
+
+    private void EnsureOverlayAttached()
+    {
+        if (_overlay.Parent is null)
+        {
+            _overlayHost.Children.Add(_overlay);
+            Panel.SetZIndex(_overlay, 40);
+        }
     }
 
     private void ShowOverlay()
@@ -362,12 +434,7 @@ public sealed class ScrollCaptureController
         {
             _dispatcher.Invoke(() =>
             {
-                if (_overlay.Parent is null)
-                {
-                    _overlayHost.Children.Add(_overlay);
-                    Panel.SetZIndex(_overlay, 40);
-                }
-
+                EnsureOverlayAttached();
                 _overlay.Visibility = Visibility.Visible;
                 LayoutOverlay();
                 if (!_stitchingOverlayActive && _active)
@@ -407,7 +474,7 @@ public sealed class ScrollCaptureController
         {
             try
             {
-                if (!_active && !_stitchingOverlayActive)
+                if (!_active && !_stitchingOverlayActive && !_stoppedPending)
                 {
                     return;
                 }
@@ -421,11 +488,16 @@ public sealed class ScrollCaptureController
         });
     }
 
-    private async Task InvokeCapturingStoppedAsync(int count)
+    private async Task NotifyCapturingStoppedOnceAsync()
     {
+        if (Interlocked.Exchange(ref _stopNotified, 1) != 0)
+        {
+            return;
+        }
+
         try
         {
-            await _dispatcher.InvokeAsync(() => CapturingStopped?.Invoke(count));
+            await _dispatcher.InvokeAsync(() => CapturingStopped?.Invoke(_tiles.Count));
         }
         catch (Exception ex)
         {

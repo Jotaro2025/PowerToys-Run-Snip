@@ -46,6 +46,7 @@ public sealed class SnipToolbar : Border
     private string _tipCancelDefault;
     private string _tipDoneDefault;
     private string _tipSaveDefault;
+    private bool _scrollTilesPending;
 
     public SnipToolbar(EditRequest request)
     {
@@ -234,6 +235,32 @@ public sealed class SnipToolbar : Border
         if (active)
         {
             _cancelButton.ToolTip = Properties.Resources.tip_scroll_cancel;
+            _confirmButton.ToolTip = Properties.Resources.tip_scroll_done;
+            if (_saveButton != null)
+            {
+                _saveButton.ToolTip = Properties.Resources.tip_scroll_save;
+            }
+        }
+        else if (!_scrollTilesPending)
+        {
+            _cancelButton.ToolTip = _tipCancelDefault;
+            _confirmButton.ToolTip = _tipDoneDefault;
+            if (_saveButton != null)
+            {
+                _saveButton.ToolTip = _tipSaveDefault;
+            }
+        }
+    }
+
+    /// <summary>
+    /// After stop (tiles kept for stitch): Esc discards frames only; Done/Save still stitch.
+    /// </summary>
+    public void SetScrollTilesPending(bool pending)
+    {
+        _scrollTilesPending = pending;
+        if (pending)
+        {
+            _cancelButton.ToolTip = Properties.Resources.tip_scroll_discard;
             _confirmButton.ToolTip = Properties.Resources.tip_scroll_done;
             if (_saveButton != null)
             {

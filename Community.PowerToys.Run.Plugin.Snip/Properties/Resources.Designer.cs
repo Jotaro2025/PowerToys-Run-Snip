@@ -1433,6 +1433,16 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+
+        /// <summary>
+        ///   Looks up a localized string similar to Discard scroll frames (Esc) — keeps selection.
+        /// </summary>
+        public static string tip_scroll_discard {
+            get {
+                return ResourceManager.GetString("tip_scroll_discard", resourceCulture);
+            }
+        }
+
         public static string scroll_hint_title {
             get {
                 return ResourceManager.GetString("scroll_hint_title", resourceCulture);

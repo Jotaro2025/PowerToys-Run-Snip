@@ -155,7 +155,17 @@ public sealed class SnipWindow : Window
         _toolbar.ExtractTextClicked += async (sender, e) => await DoExtractTextAsync();
         _toolbar.TranslateImageClicked += async (sender, e) => await DoTranslateImageAsync();
         _toolbar.PinClicked += async (sender, e) => await DoPinAsync();
-        _toolbar.CancelClicked += (sender, e) => Cancel();
+        _toolbar.CancelClicked += (sender, e) =>
+        {
+            // After scroll stop: Cancel discards frames only (same as Esc), not the whole snip.
+            if (_scrollController is { HasTiles: true, IsActive: false })
+            {
+                _ = DiscardScrollTilesAsync();
+                return;
+            }
+
+            Cancel();
+        };
         _toolbar.ConfirmClicked += async (sender, e) => await DoConfirmAsync();
         _toolbar.ScrollCaptureClicked += OnScrollCaptureToggled;
 
@@ -272,8 +282,20 @@ public sealed class SnipWindow : Window
     // -----------------------------------------------------------------------------------
     private void OnPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
     {
-        // Same outcome as Esc / Cancel — discard session even mid-drag.
-        Cancel();
+        // Same as Esc / Cancel. After scroll stop, discard frames only.
+        if (_scrollController is { HasTiles: true, IsActive: false })
+        {
+            _ = DiscardScrollTilesAsync();
+        }
+        else if (_scrollController is { IsActive: true })
+        {
+            _ = StopScrollCaptureAsync();
+        }
+        else
+        {
+            Cancel();
+        }
+
         e.Handled = true;
     }
 
@@ -472,10 +494,19 @@ public sealed class SnipWindow : Window
                 return;
             }
 
-            if (e.Key == Key.Escape && _scrollController.IsActive)
+            if (e.Key == Key.Escape)
             {
-                // Stop capturing but keep tiles (toolbar Stop / Esc).
-                _ = StopScrollCaptureAsync();
+                if (_scrollController.IsActive)
+                {
+                    // Stop capturing but keep tiles (toolbar Stop / Esc while rolling).
+                    _ = StopScrollCaptureAsync();
+                }
+                else
+                {
+                    // After stop: discard scroll frames only — keep selection / snip session.
+                    _ = DiscardScrollTilesAsync();
+                }
+
                 e.Handled = true;
                 return;
             }
@@ -726,12 +757,61 @@ public sealed class SnipWindow : Window
         try
         {
             _toolbar.SetScrollCaptureActive(false);
-            RestorePassthroughUi();
+            if (tileCount > 0)
+            {
+                // Keep selection hole closed (frozen overlay) but leave the stopped hint
+                // card visible until stitch / discard. Esc now discards frames only.
+                ClearScrollCaptureHole();
+                if (_source != null)
+                {
+                    _screenshotImage.Source = BitmapPreview.ForOverlay(_source);
+                    _annoCanvas.SourceBitmap = _source;
+                    _screenshotImage.Visibility = Visibility.Visible;
+                }
+
+                _inputCatcher.IsHitTestVisible = true;
+                _annoCanvas.IsHitTestVisible = true;
+                _toolbar.IsHitTestVisible = true;
+                UpdateSelectionVisuals();
+                _toolbar.SetScrollTilesPending(true);
+            }
+            else
+            {
+                RestorePassthroughUi();
+                _toolbar.SetScrollTilesPending(false);
+            }
         }
         catch (Exception ex)
         {
             Log.Exception($"SnipWindow OnScrollCapturingStopped: {ex.Message}", ex, GetType());
             EnsureScrollUiRecovered();
+        }
+    }
+
+    /// <summary>
+    /// Discard captured scroll tiles without closing the snip session (Esc after stop).
+    /// </summary>
+    private async Task DiscardScrollTilesAsync()
+    {
+        try
+        {
+            var ctl = _scrollController;
+            if (ctl == null)
+            {
+                return;
+            }
+
+            await ctl.CancelAsync().ConfigureAwait(true);
+            _toolbar.SetScrollTilesPending(false);
+            _toolbar.SetScrollCaptureActive(false);
+            _scrollController = null;
+            RestorePassthroughUi();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow DiscardScrollTilesAsync: {ex.Message}", ex, GetType());
+            EnsureScrollUiRecovered();
+            _scrollController = null;
         }
     }
 
@@ -748,6 +828,7 @@ public sealed class SnipWindow : Window
         _annoCanvas.SourceBitmap = stitched;
         _annoCanvas.SourceDpiScale = _dpiScale;
         _annoCanvas.SourceOffset = new Point(0, 0);
+        _toolbar.SetScrollTilesPending(false);
         RestorePassthroughUi();
     }
 
@@ -757,6 +838,7 @@ public sealed class SnipWindow : Window
         {
             RestorePassthroughUi();
             _toolbar.SetScrollCaptureActive(false);
+            _toolbar.SetScrollTilesPending(false);
             _scrollController = null;
         }
         catch (Exception ex)
@@ -789,6 +871,7 @@ public sealed class SnipWindow : Window
         try
         {
             _toolbar.SetScrollCaptureActive(false);
+            _toolbar.SetScrollTilesPending(false);
             ClearScrollCaptureHole();
             RestorePassthroughUi();
         }
