@@ -5,6 +5,7 @@
 using System;
 using System.Runtime.InteropServices;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media.Imaging;
 
@@ -49,6 +50,154 @@ public static class ClipboardService
         finally
         {
             CloseClipboard();
+        }
+    }
+
+    /// <summary>
+    /// Freezes (if needed), runs <see cref="BitmapSource.CopyPixels"/> + PNG encode
+    /// off the UI thread for large frames, then applies CF_DIB/PNG on the caller
+    /// sync context (typically STA/UI for clipboard ownership).
+    /// </summary>
+    public static async Task CopyBitmapAsync(
+        BitmapSource bitmap,
+        byte[] pngBytes = null,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+
+        if (!OperatingSystem.IsWindows())
+        {
+            return;
+        }
+
+        BitmapSource frozen = bitmap;
+        if (!frozen.IsFrozen)
+        {
+            frozen = bitmap.Clone();
+            frozen.Freeze();
+        }
+
+        const int asyncPixelThreshold = 512 * 512;
+        long pixels = (long)frozen.PixelWidth * frozen.PixelHeight;
+        bool alreadyHavePng = pngBytes != null && pngBytes.Length > 0;
+        if (pixels < asyncPixelThreshold && alreadyHavePng)
+        {
+            CopyBitmap(frozen, pngBytes);
+            return;
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+        var payload = await Task.Run(
+            () => BuildClipboardPayload(frozen, pngBytes),
+            cancellationToken).ConfigureAwait(true);
+
+        ApplyClipboardPayload(payload);
+    }
+
+    private sealed class ClipboardPayload
+    {
+        public byte[] Dib { get; init; }
+
+        public byte[] Png { get; init; }
+    }
+
+    private static ClipboardPayload BuildClipboardPayload(BitmapSource bitmap, byte[] existingPng)
+    {
+        int width = bitmap.PixelWidth;
+        int height = bitmap.PixelHeight;
+        int stride = width * 4;
+        int headerBytes = Marshal.SizeOf<BITMAPINFOHEADER>();
+        int imageBytes = stride * height;
+        var dib = new byte[headerBytes + imageBytes];
+
+        var bmi = new BITMAPINFOHEADER
+        {
+            BiSize = (uint)headerBytes,
+            BiWidth = width,
+            BiHeight = height,
+            BiPlanes = 1,
+            BiBitCount = 32,
+            BiCompression = 0,
+            BiSizeImage = (uint)imageBytes,
+        };
+        MemoryMarshal.Write(dib.AsSpan(0, headerBytes), in bmi);
+
+        // Bottom-up DIB: CopyPixels one source row at a time (frozen → any thread).
+        for (int y = 0; y < height; y++)
+        {
+            int srcY = height - 1 - y;
+            int destOffset = headerBytes + (y * stride);
+            bitmap.CopyPixels(new Int32Rect(0, srcY, width, 1), dib, stride, destOffset);
+            ClearBgraAlpha(dib.AsSpan(destOffset, stride));
+        }
+
+        byte[] png;
+        if (existingPng != null && existingPng.Length > 0)
+        {
+            png = existingPng;
+        }
+        else
+        {
+            png = PngEncoder.Encode(bitmap);
+        }
+
+        return new ClipboardPayload { Dib = dib, Png = png };
+    }
+
+    private static void ApplyClipboardPayload(ClipboardPayload payload)
+    {
+        if (!TryOpenClipboard())
+        {
+            return;
+        }
+
+        try
+        {
+            EmptyClipboard();
+            SetHGlobalFormat(CfDib, payload.Dib);
+            SetHGlobalFormat(RegisterClipboardFormat("PNG"), payload.Png);
+        }
+        finally
+        {
+            CloseClipboard();
+        }
+    }
+
+    private static void SetHGlobalFormat(uint format, byte[] bytes)
+    {
+        if (bytes == null || bytes.Length == 0)
+        {
+            return;
+        }
+
+        IntPtr hGlobal = GlobalAlloc(Win32.GmemMoveable, (uint)bytes.Length);
+        if (hGlobal == IntPtr.Zero)
+        {
+            return;
+        }
+
+        IntPtr p = GlobalLock(hGlobal);
+        if (p == IntPtr.Zero)
+        {
+            GlobalFree(hGlobal);
+            return;
+        }
+
+        try
+        {
+            unsafe
+            {
+                bytes.AsSpan().CopyTo(new Span<byte>((void*)p, bytes.Length));
+            }
+        }
+        finally
+        {
+            GlobalUnlock(hGlobal);
+        }
+
+        if (SetClipboardData(format, hGlobal) == IntPtr.Zero)
+        {
+            GlobalFree(hGlobal);
         }
     }
 
