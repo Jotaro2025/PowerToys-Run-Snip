@@ -2,6 +2,10 @@
 
 PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移植自 [TDS](https://github.com/) 的区域截屏工具。纯 C#/WPF 实现，不依赖 TDS 本体，也不修改 PowerToys。
 
+> **学习向说明：** 文字提取依赖的 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr) NuGet 包（及其随包 OCR 组件）按包说明面向学习/研究场景；商业产品请自行评估合规与替代方案。详见文末「代码来源与许可」。
+
+当前插件元数据版本见 [`plugin.json`](Community.PowerToys.Run.Plugin.Snip/plugin.json)（Author: Jotaro2025）。
+
 ## 功能
 
 在 PowerToys Run 中输入关键词 `snip`，提供三条命令：
@@ -94,9 +98,34 @@ dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 
 代码按 PowerToys 仓库同款规则集构建（StyleCop + .NET 分析器，警告即错误）。
 
+## 发布打包
+
+推荐用仓库脚本打出可分发的 zip（根目录为 `Snip\`，解压到 PowerToys Run 的 `Plugins\` 下即可）：
+
+```powershell
+# Windows（需本机已装 PowerToys，或用 -PowerToysInstallDir 指向含 Wox.Plugin.dll 的目录）
+.\scripts\pack-release.ps1
+# 若 PowerToys 不在默认路径：
+.\scripts\pack-release.ps1 -PowerToysInstallDir "D:\PowerToys"
+```
+
+```bash
+# Linux / CI 交叉编译（EnableWindowsTargeting），需提供 Wox.Plugin 等引用目录
+./scripts/pack-release.sh --powertoys-dir /path/to/PowerToysOrStubs
+```
+
+脚本会：
+
+1. `dotnet build -c Release -p:EnableWindowsTargeting=true`
+2. 将输出暂存为 `artifacts/staging/Snip/`（跳过 `.pdb`）
+3. 自检关键文件：`plugin.json`、主 DLL、`Images\`、`WeChatOcr.dll`、`Sdcb.HyMT2Sharp.dll`、`wco_data\WeChatOCR.exe`、`zh-CN\*.resources.dll`，并拒绝仍带 Microsoft / aka.ms 元数据的 `plugin.json`
+4. 生成 `artifacts/Snip-<Version>.zip`（版本号读取自 `plugin.json`）
+
+Windows 手工验收可参考 [docs/windows-e2e-checklist.md](docs/windows-e2e-checklist.md)。
+
 ## 部署
 
-把构建输出目录整体复制到 PowerToys 的插件目录，然后重启 PowerToys：
+把构建输出目录（或发布 zip 解压出的 `Snip\`）整体放到 PowerToys 的插件目录，然后重启 PowerToys：
 
 ```
 %LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\
