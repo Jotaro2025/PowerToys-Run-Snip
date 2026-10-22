@@ -1,167 +1,180 @@
 # Snip — PowerToys Run 截屏插件
 
-PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选标注、OCR 文字提取、图片翻译、钉住浮窗。功能移植自 [TDS](https://github.com/) 的区域截屏工具。纯 C#/WPF 实现，不依赖 TDS 本体，也不修改 PowerToys。
+**[中文](README.md) | [English](README.en.md)**
 
-> **学习向说明：** 文字提取依赖的 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr) NuGet 包（及其随包 OCR 组件）按包说明面向学习/研究场景；商业产品请自行评估合规与替代方案。详见文末「代码来源与许可」。
+PowerToys Run（PowerToys 启动器）的**区域截屏**插件：框选标注、OCR 文字提取、图片翻译、钉住浮窗。纯 C#/WPF 实现，不修改 PowerToys，也不依赖 TDS 二进制。
 
 当前插件元数据版本见 [`plugin.json`](Community.PowerToys.Run.Plugin.Snip/plugin.json)（Author: Jotaro2025）。
 
+## 致谢与来源
+
+本插件面向 / 依赖官方宿主，并引用了以下项目的思路或包；**与 Microsoft 无隶属关系**，为社区插件。
+
+| 项目 | 作用 | 许可 / 说明 |
+|------|------|-------------|
+| **[microsoft/PowerToys](https://github.com/microsoft/PowerToys)** | PowerToys Run 插件宿主；引用其自带的 `Wox.Plugin` 等程序集 | MIT |
+| **[LdotJdot/TDS](https://github.com/LdotJdot/TDS)**（[`TDSAot/ScreenShot/`](https://github.com/LdotJdot/TDS/tree/main/TDSAot/ScreenShot)） | 区域截屏的捕获、遮罩、标注等实现思路；本仓库为面向 PowerToys Run 的纯 C#/WPF 重写 | 不依赖 TDS 二进制；不修改 PowerToys |
+| **[WeChatOcr](https://github.com/ZGGSONG/WeChatOcr)**（[NuGet](https://www.nuget.org/packages/WeChatOcr/)） | 文字提取 / 图片翻译的 OCR | 仅包引用；包说明为 “Study only, do not use for commercial purposes”；OCR 组件来自微信生态 |
+| **[Sdcb.HyMT2Sharp](https://github.com/sdcb/HyMT2Sharp)**（[NuGet](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)，Apache-2.0） | 可选进程内本地翻译；另可选用 HTTP OpenAI 兼容服务 | 推荐权重 **腾讯混元 Hy-MT2** GGUF（[ModelScope](https://www.modelscope.cn/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF) / [Hugging Face](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)，Apache-2.0）；**权重不随插件捆绑** |
+| 本仓库新增代码 | 插件本体 | [MIT](LICENSE) |
+
+> **学习向说明：** WeChatOcr 按包说明面向学习/研究；商业产品请自行评估合规与替代方案。
+
 ## 功能
 
-在 PowerToys Run 中输入关键词 `snip`，挂载**区域截屏**与**设置**两条命令（遮罩框选 + 标注 / OCR / 译图 / 钉住；需要整屏时框选整块显示器即可，不再单独提供全屏到剪贴板 / 全屏保存入口）。也可在设置中配置全局快捷键直接截屏。仓库与插件描述以区域为主。
+在 PowerToys Run 中输入关键词 `snip`，可挂载：
 
-区域截屏编辑器能力：
+- **区域截屏**：遮罩框选 + 标注 / OCR / 译图 / 钉住（需要整屏时框选整块显示器即可）
+- **设置**：打开 Snip 专用设置窗口
+
+也可在设置中配置**全局快捷键**直接开始区域截屏。
+
+### 区域截屏编辑器
 
 - 拖拽框选、八手柄调整选区、实时尺寸提示
-- 标注工具：矩形、椭圆、箭头、画笔、文字、马赛克（拖拽时用廉价中心 2×2 采样预览；松手/导出用全块平均，观感与原先导出一致）
-- 7 色颜色板 + 4 档笔画粗细、撤销（Ctrl+Z）
+- 标注：矩形、椭圆、箭头、画笔、文字、马赛克
+- 7 色颜色板 + 4 档笔画粗细；撤销 / 重做
 - 快捷键：Enter 完成、Esc 取消、Ctrl+C 复制、Ctrl+S 保存、Ctrl+Z 撤销、Ctrl+Y 重做、Delete 删除选中标注
-- 导出路径：已有 PNG 字节时剪贴板不再二次编码；CF_DIB 在 GlobalLock 缓冲上按行 CopyPixels + `Span` 翻转/清 alpha（无全帧中间 `byte[]`）；无标注时裁剪结果跳过 RenderTargetBitmap；PNG 编码优先 TryGetBuffer / 直写文件，减少多余数组拷贝
-- **文字提取（OCR）**：工具栏上的「文字提取」按钮，仿微信截图：识别选区（含标注）中的文字，
-  在结果窗口中显示，可编辑/选中，支持「复制」（有选中时复制选中部分）和「全部复制」；关闭结果窗后回到遮罩可继续标注
-- **钉住图片**：工具栏图钉按钮，以置顶轻量窗口贴在屏幕上（拖动移动；Esc / 双击 / 右键关闭）；**不结束**截屏会话，可继续标注或再次钉住；钉住窗只持有降采样/冻结的显示副本，不长期挂住导出全分辨率
-- **图片翻译**：工具栏上的「图片翻译」按钮；OCR 取出带框文字后翻译，擦除原文并重绘译文，
-  结果窗口左侧为翻译图、右侧为可编辑译文列表（需在设置中配置翻译引擎）；
-  可「重新贴图」把编辑后的译文再画回左侧，也可「保存图片」/复制图片
-- **会话保持（OCR / 翻译 / 钉住）**：点文字提取或图片翻译时先隐藏全屏遮罩，结果窗关闭后自动恢复同一选区与标注（仿微信截图可再试）；钉住不关遮罩。Enter / 复制 / 保存 / Esc 取消仍结束本次截屏；Esc 取消会顺带关掉未关的 OCR/翻译结果窗，避免残留
-- 多显示器 + 高 DPI 正确适配（取光标所在屏幕，按物理像素捕获；GDI 用 CreateDIBSection 直写 top-down BGRA，**跨线程保留 DIB 所有权**，UI STA 上用 `Span<T>` 拷入 `WriteableBitmap.BackBuffer` 后再 `DeleteObject`，无全帧 `CapturedFrame.Pixels` 中间 `byte[]`；BitBlt 仍在线程池；大图叠层预览降采样后物化并 Freeze，避免首次合成懒计算）
-
-插件设置：
-
-- **专用设置窗口**（推荐）：PowerToys Run 输入 `snip` → 选择「设置」；含常规 / 快捷键 / 翻译 / 关于。翻译页可按引擎折叠字段；可配置**全局快捷键**（默认空=禁用，避免抢键）直接开始区域截屏。保存时写回 PowerToys Run `settings.json`，与系统设置页同步。
-- PowerToys 设置 → PowerToys Run → Snip 的 AdditionalOptions 仍可用（保存目录、复制、自动保存、延迟、全局快捷键、翻译相关项）。
-- 保存目录（留空则用 `图片\Snip`）
-- 截屏后复制到剪贴板（默认开）
-- 区域截屏后自动保存
-- 截屏延迟（毫秒，默认 150，给 PowerToys Run 隐藏窗口的时间）
-- **全局快捷键**（如 `Ctrl+Shift+S`；留空禁用）
-- **图片翻译引擎**：`关闭` / `HTTP（OpenAI 兼容）` / `HyMT2Sharp（本地 GGUF）`（默认关闭）
-- 目标语言（标签前缀 `翻译 ·`）
-- HTTP 相关项标签前缀 `HTTP ·`：Base URL、可选 API Key、模型名
-- HyMT 相关项标签前缀 `HyMT ·`：GGUF 路径、**下载推荐的 2Bit 模型**（勾选后保存触发）、自定义下载 URL、后端（自动 / CPU / Vulkan）
-- **设置折叠限制**：PowerToys Run 的 `AdditionalOptions` **不能**按引擎动态隐藏字段；请用专用设置窗口按引擎折叠。系统设置页仍用前缀分组降低噪音
+- **文字提取（OCR）**：识别选区文字，结果窗可编辑 / 复制；关闭后回到遮罩可继续标注
+- **钉住图片**：置顶轻量浮窗（拖动移动；Esc / 双击 / 右键关闭）；不结束截屏会话
+- **图片翻译**：OCR 取框后翻译，擦除原文并重绘译文；可「重新贴图」/「保存图片」
+- **会话保持**：OCR / 翻译时先隐藏遮罩，关闭结果窗后恢复同一选区与标注；钉住不关遮罩
+- 多显示器 + 高 DPI 适配（取光标所在屏幕，按物理像素捕获）
 
 界面语言跟随 PowerToys（内置英文 + 简体中文）。
 
-### 文字提取说明
+## 系统要求
 
-文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)，该包自带完整的 OCR 组件
-（`WeChatOCR.exe`、mmmojo DLL 和模型文件）。**默认推荐精简包（slim）**，不强制每人下载约 61 MB 的 `wco_data`：
+- [PowerToys](https://github.com/microsoft/PowerToys) **≥ 0.100**（.NET 10 宿主）
+- **x64** PowerToys（OCR 组件仅有 x64 版本）
+- Windows（插件为 WPF）
 
-- **不需要安装微信**；识别在本地进行（下载组件后可不联网）
-- **仅支持 x64** 版 PowerToys（OCR 组件只有 x64 版本）
-- **精简包（slim / 默认 `Snip-<ver>.zip`）**：不含 `wco_data`；首次「文字提取」或「图片翻译」时提示下载 WeChatOcr NuGet 包（nuget.org → Azure 中国 CDN），解压到  
+## 安装
+
+1. 从 [Releases](https://github.com/Jotaro2025/PowerToys-Run-Snip/releases) 下载 `Snip-<ver>.zip`（精简包，推荐）或 `Snip-<ver>-full.zip`
+2. 解压得到的 `Snip\` 目录整体放到：
+
+```
+%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\
+```
+
+（PowerToys 0.9x 及更早为 `%LOCALAPPDATA%\Microsoft\PowerToys\RunPlugins\`。）
+
+3. 重启 PowerToys
+
+典型目录内容：
+
+```
+Snip\
+├── Community.PowerToys.Run.Plugin.Snip.dll
+├── plugin.json
+├── Images\…
+├── WeChatOcr.dll、Google.Protobuf.dll、Newtonsoft.Json.dll   # OCR 托管依赖（两种包都有）
+├── Sdcb.HyMT2Sharp.dll 等                                      # 进程内翻译（不含 GGUF）
+├── wco_data\…                                                  # 仅 full 包；slim 首次 OCR 下载
+└── zh-CN\….resources.dll
+```
+
+插件以 `DynamicLoading` 加载；`Wox.Plugin` 等由 PowerToys 提供，不会复制到输出目录。
+
+## 用法
+
+1. 打开 PowerToys Run，输入 `snip`
+2. 选择 **区域截屏**，框选后标注 / OCR / 译图 / 钉住 / 复制 / 保存
+3. 或选择 **设置**，打开专用设置窗口
+4. 若已配置全局快捷键，可直接触发区域截屏
+
+## 设置
+
+### 专用设置窗口（推荐）
+
+PowerToys Run → `snip` → **设置**。含常规 / 快捷键 / 翻译 / 关于。翻译页可按引擎折叠字段；可配置全局快捷键（默认空 = 禁用）。保存时写回 PowerToys Run `settings.json`，与系统设置页同步。
+
+### PowerToys 系统设置页
+
+PowerToys 设置 → PowerToys Run → Snip 的 **AdditionalOptions** 仍可用。常见项：
+
+| 项 | 说明 |
+|----|------|
+| 保存目录 | 留空则用 `图片\Snip` |
+| 截屏后复制到剪贴板 | 默认开 |
+| 区域截屏后自动保存 | |
+| 截屏延迟（毫秒） | 默认 150，给 Run 隐藏窗口的时间 |
+| 全局快捷键 | 如 `Ctrl+Shift+S`；留空禁用 |
+| 图片翻译引擎 | `关闭` / `HTTP（OpenAI 兼容）` / `HyMT2Sharp（本地 GGUF）` |
+| 目标语言 | 标签前缀 `翻译 ·` |
+| HTTP · Base URL / API Key / 模型名 | OpenAI 兼容服务 |
+| HyMT · GGUF 路径 / 下载推荐模型 / 自定义 URL / 后端 | 自动 / CPU / Vulkan |
+
+> **折叠限制：** `AdditionalOptions` **不能**按引擎动态隐藏字段；请用专用设置窗口按引擎折叠。系统设置页用前缀分组降低噪音。
+
+## 文字提取（OCR）
+
+使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/)（见上文致谢）。**不需要安装微信**；识别在本地进行。
+
+- **精简包（slim / 默认 `Snip-<ver>.zip`）**：不含 `wco_data`；首次「文字提取」或「图片翻译」时提示下载 WeChatOcr NuGet，解压到  
   `%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\wco_data\`
-- **完整包（full）**：插件目录自带 `wco_data\`，可离线 OCR，体积大约多 61 MB
-- 托管 DLL（`WeChatOcr.dll` 等约 1.3 MB）仍随两种包一起分发
-- OCR 缺失、超时、识别失败或没有文字时，结果窗口会提示；可改下完整包或允许下载
-- 关闭 OCR / 图片翻译结果窗口会取消进行中的识别与翻译；若引擎正被占用会显示忙碌等待提示
+- **完整包（full）**：插件目录自带 `wco_data\`，可离线 OCR（约多 61 MB）
+- 托管 DLL（`WeChatOcr.dll` 等约 1.3 MB）随两种包一起分发
+- 仅 **x64**；OCR 缺失 / 超时 / 失败时结果窗会提示
+- 关闭结果窗会取消进行中的识别；引擎忙碌时会显示等待提示
 
-### 图片翻译说明
+## 图片翻译
 
-图片翻译复用 WeChat OCR 的逐行框（`Left/Top/Right/Bottom`），翻译后按框擦除原文并重绘译文：框外多环中位色采样（用于对比色文字）；擦除优先用纯 C# **Telea 风格轻量 inpaint**（`WriteableBitmap.BackBuffer` + `Span` 直写 OCR 脏区，无全帧 `byte[]` 双 Marshal.Copy；区域局部 mask + 边界队列洋葱皮推进，距离加权 + 廉价梯度项，无 OpenCV；不再为每个 OCR 框分配全图 `bool[W*H]`），过小或失败时回退中位色实心填充；框内换行（英文按词 / 中文按字，FitFontSize/WrapText 缓存 FormattedText 与字形宽度）并自适应字号（有下限），边缘留出少量 padding。
-有 `SinglePos` 四角点时按四边形仿射贴字（纯 WPF，无 OpenCV），擦除对该四边形外接矩形做 inpaint；否则回退轴对齐框；HyMT 首次加载 GGUF 时结果窗显示「正在加载模型…」。
-多行 OCR 结果会**批量**发给翻译引擎（编号对齐；解析失败则回退逐行），HTTP 与 HyMT2Sharp 均减少往返次数。
-结果窗口支持编辑右侧译文后点「重新贴图」仅重绘左侧（不重新 OCR/翻译），以及「保存图片」（默认目录与截屏保存目录一致，可改路径）。
+复用 WeChat OCR 的逐行框，翻译后擦除原文并重绘译文。多行结果会批量发给引擎。结果窗支持编辑右侧译文后「重新贴图」，以及「保存图片」。
 
-翻译引擎默认**关闭**，需在插件设置中任选其一：
+翻译引擎默认**关闭**，需在设置中任选其一：
 
 1. **HTTP（OpenAI 兼容）**  
-   指向任意实现 `POST /v1/chat/completions` 的服务，例如 [HyMT2Sharp.Server](https://github.com/sdcb/HyMT2Sharp)：
-   `http://127.0.0.1:8080/v1`。可选 API Key 与模型名。
+   指向任意 `POST /v1/chat/completions` 服务，例如 [HyMT2Sharp.Server](https://github.com/sdcb/HyMT2Sharp)：`http://127.0.0.1:8080/v1`。可选 API Key 与模型名。
 
 2. **HyMT2Sharp（进程内）**  
-   引用 NuGet 包 [`Sdcb.HyMT2Sharp`](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)（Apache-2.0，约 460KB），
-   **不**捆绑 `Sdcb.GgufWeights.*`（2Bit 约 573MB）。推荐使用官方 [Hy-MT2-1.8B-2Bit.gguf](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)
-   （Apache-2.0，与 `Sdcb.GgufWeights.Hy-MT2-1.8B-2Bit` 同源，约 573MB / 600,534,880 字节）：
-   - **设置**：勾选「下载推荐的 2Bit 模型」并保存，或首次点击「图片翻译」时按提示下载
-   - **缓存目录**：`%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\models\Hy-MT2-1.8B-2Bit.gguf`
-   - **下载源（按顺序尝试，国内优先）**：
-     1. **魔搭 ModelScope**（默认）：`https://www.modelscope.cn/api/v1/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF/repo?Revision=master&FilePath=Hy-MT2-1.8B-2Bit.gguf`
-     2. **hf-mirror**：`https://hf-mirror.com/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
-     3. **Hugging Face**（兜底）：`https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
-   - 某一源中途失败会自动换下一个（保留 `.downloading` 断点；支持 HTTP Range 续传，源不支持则该源整文件重下）；全部失败时提示检查网络 / 魔搭
-   - 下载完成后校验官方 SHA-256，不匹配则**删除并拒绝**该文件，改试下一源
-   - 下载成功后会自动填入 `HyMtGgufPath`，并写回 PowerToys Run 的 `settings.json`（同时落盘旁路 `.path` sidecar）；缓存已存在且体积看起来完整时会跳过重复下载
-   - 可选「自定义 GGUF 下载地址」：填写 HTTPS URL 时优先于魔搭 / 镜像链；留空仍为国内优先默认顺序
-   - 也可手动下载后在设置里填写任意 GGUF 路径
-   - 后端可选自动 / CPU / Vulkan（Vulkan 约需 4GB 显存）。模型首次使用时懒加载，并在进程内按「GGUF 路径 + 后端」缓存，避免每次翻译后释放再重载数 GB 权重；推理串行排队（模型非线程安全）。插件卸载时会显式释放缓存，否则随进程退出清理
+   引用 [`Sdcb.HyMT2Sharp`](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)，**不**捆绑 GGUF。推荐官方 [Hy-MT2-1.8B-2Bit.gguf](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)（约 573 MB）：
+   - 设置中勾选「下载推荐的 2Bit 模型」并保存，或首次点击「图片翻译」时按提示下载
+   - 缓存：`%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\models\Hy-MT2-1.8B-2Bit.gguf`
+   - 下载源（按序，国内优先）：[魔搭 ModelScope](https://www.modelscope.cn/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF) → hf-mirror → [Hugging Face](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)
+   - 支持断点续传与 SHA-256 校验；可选自定义 HTTPS 下载地址或手动填写 GGUF 路径
+   - 后端：自动 / CPU / Vulkan（Vulkan 约需 4GB 显存）；模型按路径+后端缓存，推理串行
 
-未配置或配置错误时，点击「图片翻译」会弹出中文提示，不会关闭截屏窗口。
+未配置或配置错误时，点击「图片翻译」会提示，不会关闭截屏窗口。
 
-## 构建
+## 构建与测试
 
-需要 .NET 10 SDK 和一份已安装的 PowerToys（插件引用其自带的 `Wox.Plugin` 等程序集）：
-
-CI / 无完整安装时可用仓库内 `build/PowerToysRefs` 作为 `-p:PowerToysInstallDir=...`（见 `.github/workflows/ci.yml`）。
+需要 .NET 10 SDK 和已安装的 PowerToys（引用其 `Wox.Plugin` 等）。CI / 无完整安装时可用仓库内 `build/PowerToysRefs` 作为 `-p:PowerToysInstallDir=...`（见 `.github/workflows/ci.yml`）。
 
 ```powershell
 dotnet build Community.PowerToys.Run.Plugin.Snip
 # PowerToys 装在其他位置时：
 dotnet build Community.PowerToys.Run.Plugin.Snip -p:PowerToysInstallDir="D:\PowerToys"
-```
 
-运行测试：
-
-```powershell
 dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 ```
 
-代码按 PowerToys 仓库同款规则集构建（StyleCop + .NET 分析器，警告即错误）。
+代码按 PowerToys 同款规则集构建（StyleCop + .NET 分析器，警告即错误）。
 
 ## 发布打包
 
-推荐用仓库脚本打出可分发的 zip（根目录为 `Snip\`，解压到 PowerToys Run 的 `Plugins\` 下即可）：
-
 ```powershell
-# Windows（需本机已装 PowerToys，或用 -PowerToysInstallDir 指向含 Wox.Plugin.dll 的目录）
+# Windows（需本机 PowerToys，或 -PowerToysInstallDir）
 .\scripts\pack-release.ps1
-# 若 PowerToys 不在默认路径：
 .\scripts\pack-release.ps1 -PowerToysInstallDir "D:\PowerToys"
 ```
 
 ```bash
-# Linux / CI 交叉编译（EnableWindowsTargeting），需提供 Wox.Plugin 等引用目录
+# Linux / CI 交叉编译（EnableWindowsTargeting）
 ./scripts/pack-release.sh --powertoys-dir /path/to/PowerToysOrStubs
 ```
 
-脚本会：
+脚本会 Release 构建、暂存到 `artifacts/staging/Snip/`（跳过 `.pdb`）、自检关键文件，并生成：
 
-1. `dotnet build -c Release -p:EnableWindowsTargeting=true`
-2. 将输出暂存为 `artifacts/staging/Snip/`（跳过 `.pdb`）
-3. 自检关键文件：`plugin.json`、主 DLL、`Images\`、`WeChatOcr.dll`、`Sdcb.HyMT2Sharp.dll`、`wco_data\WeChatOCR.exe`（构建输出仍含 OCR，供 full）、`zh-CN\*.resources.dll`，并拒绝仍带 Microsoft / aka.ms 元数据的 `plugin.json`
-4. 生成两套包（版本号读取自 `plugin.json`）：
-   - **`Snip-<Version>-slim.zip`** / **`Snip-<Version>.zip`（默认，推荐）**：去掉 `wco_data`，首次 OCR 按需下载
-   - **`Snip-<Version>-full.zip`**：保留 `wco_data`，可离线文字提取 / 图片翻译
+- **`Snip-<Version>-slim.zip`** / **`Snip-<Version>.zip`（默认，推荐）**：无 `wco_data`，首次 OCR 按需下载
+- **`Snip-<Version>-full.zip`**：含 `wco_data`，可离线 OCR / 译图
 
-Windows 手工验收可参考 [docs/windows-e2e-checklist.md](docs/windows-e2e-checklist.md)。
-
-## 部署
-
-把构建输出目录（或发布 zip 解压出的 `Snip\`）整体放到 PowerToys 的插件目录，然后重启 PowerToys：
-
-```
-%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\
-├── Community.PowerToys.Run.Plugin.Snip.dll
-├── Community.PowerToys.Run.Plugin.Snip.pdb        (可选)
-├── plugin.json
-├── Images\Snip.dark.png
-├── Images\Snip.light.png
-├── WeChatOcr.dll、Google.Protobuf.dll、Newtonsoft.Json.dll         (文字提取托管依赖；两种包都有)
-├── Sdcb.HyMT2Sharp.dll 等                                           (图片翻译：进程内引擎，不含 GGUF)
-├── wco_data\…                                                       (仅 full 包；slim 首次 OCR 下载到 LocalAppData)
-├── Community.PowerToys.Run.Plugin.Snip.deps.json 等其余构建输出
-└── zh-CN\Community.PowerToys.Run.Plugin.Snip.resources.dll   (中文资源)
-```
-
-即 `Community.PowerToys.Run.Plugin.Snip\bin\Debug\` 下的全部内容。插件以 `DynamicLoading` 方式加载，
-依赖从插件自己的目录解析；PowerToys 自带的 `Wox.Plugin` 等程序集不会复制到输出目录。
-PowerToys 0.9x 及更早版本的插件目录是 `%LOCALAPPDATA%\Microsoft\PowerToys\RunPlugins\`。
+Windows 手工验收见 [docs/windows-e2e-checklist.md](docs/windows-e2e-checklist.md)。
 
 ## 在 PowerToys 源码树内开发
 
-如果要把插件提交进 [microsoft/PowerToys](https://github.com/microsoft/PowerToys) 仓库，把 `Community.PowerToys.Run.Plugin.Snip` 文件夹复制到
-`src/modules/launcher/Plugins/` 下，并把工程文件里的四个 `<Reference>` 换成对源码工程的引用：
+若要把插件提交进 [microsoft/PowerToys](https://github.com/microsoft/PowerToys)，将 `Community.PowerToys.Run.Plugin.Snip` 复制到 `src/modules/launcher/Plugins/`，并把工程文件里的四个 `<Reference>` 换成对源码工程的引用：
 
 ```xml
 <ItemGroup>
@@ -173,17 +186,6 @@ PowerToys 0.9x 及更早版本的插件目录是 `%LOCALAPPDATA%\Microsoft\Power
 
 （`Wox.Plugin` 会传递引用 `ManagedCommon`、`Common.UI`、`Settings.UI.Library`。）
 
-## 代码来源与许可
+## 许可
 
-- 截屏捕获、标注模型与编辑器逻辑移植自 TDS 的区域截屏模块（MIT）。
-- 插件框架（`Wox.Plugin`）来自 PowerToys（MIT）。
-- 文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)（NuGet 标注 MIT 许可，仅以包引用，
-  未复制其源码）。该包的描述注明“Study only, do not use for commercial purposes”（仅供学习，勿用于商业用途）；
-  其自带的 OCR 组件（`WeChatOCR.exe`、mmmojo DLL、模型文件）来自腾讯微信；完整包构建时复制到输出目录，
-  精简包则在首次使用时从同一 NuGet 包下载到 LocalAppData。
-- 图片翻译可选引用 [Sdcb.HyMT2Sharp](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)（Apache-2.0）；
-  **不**引用 `Sdcb.GgufWeights.*`。推荐权重与官方 2Bit GGUF 同源（Apache-2.0）；
-  插件默认从 [魔搭 ModelScope](https://www.modelscope.cn/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF)
-  下载到 LocalAppData（便于国内访问），失败再回退 hf-mirror / [Hugging Face](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)，
-  也可由用户手动配置路径。
-- 本仓库新增代码以 MIT 许可发布，见 [LICENSE](LICENSE)。
+本仓库新增代码以 MIT 许可发布，见 [LICENSE](LICENSE)。第三方组件的许可与使用限制见上文「致谢与来源」。
