@@ -8,6 +8,10 @@ on:
 jobs:
   build-test:
     runs-on: windows-latest
+    env:
+      DOTNET_NOLOGO: "true"
+      DOTNET_CLI_TELEMETRY_OPTOUT: "true"
+      PT_REFS: ${{ github.workspace }}\build\PowerToysRefs
     steps:
       - name: Checkout
         uses: actions/checkout@v4
@@ -25,9 +29,47 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-nuget-
 
-      - name: Build and test
+      # Warnings (compiler + .NET analyzers + StyleCop + IDE code style) fail the build.
+      - name: Build plugin (warnings as errors)
+        run: >
+          dotnet build Community.PowerToys.Run.Plugin.Snip/Community.PowerToys.Run.Plugin.Snip.csproj
+          -c Release
+          -warnaserror
+          -p:TreatWarningsAsErrors=true
+          -p:EnforceCodeStyleInBuild=true
+          -p:EnableWindowsTargeting=true
+          -p:PowerToysInstallDir="${{ env.PT_REFS }}"
+
+      - name: Build and test (warnings as errors)
         run: >
           dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests/Community.PowerToys.Run.Plugin.Snip.UnitTests.csproj
           -c Release
+          -warnaserror
+          -p:TreatWarningsAsErrors=true
+          -p:EnforceCodeStyleInBuild=true
           -p:EnableWindowsTargeting=true
-          -p:PowerToysInstallDir="${{ github.workspace }}\build\PowerToysRefs"
+          -p:PowerToysInstallDir="${{ env.PT_REFS }}"
+          --logger "trx;LogFileName=test-results.trx"
+          --results-directory TestResults
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/*.trx
+          if-no-files-found: ignore
+          retention-days: 14
+
+      - name: Pack release zips
+        shell: pwsh
+        run: ./scripts/pack-release.ps1 -PowerToysInstallDir "${{ env.PT_REFS }}" -Configuration Release
+
+      - name: Upload Release artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: Snip-Release-${{ github.sha }}
+          path: |
+            artifacts/Snip-*.zip
+          if-no-files-found: error
+          retention-days: 30
