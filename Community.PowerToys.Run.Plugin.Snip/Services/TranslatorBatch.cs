@@ -73,9 +73,12 @@ internal static partial class TranslatorBatch
         }
 
         var map = new Dictionary<int, string>();
-        foreach (var rawLine in reply.Replace("\r\n", "\n", StringComparison.Ordinal).Split('\n'))
+
+        // EnumerateLines handles \r\n / \n / \r without Replace+Split allocations.
+        foreach (var rawLine in reply.AsSpan().EnumerateLines())
         {
-            var m = NumberedLineRegex().Match(rawLine);
+            // Regex group capture still needs a string; per-line alloc beats whole-reply Replace+Split.
+            var m = NumberedLineRegex().Match(rawLine.ToString());
             if (!m.Success)
             {
                 continue;
@@ -92,10 +95,7 @@ internal static partial class TranslatorBatch
             }
 
             // First wins if the model repeats a number.
-            if (!map.ContainsKey(n))
-            {
-                map[n] = m.Groups[2].Value.Trim();
-            }
+            map.TryAdd(n, m.Groups[2].Value.Trim());
         }
 
         if (map.Count != expectedCount)

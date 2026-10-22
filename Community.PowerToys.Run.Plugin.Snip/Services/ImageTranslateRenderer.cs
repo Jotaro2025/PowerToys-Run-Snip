@@ -591,19 +591,17 @@ public static class ImageTranslateRenderer
 
     private static string WrapTextCore(string text, double maxWidth, double fontSize, TextMeasureCache cache)
     {
-        var paragraphs = text.Replace("\r\n", "\n", StringComparison.Ordinal)
-            .Replace('\r', '\n')
-            .Split('\n');
         var lines = new List<string>();
-        foreach (var paragraph in paragraphs)
+        foreach (var paragraphSpan in text.AsSpan().EnumerateLines())
         {
-            if (paragraph.Length == 0)
+            if (paragraphSpan.IsEmpty)
             {
                 lines.Add(string.Empty);
                 continue;
             }
 
-            if (paragraph.Any(char.IsWhiteSpace))
+            string paragraph = paragraphSpan.ToString();
+            if (ContainsWhiteSpace(paragraphSpan))
             {
                 lines.AddRange(WrapByWords(paragraph, maxWidth, fontSize, cache));
             }
@@ -614,6 +612,19 @@ public static class ImageTranslateRenderer
         }
 
         return string.Join("\n", lines);
+    }
+
+    private static bool ContainsWhiteSpace(ReadOnlySpan<char> text)
+    {
+        foreach (char c in text)
+        {
+            if (char.IsWhiteSpace(c))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static List<string> WrapByWords(string paragraph, double maxWidth, double fontSize, TextMeasureCache cache)
