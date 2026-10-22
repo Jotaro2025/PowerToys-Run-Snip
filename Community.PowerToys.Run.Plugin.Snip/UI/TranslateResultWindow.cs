@@ -282,7 +282,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
         buttons.Children.Add(_saveImageButton);
 
         _copyImageButton = CreateButton(Properties.Resources.tr_copy_image, isDefault: true);
-        _copyImageButton.Click += (sender, e) => CopyImage();
+        _copyImageButton.Click += async (sender, e) => await CopyImageAsync();
         buttons.Children.Add(_copyImageButton);
 
         _copyAllButton = CreateButton(Properties.Resources.tr_copy_all, isDefault: false);
@@ -808,24 +808,41 @@ public sealed class TranslateResultWindow : Window, IDisposable
         }
     }
 
-    private void CopyImage()
+    private async Task CopyImageAsync()
     {
-        if (_imageView.Source is not BitmapSource bmp)
+        if (_closed || _actionBusy || _imageView.Source is not BitmapSource bmp)
         {
             return;
         }
 
+        _actionBusy = true;
+        UpdateActionButtons(enabled: false);
         try
         {
-            ClipboardService.CopyBitmap(bmp);
+            // Large frames: CopyPixels + PNG encode off UI (ClipboardService.CopyBitmapAsync).
+            await ClipboardService.CopyBitmapAsync(bmp).ConfigureAwait(true);
+            if (_closed)
+            {
+                return;
+            }
+
             _status.Foreground = new SolidColorBrush(Color.FromRgb(48, 175, 85));
             _status.Text = Properties.Resources.tr_image_copied;
+            UpdateActionButtons(enabled: true);
         }
         catch (Exception ex)
         {
             Log.Exception($"Snip translate image copy failed: {ex.Message}", ex, GetType());
-            _status.Foreground = new SolidColorBrush(ErrorColor);
-            _status.Text = Properties.Resources.ocr_copy_failed;
+            if (!_closed)
+            {
+                _status.Foreground = new SolidColorBrush(ErrorColor);
+                _status.Text = Properties.Resources.ocr_copy_failed;
+                UpdateActionButtons(enabled: true);
+            }
+        }
+        finally
+        {
+            _actionBusy = false;
         }
     }
 
