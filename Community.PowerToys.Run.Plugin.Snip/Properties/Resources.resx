@@ -612,4 +612,7 @@
   <data name="settings_unload_hymt" xml:space="preserve">
     <value>Unload model now</value>
   </data>
+  <data name="tr_cancel_busy" xml:space="preserve">
+    <value>Cancel</value>
+  </data>
 </root>

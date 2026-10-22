@@ -1581,5 +1581,11 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        public static string tr_cancel_busy {
+            get {
+                return ResourceManager.GetString("tr_cancel_busy", resourceCulture);
+            }
+        }
+
     }
 }
