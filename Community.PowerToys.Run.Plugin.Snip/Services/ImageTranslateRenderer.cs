@@ -533,19 +533,31 @@ public static class ImageTranslateRenderer
     internal static Color MedianColor(IReadOnlyList<(byte R, byte G, byte B)> samples)
     {
         ArgumentNullException.ThrowIfNull(samples);
-        if (samples.Count == 0)
+        int n = samples.Count;
+        if (n == 0)
         {
             return Colors.White;
         }
 
-        var rs = samples.Select(s => s.R).ToArray();
-        var gs = samples.Select(s => s.G).ToArray();
-        var bs = samples.Select(s => s.B).ToArray();
-        Array.Sort(rs);
-        Array.Sort(gs);
-        Array.Sort(bs);
-        int mid = samples.Count / 2;
-        if ((samples.Count % 2) == 0)
+        // Single-pass fill + Span.Sort — avoids 3× Select().ToArray() on the hot sample path.
+        // Cap stackalloc so huge caller-built lists fall back to heap without blowing the stack.
+        const int stackCap = 512;
+        Span<byte> rs = n <= stackCap ? stackalloc byte[n] : new byte[n];
+        Span<byte> gs = n <= stackCap ? stackalloc byte[n] : new byte[n];
+        Span<byte> bs = n <= stackCap ? stackalloc byte[n] : new byte[n];
+        for (int i = 0; i < n; i++)
+        {
+            var s = samples[i];
+            rs[i] = s.R;
+            gs[i] = s.G;
+            bs[i] = s.B;
+        }
+
+        rs.Sort();
+        gs.Sort();
+        bs.Sort();
+        int mid = n / 2;
+        if ((n % 2) == 0)
         {
             return Color.FromRgb(
                 (byte)((rs[mid - 1] + rs[mid]) / 2),
