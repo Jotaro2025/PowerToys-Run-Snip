@@ -19,6 +19,42 @@ public class HyMT2SharpTranslatorCacheTests
     public void Cleanup()
     {
         HyMT2SharpTranslatorCache.Unload();
+        HyMT2SharpTranslatorCache.ConfigureIdleUnload(HyMT2SharpTranslatorCache.DefaultIdleUnloadMinutes);
+    }
+
+    [TestMethod]
+    public void TryUnloadIfIdle_UnloadsAfterTimeout()
+    {
+        var path = MakeTempPath("idle");
+        HyMT2SharpTranslatorCache.ConfigureIdleUnload(5);
+        HyMT2SharpTranslatorCache.GetOrCreate(path, HyMtBackendKind.Cpu);
+
+        Assert.IsFalse(HyMT2SharpTranslatorCache.TryUnloadIfIdle(DateTime.UtcNow.AddMinutes(1)));
+        Assert.IsTrue(HyMT2SharpTranslatorCache.IsCached(path, HyMtBackendKind.Cpu));
+
+        Assert.IsTrue(HyMT2SharpTranslatorCache.TryUnloadIfIdle(DateTime.UtcNow.AddMinutes(6)));
+        Assert.IsFalse(HyMT2SharpTranslatorCache.IsCached(path, HyMtBackendKind.Cpu));
+    }
+
+    [TestMethod]
+    public void TryUnloadIfIdle_DisabledWhenZero()
+    {
+        var path = MakeTempPath("idle-off");
+        HyMT2SharpTranslatorCache.ConfigureIdleUnload(0);
+        HyMT2SharpTranslatorCache.GetOrCreate(path, HyMtBackendKind.Cpu);
+
+        Assert.AreEqual(TimeSpan.Zero, HyMT2SharpTranslatorCache.IdleTimeout);
+        Assert.IsFalse(HyMT2SharpTranslatorCache.TryUnloadIfIdle(DateTime.UtcNow.AddDays(1)));
+        Assert.IsTrue(HyMT2SharpTranslatorCache.IsCached(path, HyMtBackendKind.Cpu));
+    }
+
+    [TestMethod]
+    public void ConfigureIdleUnload_ClampsMinutes()
+    {
+        HyMT2SharpTranslatorCache.ConfigureIdleUnload(10_000);
+        Assert.AreEqual(TimeSpan.FromMinutes(HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes), HyMT2SharpTranslatorCache.IdleTimeout);
+        HyMT2SharpTranslatorCache.ConfigureIdleUnload(-3);
+        Assert.AreEqual(TimeSpan.Zero, HyMT2SharpTranslatorCache.IdleTimeout);
     }
 
     [TestMethod]

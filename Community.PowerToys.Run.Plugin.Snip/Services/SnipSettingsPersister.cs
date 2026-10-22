@@ -117,6 +117,7 @@ internal static class SnipSettingsPersister
             OptionPatch.Text("HttpModel", settings.HttpModel ?? string.Empty),
             OptionPatch.Text("HyMtGgufPath", settings.HyMtGgufPath ?? string.Empty),
             OptionPatch.Text("HyMtCustomDownloadUrl", settings.HyMtCustomDownloadUrl ?? string.Empty),
+            OptionPatch.Number("HyMtIdleUnloadMinutes", settings.HyMtIdleUnloadMinutes),
             OptionPatch.ComboBox("HyMtBackend", (int)settings.HyMtBackend),
             OptionPatch.Bool("DownloadRecommendedHyMtModel", false),
         ];

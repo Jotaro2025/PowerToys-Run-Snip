@@ -74,6 +74,9 @@ public sealed class SnipSettings
     /// </summary>
     public string HyMtCustomDownloadUrl { get; set; } = string.Empty;
 
+    /// <summary>Unload the cached HyMT model after this many idle minutes (0 = never, max 240).</summary>
+    public int HyMtIdleUnloadMinutes { get; set; } = 10;
+
     /// <summary>Fallback directory when <see cref="SaveDirectory"/> is not set.</summary>
     public static string DefaultSaveFolder
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Snip");
@@ -99,6 +102,7 @@ public sealed class SnipSettings
             HyMtGgufPath = HyMtGgufPath,
             HyMtBackend = HyMtBackend,
             HyMtCustomDownloadUrl = HyMtCustomDownloadUrl,
+            HyMtIdleUnloadMinutes = HyMtIdleUnloadMinutes,
         };
     }
 
@@ -122,5 +126,6 @@ public sealed class SnipSettings
         HyMtGgufPath = other.HyMtGgufPath;
         HyMtBackend = other.HyMtBackend;
         HyMtCustomDownloadUrl = other.HyMtCustomDownloadUrl;
+        HyMtIdleUnloadMinutes = other.HyMtIdleUnloadMinutes;
     }
 }

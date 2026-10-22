@@ -99,10 +99,16 @@ public static class TranslatorFactory
                 settings.HttpBaseUrl.Trim(),
                 settings.HttpApiKey?.Trim() ?? string.Empty,
                 settings.HttpModel.Trim()),
-            TranslatorProvider.HyMT2Sharp => HyMT2SharpTranslatorCache.GetOrCreate(
-                settings.HyMtGgufPath.Trim(),
-                settings.HyMtBackend),
+            TranslatorProvider.HyMT2Sharp => GetHyMt(settings),
             _ => throw new TranslatorException(Properties.Resources.tr_err_provider_off),
         };
+    }
+
+    private static HyMT2SharpTranslator GetHyMt(SnipSettings settings)
+    {
+        HyMT2SharpTranslatorCache.ConfigureIdleUnload(settings.HyMtIdleUnloadMinutes);
+        return HyMT2SharpTranslatorCache.GetOrCreate(
+            settings.HyMtGgufPath.Trim(),
+            settings.HyMtBackend);
     }
 }
