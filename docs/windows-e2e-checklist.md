@@ -7,7 +7,7 @@
 - [ ] 已用 `scripts/pack-release.ps1`（或 `pack-release.sh`）打出 zip，并解压到  
       `%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\`
 - [ ] 已知所用包类型：**slim**（默认 `Snip-<ver>.zip` / `*-slim.zip`）或 **full**（`*-full.zip`）
-- [ ] 已重启 PowerToys；PowerToys Run 中输入 `snip` 能看到三条命令
+- [ ] 已重启 PowerToys；PowerToys Run 中输入 `snip` 能看到区域截屏一条命令
 - [ ] 插件设置里按需配置保存目录、翻译引擎
 
 ## S1 — 区域截屏基础

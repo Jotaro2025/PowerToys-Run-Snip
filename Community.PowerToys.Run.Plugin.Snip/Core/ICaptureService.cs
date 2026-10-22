@@ -14,5 +14,15 @@ public interface ICaptureService
 {
     IReadOnlyList<ScreenInfo> GetScreens();
 
+    /// <summary>
+    /// GDI capture into a raw pixel buffer (safe to call off the UI thread).
+    /// </summary>
+    CapturedFrame CaptureScreenPixels(ScreenInfo screen);
+
+    /// <summary>
+    /// Captures and builds a <see cref="WriteableBitmap"/> on the calling thread
+    /// (normally the UI STA). Prefer <see cref="CaptureScreenPixels"/> +
+    /// <see cref="CapturedFrame.ToWriteableBitmap"/> when offloading GDI work.
+    /// </summary>
     WriteableBitmap CaptureScreen(ScreenInfo screen);
 }

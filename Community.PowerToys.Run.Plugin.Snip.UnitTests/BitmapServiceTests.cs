@@ -9,6 +9,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
+using Community.PowerToys.Run.Plugin.Snip.Core;
 using Community.PowerToys.Run.Plugin.Snip.Services;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -176,6 +177,87 @@ public class BitmapServiceTests
         {
             var bitmap = CreateTestBitmap(10, 10);
             _ = Assert.ThrowsException<ArgumentException>(() => BitmapCropper.Crop(bitmap, default));
+        });
+    }
+
+    [TestMethod]
+    public void PngEncoderEncodeAsyncRoundTripsPixelSize()
+    {
+        var decoded = RunOnStaThread(() =>
+        {
+            var bitmap = CreateTestBitmap(32, 20);
+            var png = PngEncoder.EncodeAsync(bitmap).GetAwaiter().GetResult();
+
+            using var ms = new MemoryStream(png);
+            var decoder = new PngBitmapDecoder(ms, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+            return decoder.Frames[0];
+        });
+
+        Assert.AreEqual(32, decoded.PixelWidth);
+        Assert.AreEqual(20, decoded.PixelHeight);
+    }
+
+    [TestMethod]
+    public void CapturedFrameToWriteableBitmapCopiesPixels()
+    {
+        RunOnStaThread(() =>
+        {
+            const int w = 4;
+            const int h = 2;
+            const int stride = w * 4;
+            var pixels = new byte[stride * h];
+
+            // Pixel (0,0) = opaque red (BGRA)
+            pixels[0] = 0;
+            pixels[1] = 0;
+            pixels[2] = 255;
+            pixels[3] = 255;
+
+            var frame = new CapturedFrame(pixels, w, h, stride);
+            var wb = frame.ToWriteableBitmap();
+            Assert.AreEqual(w, wb.PixelWidth);
+            Assert.AreEqual(h, wb.PixelHeight);
+
+            var roundTrip = new byte[stride * h];
+            wb.CopyPixels(roundTrip, stride, 0);
+            Assert.AreEqual(255, roundTrip[2], "red channel");
+            Assert.AreEqual(255, roundTrip[3], "alpha channel");
+        });
+    }
+
+    [TestMethod]
+    public void CapturedFrameRejectsShortBuffer()
+    {
+        _ = Assert.ThrowsException<ArgumentException>(
+            () => new CapturedFrame(new byte[4], 4, 2, 16));
+    }
+
+    [TestMethod]
+    public void BitmapPreviewPassesThroughSmallImages()
+    {
+        RunOnStaThread(() =>
+        {
+            var bitmap = CreateTestBitmap(64, 48);
+            var preview = BitmapPreview.ForOverlay(bitmap);
+            Assert.AreSame(bitmap, preview);
+            Assert.IsFalse(BitmapPreview.NeedsDownsample(64, 48));
+        });
+    }
+
+    [TestMethod]
+    public void BitmapPreviewDownsamplesLargeImages()
+    {
+        RunOnStaThread(() =>
+        {
+            int edge = BitmapPreview.MaxPreviewEdge + 400;
+            var bitmap = CreateTestBitmap(edge, 100);
+            Assert.IsTrue(BitmapPreview.NeedsDownsample(edge, 100));
+
+            var preview = BitmapPreview.ForOverlay(bitmap);
+            Assert.AreNotSame(bitmap, preview);
+            Assert.IsTrue(preview.PixelWidth <= BitmapPreview.MaxPreviewEdge);
+            Assert.IsTrue(preview.PixelHeight <= BitmapPreview.MaxPreviewEdge);
+            Assert.AreEqual(BitmapPreview.MaxPreviewEdge, Math.Max(preview.PixelWidth, preview.PixelHeight));
         });
     }
 }

@@ -72,25 +72,13 @@
     <value>截图</value>
   </data>
   <data name="plugin_description" xml:space="preserve">
-    <value>区域或全屏截屏,支持标注</value>
+    <value>区域截屏,支持标注</value>
   </data>
   <data name="cmd_region_title" xml:space="preserve">
     <value>区域截屏</value>
   </data>
   <data name="cmd_region_subtitle" xml:space="preserve">
     <value>拖拽框选区域,标注后复制或保存</value>
-  </data>
-  <data name="cmd_full_clipboard_title" xml:space="preserve">
-    <value>全屏截屏到剪贴板</value>
-  </data>
-  <data name="cmd_full_clipboard_subtitle" xml:space="preserve">
-    <value>截取光标所在屏幕并复制到剪贴板</value>
-  </data>
-  <data name="cmd_full_save_title" xml:space="preserve">
-    <value>全屏截屏并保存</value>
-  </data>
-  <data name="cmd_full_save_subtitle" xml:space="preserve">
-    <value>截取光标所在屏幕并保存为 PNG 文件</value>
   </data>
   <data name="opt_save_dir_label" xml:space="preserve">
     <value>保存目录</value>
@@ -115,12 +103,6 @@
   </data>
   <data name="msg_saved" xml:space="preserve">
     <value>截屏已保存</value>
-  </data>
-  <data name="msg_full_copied" xml:space="preserve">
-    <value>全屏截屏已复制到剪贴板</value>
-  </data>
-  <data name="msg_full_saved" xml:space="preserve">
-    <value>全屏截屏已保存</value>
   </data>
   <data name="msg_failed" xml:space="preserve">
     <value>截屏失败</value>

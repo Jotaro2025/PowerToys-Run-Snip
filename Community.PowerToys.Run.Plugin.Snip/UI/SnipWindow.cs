@@ -54,6 +54,7 @@ public sealed class SnipWindow : Window
     private Rect _dragStartSelection;
     private bool _dragMovingHandle;
     private bool _disposed;
+    private bool _exportBusy;
 
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
@@ -91,9 +92,12 @@ public sealed class SnipWindow : Window
         SnapsToDevicePixels = true;
         Title = Properties.Resources.plugin_name;
 
+        // Overlay may show a downsampled preview for large (near-fullscreen)
+        // captures so WPF paints less; _source stays full-res for mosaic /
+        // BuildResultBitmap / OCR / translate / save / copy.
         _screenshotImage = new SnipBackground
         {
-            Source = source,
+            Source = BitmapPreview.ForOverlay(source),
             Width = _logicalSize.Width,
             Height = _logicalSize.Height,
             IsHitTestVisible = false,
@@ -137,11 +141,11 @@ public sealed class SnipWindow : Window
         _toolbar.UndoClicked += (sender, e) => _annoCanvas.Undo();
         _toolbar.RedoClicked += (sender, e) => _annoCanvas.Redo();
         _toolbar.SaveClicked += async (sender, e) => await DoSaveAsync();
-        _toolbar.ExtractTextClicked += (sender, e) => DoExtractText();
-        _toolbar.TranslateImageClicked += (sender, e) => DoTranslateImage();
-        _toolbar.PinClicked += (sender, e) => DoPin();
+        _toolbar.ExtractTextClicked += async (sender, e) => await DoExtractTextAsync();
+        _toolbar.TranslateImageClicked += async (sender, e) => await DoTranslateImageAsync();
+        _toolbar.PinClicked += async (sender, e) => await DoPinAsync();
         _toolbar.CancelClicked += (sender, e) => Cancel();
-        _toolbar.ConfirmClicked += (sender, e) => DoConfirm();
+        _toolbar.ConfirmClicked += async (sender, e) => await DoConfirmAsync();
 
         _root = new Canvas { ClipToBounds = true, Background = Brushes.Transparent };
         _root.Children.Add(_screenshotImage);
@@ -438,7 +442,7 @@ public sealed class SnipWindow : Window
 
         if (e.Key == Key.Enter)
         {
-            DoConfirm();
+            _ = DoConfirmAsync();
             return;
         }
 
@@ -463,7 +467,7 @@ public sealed class SnipWindow : Window
             }
             else if (e.Key == Key.C)
             {
-                DoCopy();
+                _ = DoCopyAsync();
                 e.Handled = true;
             }
             else if (e.Key == Key.S)
@@ -522,67 +526,48 @@ public sealed class SnipWindow : Window
         return rtb;
     }
 
-    private void DoConfirm()
+    private async Task DoConfirmAsync()
     {
-        if (!_hasSelection)
+        var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+        if (built == null)
         {
             return;
         }
 
-        try
+        Result = new EditResult
         {
-            var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.Confirmed,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
-        }
-        catch (Exception ex)
-        {
-            // Never leave the user staring at a frozen overlay: always close
-            // and surface a Cancelled result so the caller returns cleanly.
-            Log.Exception($"SnipWindow DoConfirm failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
-        }
-
+            Outcome = EditOutcome.Confirmed,
+            Selection = _selection,
+            Annotations = _annoCanvas.Items.ToArray(),
+            Result = built.Value.Bitmap,
+            PngBytes = built.Value.Png,
+        };
         Close();
     }
 
-    private void DoCopy()
+    private async Task DoCopyAsync()
     {
-        if (!_hasSelection)
+        var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+        if (built == null)
         {
             return;
         }
 
         try
         {
-            var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
-            var png = PngEncoder.Encode(bmp);
-            ClipboardService.CopyBitmap(bmp);
+            ClipboardService.CopyBitmap(built.Value.Bitmap);
             Result = new EditResult
             {
                 Outcome = EditOutcome.Copied,
                 Selection = _selection,
                 Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
+                Result = built.Value.Bitmap,
+                PngBytes = built.Value.Png,
             };
         }
         catch (Exception ex)
         {
-            Log.Exception($"SnipWindow DoCopy failed: {ex.Message}", ex, GetType());
+            Log.Exception($"SnipWindow DoCopyAsync failed: {ex.Message}", ex, GetType());
             Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
         }
 
@@ -593,9 +578,10 @@ public sealed class SnipWindow : Window
     /// Hands the selection (with annotations) over for text extraction; the
     /// controller shows the result window once this overlay is closed.
     /// </summary>
-    private void DoExtractText()
+    private async Task DoExtractTextAsync()
     {
-        if (!_hasSelection)
+        var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+        if (built == null)
         {
             return;
         }
@@ -605,28 +591,14 @@ public sealed class SnipWindow : Window
             return;
         }
 
-        try
+        Result = new EditResult
         {
-            var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.ExtractText,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow DoExtractText failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
-        }
-
+            Outcome = EditOutcome.ExtractText,
+            Selection = _selection,
+            Annotations = _annoCanvas.Items.ToArray(),
+            Result = built.Value.Bitmap,
+            PngBytes = built.Value.Png,
+        };
         Close();
     }
 
@@ -634,9 +606,9 @@ public sealed class SnipWindow : Window
     /// Hands the selection over for image translate. Shows a clear error and
     /// keeps the overlay open when the translator is off or misconfigured.
     /// </summary>
-    private void DoTranslateImage()
+    private async Task DoTranslateImageAsync()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _exportBusy)
         {
             return;
         }
@@ -662,25 +634,20 @@ public sealed class SnipWindow : Window
             return;
         }
 
-        try
+        var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+        if (built == null)
         {
-            var bmp = BuildResultBitmap(_selection);
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.TranslateImage,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow DoTranslateImage failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+            return;
         }
 
+        Result = new EditResult
+        {
+            Outcome = EditOutcome.TranslateImage,
+            Selection = _selection,
+            Annotations = _annoCanvas.Items.ToArray(),
+            Result = built.Value.Bitmap,
+            PngBytes = built.Value.Png,
+        };
         Close();
     }
 
@@ -778,49 +745,39 @@ public sealed class SnipWindow : Window
     /// <summary>
     /// Pins the current selection as a floating topmost image, then closes the editor.
     /// </summary>
-    private void DoPin()
+    private async Task DoPinAsync()
     {
-        if (!_hasSelection)
+        var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+        if (built == null)
         {
             return;
         }
 
-        try
+        Result = new EditResult
         {
-            var bmp = BuildResultBitmap(_selection);
-            var png = PngEncoder.Encode(bmp);
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.Pinned,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
-            };
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow DoPin failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
-        }
-
+            Outcome = EditOutcome.Pinned,
+            Selection = _selection,
+            Annotations = _annoCanvas.Items.ToArray(),
+            Result = built.Value.Bitmap,
+            PngBytes = built.Value.Png,
+        };
         Close();
     }
 
     private async Task DoSaveAsync()
     {
-        if (!_hasSelection)
+        if (!_hasSelection || _exportBusy)
         {
             return;
         }
 
         try
         {
-            var bmp = BuildResultBitmap(_selection);
-
-            // Encode on this thread: the bitmap belongs to it, and WPF would
-            // reject cross-thread pixel access from a thread-pool worker.
-            var png = PngEncoder.Encode(bmp);
+            var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+            if (built == null)
+            {
+                return;
+            }
 
             var dialog = new Microsoft.Win32.SaveFileDialog
             {
@@ -837,14 +794,14 @@ public sealed class SnipWindow : Window
             }
 
             var path = dialog.FileName;
-            await File.WriteAllBytesAsync(path, png);
+            await File.WriteAllBytesAsync(path, built.Value.Png).ConfigureAwait(true);
             Result = new EditResult
             {
                 Outcome = EditOutcome.Saved,
                 Selection = _selection,
                 Annotations = _annoCanvas.Items.ToArray(),
-                Result = bmp,
-                PngBytes = png,
+                Result = built.Value.Bitmap,
+                PngBytes = built.Value.Png,
                 SavedPath = path,
             };
         }
@@ -855,6 +812,40 @@ public sealed class SnipWindow : Window
         }
 
         Close();
+    }
+
+    /// <summary>
+    /// Composites the selection on the UI thread (RenderTargetBitmap affinity),
+    /// then PNG-encodes on the thread pool. Full-res source is always used —
+    /// OCR / translate / save must not see the overlay preview downsample.
+    /// </summary>
+    private async Task<(BitmapSource Bitmap, byte[] Png)?> BuildAndEncodeAsync()
+    {
+        if (!_hasSelection || _exportBusy)
+        {
+            return null;
+        }
+
+        _exportBusy = true;
+        Cursor = Cursors.Wait;
+        try
+        {
+            var bmp = BuildResultBitmap(_selection);
+            var png = await PngEncoder.EncodeAsync(bmp).ConfigureAwait(true);
+            return (bmp, png);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow BuildAndEncodeAsync failed: {ex.Message}", ex, GetType());
+            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+            Close();
+            return null;
+        }
+        finally
+        {
+            _exportBusy = false;
+            Cursor = Cursors.Cross;
+        }
     }
 
     // -----------------------------------------------------------------------------------
