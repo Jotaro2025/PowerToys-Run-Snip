@@ -72,7 +72,7 @@
     <value>截图</value>
   </data>
   <data name="plugin_description" xml:space="preserve">
-    <value>区域或全屏截屏,支持标注</value>
+    <value>区域截屏（标注 / OCR / 图片翻译 / 钉住），PowerToys Run 插件</value>
   </data>
   <data name="cmd_region_title" xml:space="preserve">
     <value>区域截屏</value>
@@ -318,7 +318,7 @@
     <value>图片翻译引擎</value>
   </data>
   <data name="opt_tr_provider_desc" xml:space="preserve">
-    <value>默认关闭，需自行配置。HTTP 可对接任意 OpenAI 兼容的 /v1/chat/completions（如 HyMT2Sharp.Server）。HyMT2Sharp 从本机 GGUF 加载（不捆绑权重）。</value>
+    <value>默认关闭，需自行配置。HTTP 可对接任意 OpenAI 兼容的 /v1/chat/completions（如 HyMT2Sharp.Server）。HyMT2Sharp 从本机 GGUF 加载（不捆绑权重）。PowerToys Run 的 AdditionalOptions 无法按引擎动态隐藏无关项——请看下方「HTTP · …」「HyMT · …」前缀分组。</value>
   </data>
   <data name="opt_tr_provider_off" xml:space="preserve">
     <value>关闭</value>
@@ -330,37 +330,37 @@
     <value>HyMT2Sharp（本地 GGUF）</value>
   </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
-    <value>目标语言</value>
+    <value>翻译 · 目标语言</value>
   </data>
   <data name="opt_tr_lang_desc" xml:space="preserve">
     <value>写入翻译提示词的自由文本，例如 简体中文 / English / 日本語。</value>
   </data>
   <data name="opt_tr_http_url_label" xml:space="preserve">
-    <value>HTTP Base URL</value>
+    <value>HTTP · Base URL</value>
   </data>
   <data name="opt_tr_http_url_desc" xml:space="preserve">
     <value>OpenAI 兼容 API 根地址，例如 http://127.0.0.1:8080/v1</value>
   </data>
   <data name="opt_tr_http_key_label" xml:space="preserve">
-    <value>HTTP API Key（可选）</value>
+    <value>HTTP · API Key（可选）</value>
   </data>
   <data name="opt_tr_http_key_desc" xml:space="preserve">
     <value>非空时作为 Bearer Token 发送。</value>
   </data>
   <data name="opt_tr_http_model_label" xml:space="preserve">
-    <value>HTTP 模型名称</value>
+    <value>HTTP · 模型名称</value>
   </data>
   <data name="opt_tr_http_model_desc" xml:space="preserve">
     <value>chat completions 请求中的 model 字段。</value>
   </data>
   <data name="opt_tr_hymt_path_label" xml:space="preserve">
-    <value>HyMT2Sharp GGUF 路径</value>
+    <value>HyMT · GGUF 路径</value>
   </data>
   <data name="opt_tr_hymt_path_desc" xml:space="preserve">
     <value>Hy-MT2 GGUF 路径（推荐 2Bit）。留空则在下载后使用 LocalAppData 缓存。插件不捆绑权重包。</value>
   </data>
   <data name="opt_tr_hymt_backend_label" xml:space="preserve">
-    <value>HyMT2Sharp 后端</value>
+    <value>HyMT · 后端</value>
   </data>
   <data name="opt_tr_hymt_backend_desc" xml:space="preserve">
     <value>自动按 Metal → Vulkan → CPU 选择。Vulkan 约需 4GB 显存。</value>
@@ -375,13 +375,13 @@
     <value>Vulkan</value>
   </data>
   <data name="opt_tr_hymt_download_label" xml:space="preserve">
-    <value>立即下载推荐的 2Bit 模型</value>
+    <value>HyMT · 立即下载推荐的 2Bit 模型</value>
   </data>
   <data name="opt_tr_hymt_download_desc" xml:space="preserve">
     <value>一次性操作：勾选后点保存即开始下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 并填入 GGUF 路径；默认优先魔搭 ModelScope，失败再试 hf-mirror / Hugging Face。中断后重试会断点续传。勾选不会保持开启。缓存已完整则跳过。插件不捆绑权重。</value>
   </data>
   <data name="opt_tr_hymt_custom_url_label" xml:space="preserve">
-    <value>自定义 GGUF 下载地址（可选）</value>
+    <value>HyMT · 自定义 GGUF 下载地址（可选）</value>
   </data>
   <data name="opt_tr_hymt_custom_url_desc" xml:space="preserve">
     <value>下载推荐 2Bit GGUF 时优先尝试此 HTTPS 地址，失败再回退魔搭 / hf-mirror / Hugging Face。留空则使用默认国内优先链路。体积与 SHA 校验仍生效。</value>

@@ -1,6 +1,6 @@
 # Snip — PowerToys Run 截屏插件
 
-PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移植自 [TDS](https://github.com/) 的区域截屏工具。纯 C#/WPF 实现，不依赖 TDS 本体，也不修改 PowerToys。
+PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选标注、OCR 文字提取、图片翻译、钉住浮窗。功能移植自 [TDS](https://github.com/) 的区域截屏工具。纯 C#/WPF 实现，不依赖 TDS 本体，也不修改 PowerToys。
 
 > **学习向说明：** 文字提取依赖的 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr) NuGet 包（及其随包 OCR 组件）按包说明面向学习/研究场景；商业产品请自行评估合规与替代方案。详见文末「代码来源与许可」。
 
@@ -8,13 +8,13 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 
 ## 功能
 
-在 PowerToys Run 中输入关键词 `snip`，提供三条命令：
+在 PowerToys Run 中输入关键词 `snip`。**主能力是区域截屏**（遮罩框选 + 标注 / OCR / 译图 / 钉住）；仓库与插件描述以区域为主。另保留两条全屏快捷命令（后续可能收敛）：
 
 | 命令 | 行为 |
 |---|---|
-| **区域截屏** | 全屏遮罩拖拽框选，支持标注后复制或保存 |
-| **全屏截屏到剪贴板** | 直接截取光标所在屏幕并复制（DIB + PNG，可粘进画图/Word/QQ） |
-| **全屏截屏并保存** | 截取光标所在屏幕并保存为 PNG |
+| **区域截屏**（主） | 全屏遮罩拖拽框选，支持标注、OCR、图片翻译、钉住后复制或保存 |
+| **全屏截屏到剪贴板** | 直接截取光标所在屏幕并复制（DIB + PNG） |
+| **全屏截屏并保存** | 直接截取光标所在屏幕并保存为 PNG |
 
 区域截屏编辑器能力：
 
@@ -37,9 +37,10 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 区域截屏后自动保存
 - 截屏延迟（毫秒，默认 150，给 PowerToys Run 隐藏窗口的时间）
 - **图片翻译引擎**：`关闭` / `HTTP（OpenAI 兼容）` / `HyMT2Sharp（本地 GGUF）`（默认关闭）
-- 目标语言（自由文本，默认 `简体中文`）
-- HTTP：Base URL、可选 API Key、模型名
-- HyMT2Sharp：GGUF 路径、**下载推荐的 2Bit 模型**（勾选后保存触发）、后端（自动 / CPU / Vulkan）
+- 目标语言（标签前缀 `翻译 ·`）
+- HTTP 相关项标签前缀 `HTTP ·`：Base URL、可选 API Key、模型名
+- HyMT 相关项标签前缀 `HyMT ·`：GGUF 路径、**下载推荐的 2Bit 模型**（勾选后保存触发）、自定义下载 URL、后端（自动 / CPU / Vulkan）
+- **设置折叠限制**：PowerToys Run 的 `AdditionalOptions` **不能**按引擎动态隐藏字段（无 `IsVisible` / 条件折叠 API；改引擎后设置页也不会即时重刷选项列表）。因此采用前缀分组降低噪音；引擎说明里也有同一提示
 
 界面语言跟随 PowerToys（内置英文 + 简体中文）。
 
