@@ -128,12 +128,14 @@ public sealed class SnipWindow : Window
             Focusable = true,
             Visibility = Visibility.Collapsed,
         };
-        _annoCanvas.UndoCountChanged += (sender, count) => _toolbar.NotifyUndoCount(count);
+        _annoCanvas.HistoryChanged += (sender, e) =>
+            _toolbar.NotifyHistory(_annoCanvas.UndoDepth, _annoCanvas.RedoDepth);
         _toolbar = new SnipToolbar(request) { Visibility = Visibility.Collapsed };
         _toolbar.ToolChanged += OnToolbarToolChanged;
         _toolbar.ColorChanged += (sender, c) => _annoCanvas.CurrentStroke = c;
         _toolbar.StrokeWidthChanged += (sender, w) => _annoCanvas.CurrentStrokeWidth = w;
         _toolbar.UndoClicked += (sender, e) => _annoCanvas.Undo();
+        _toolbar.RedoClicked += (sender, e) => _annoCanvas.Redo();
         _toolbar.SaveClicked += async (sender, e) => await DoSaveAsync();
         _toolbar.ExtractTextClicked += (sender, e) => DoExtractText();
         _toolbar.TranslateImageClicked += (sender, e) => DoTranslateImage();
@@ -407,31 +409,9 @@ public sealed class SnipWindow : Window
     {
         _toolbar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var sz = _toolbar.DesiredSize;
-        var center = AnnotationEditor.Center(_selection);
-        double x = center.X - (sz.Width / 2);
-        double y = _selection.Bottom + 12;
-        if (y + sz.Height > _logicalSize.Height - 8)
-        {
-            y = _selection.Y - sz.Height - 12;
-        }
-
-        if (y < 8)
-        {
-            y = 8;
-        }
-
-        if (x < 8)
-        {
-            x = 8;
-        }
-
-        if (x + sz.Width > _logicalSize.Width - 8)
-        {
-            x = _logicalSize.Width - sz.Width - 8;
-        }
-
-        Canvas.SetLeft(_toolbar, x);
-        Canvas.SetTop(_toolbar, y);
+        var pos = ToolbarPlacement.Compute(_selection, sz, _logicalSize);
+        Canvas.SetLeft(_toolbar, pos.X);
+        Canvas.SetTop(_toolbar, pos.Y);
     }
 
     // -----------------------------------------------------------------------------------
@@ -473,6 +453,11 @@ public sealed class SnipWindow : Window
             if (e.Key == Key.Z)
             {
                 _annoCanvas.Undo();
+                e.Handled = true;
+            }
+            else if (e.Key == Key.Y)
+            {
+                _annoCanvas.Redo();
                 e.Handled = true;
             }
             else if (e.Key == Key.C)

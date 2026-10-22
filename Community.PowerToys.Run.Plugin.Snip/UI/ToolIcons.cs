@@ -18,6 +18,7 @@ public static class ToolIcons
     public const string Text = "M5,5 L19,5 M12,5 L12,19 M9,19 L15,19";
     public const string Mosaic = "M4,4 L10,4 L10,10 L4,10 Z M14,4 L20,4 L20,10 L14,10 Z M4,14 L10,14 L10,20 L4,20 Z M14,14 L20,14 L20,20 L14,20 Z";
     public const string Undo = "M9,14 L4,9 L9,4 M4,9 L13,9 C17,9 20,12 20,16 C20,19 17,21 14,21";
+    public const string Redo = "M15,14 L20,9 L15,4 M20,9 L11,9 C7,9 4,12 4,16 C4,19 7,21 10,21";
     public const string Ocr = "M4,8 L4,4 L8,4 M16,4 L20,4 L20,8 M20,16 L20,20 L16,20 M8,20 L4,20 L4,16 M8,9 L16,9 M12,9 L12,16";
 
     // Globe / swap hint for image translate.

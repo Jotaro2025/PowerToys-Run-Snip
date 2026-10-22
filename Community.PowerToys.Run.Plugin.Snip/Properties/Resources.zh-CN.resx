@@ -149,6 +149,9 @@
   <data name="tip_undo" xml:space="preserve">
     <value>撤销 (Ctrl+Z)</value>
   </data>
+  <data name="tip_redo" xml:space="preserve">
+    <value>重做 (Ctrl+Y)</value>
+  </data>
   <data name="tip_save" xml:space="preserve">
     <value>保存 (Ctrl+S)</value>
   </data>
@@ -172,6 +175,9 @@
   </data>
   <data name="ocr_busy" xml:space="preserve">
     <value>正在识别文字…</value>
+  </data>
+  <data name="ocr_busy_waiting" xml:space="preserve">
+    <value>正在等待其他文字识别完成…</value>
   </data>
   <data name="ocr_copy" xml:space="preserve">
     <value>复制</value>
@@ -218,8 +224,17 @@
   <data name="tr_busy_translate" xml:space="preserve">
     <value>正在翻译文字…</value>
   </data>
+  <data name="tr_busy_hymt_wait" xml:space="preserve">
+    <value>翻译引擎忙碌中，请等待当前任务完成…</value>
+  </data>
+  <data name="tr_busy_ocr_wait" xml:space="preserve">
+    <value>正在等待其他 OCR 任务完成…</value>
+  </data>
   <data name="tr_busy_render" xml:space="preserve">
     <value>正在生成翻译图片…</value>
+  </data>
+  <data name="tr_busy_loading_model" xml:space="preserve">
+    <value>正在加载模型…</value>
   </data>
   <data name="tr_copy_all" xml:space="preserve">
     <value>全部复制</value>
@@ -230,7 +245,31 @@
   <data name="tr_image_copied" xml:space="preserve">
     <value>已复制翻译图片到剪贴板</value>
   </data>
-  <data name="tr_status_done" xml:space="preserve">
+    <data name="tr_reapply" xml:space="preserve">
+    <value>重新贴图</value>
+  </data>
+  <data name="tr_save_image" xml:space="preserve">
+    <value>保存图片</value>
+  </data>
+  <data name="tr_busy_rerender" xml:space="preserve">
+    <value>正在重新贴图…</value>
+  </data>
+  <data name="tr_status_reapplied" xml:space="preserve">
+    <value>已按编辑后的译文重新贴图</value>
+  </data>
+  <data name="tr_image_saved" xml:space="preserve">
+    <value>翻译图片已保存</value>
+  </data>
+  <data name="tr_save_dialog_title" xml:space="preserve">
+    <value>保存翻译图片</value>
+  </data>
+  <data name="tr_err_rerender" xml:space="preserve">
+    <value>重新贴图失败：</value>
+  </data>
+  <data name="tr_err_save_image" xml:space="preserve">
+    <value>保存图片失败：</value>
+  </data>
+<data name="tr_status_done" xml:space="preserve">
     <value>已翻译 {0} 行 → {1}</value>
   </data>
   <data name="tr_err_failed" xml:space="preserve">
@@ -327,10 +366,10 @@
     <value>Vulkan</value>
   </data>
   <data name="opt_tr_hymt_download_label" xml:space="preserve">
-    <value>下载推荐的 2Bit 模型</value>
+    <value>立即下载推荐的 2Bit 模型</value>
   </data>
   <data name="opt_tr_hymt_download_desc" xml:space="preserve">
-    <value>勾选并保存后，将下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 缓存并自动填入 GGUF 路径；默认优先魔搭 ModelScope，失败再试 hf-mirror / Hugging Face；缓存已存在且完整时会跳过。插件不捆绑权重。</value>
+    <value>一次性操作：勾选后点保存即开始下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 并填入 GGUF 路径；默认优先魔搭 ModelScope，失败再试 hf-mirror / Hugging Face。中断后重试会断点续传。勾选不会保持开启。缓存已完整则跳过。插件不捆绑权重。</value>
   </data>
   <data name="opt_tr_hymt_custom_url_label" xml:space="preserve">
     <value>自定义 GGUF 下载地址（可选）</value>
@@ -373,6 +412,9 @@
   </data>
   <data name="tr_err_download_incomplete" xml:space="preserve">
     <value>下载失败：文件不完整，请重试。</value>
+  </data>
+  <data name="tr_err_download_sha_mismatch" xml:space="preserve">
+    <value>下载已拒绝：SHA-256 校验失败（已删除文件）。实际哈希：</value>
   </data>
   <data name="tr_err_download_cancelled" xml:space="preserve">
     <value>已取消下载。</value>

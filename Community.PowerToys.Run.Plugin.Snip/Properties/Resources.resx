@@ -149,6 +149,9 @@
   <data name="tip_undo" xml:space="preserve">
     <value>Undo (Ctrl+Z)</value>
   </data>
+  <data name="tip_redo" xml:space="preserve">
+    <value>Redo (Ctrl+Y)</value>
+  </data>
   <data name="tip_save" xml:space="preserve">
     <value>Save (Ctrl+S)</value>
   </data>
@@ -172,6 +175,9 @@
   </data>
   <data name="ocr_busy" xml:space="preserve">
     <value>Recognizing text…</value>
+  </data>
+  <data name="ocr_busy_waiting" xml:space="preserve">
+    <value>Waiting for another text recognition to finish…</value>
   </data>
   <data name="ocr_copy" xml:space="preserve">
     <value>Copy</value>
@@ -218,8 +224,17 @@
   <data name="tr_busy_translate" xml:space="preserve">
     <value>Translating text…</value>
   </data>
+  <data name="tr_busy_hymt_wait" xml:space="preserve">
+    <value>Translation engine busy — waiting for the current job to finish…</value>
+  </data>
+  <data name="tr_busy_ocr_wait" xml:space="preserve">
+    <value>Waiting for another OCR job to finish…</value>
+  </data>
   <data name="tr_busy_render" xml:space="preserve">
     <value>Rendering translated image…</value>
+  </data>
+  <data name="tr_busy_loading_model" xml:space="preserve">
+    <value>Loading model…</value>
   </data>
   <data name="tr_copy_all" xml:space="preserve">
     <value>Copy all</value>
@@ -230,7 +245,31 @@
   <data name="tr_image_copied" xml:space="preserve">
     <value>Translated image copied to the clipboard</value>
   </data>
-  <data name="tr_status_done" xml:space="preserve">
+    <data name="tr_reapply" xml:space="preserve">
+    <value>Re-apply</value>
+  </data>
+  <data name="tr_save_image" xml:space="preserve">
+    <value>Save image</value>
+  </data>
+  <data name="tr_busy_rerender" xml:space="preserve">
+    <value>Re-applying translations…</value>
+  </data>
+  <data name="tr_status_reapplied" xml:space="preserve">
+    <value>Image updated with edited translations</value>
+  </data>
+  <data name="tr_image_saved" xml:space="preserve">
+    <value>Translated image saved</value>
+  </data>
+  <data name="tr_save_dialog_title" xml:space="preserve">
+    <value>Save Translated Image</value>
+  </data>
+  <data name="tr_err_rerender" xml:space="preserve">
+    <value>Re-apply failed:</value>
+  </data>
+  <data name="tr_err_save_image" xml:space="preserve">
+    <value>Failed to save image:</value>
+  </data>
+<data name="tr_status_done" xml:space="preserve">
     <value>{0} lines → {1}</value>
   </data>
   <data name="tr_err_failed" xml:space="preserve">
@@ -327,10 +366,10 @@
     <value>Vulkan</value>
   </data>
   <data name="opt_tr_hymt_download_label" xml:space="preserve">
-    <value>Download recommended 2Bit model</value>
+    <value>Download recommended 2Bit model now</value>
   </data>
   <data name="opt_tr_hymt_download_desc" xml:space="preserve">
-    <value>Check and save to download Hy-MT2-1.8B-2Bit.gguf (~573 MB, Apache-2.0) into LocalAppData (ModelScope first, then hf-mirror / Hugging Face) and fill the GGUF path. Skips if the cache file already looks valid. Weights are not shipped with the plugin.</value>
+    <value>One-shot action: check this box and click Save to start downloading Hy-MT2-1.8B-2Bit.gguf (~573 MB, Apache-2.0) into LocalAppData (ModelScope first, then hf-mirror / Hugging Face) and fill the GGUF path. Incomplete downloads resume on retry. The checkbox does not stay enabled. Skips if the cache already looks valid. Weights are not shipped with the plugin.</value>
   </data>
   <data name="opt_tr_hymt_custom_url_label" xml:space="preserve">
     <value>Custom GGUF download URL (optional)</value>
@@ -373,6 +412,9 @@
   </data>
   <data name="tr_err_download_incomplete" xml:space="preserve">
     <value>Download failed: incomplete file. Please try again.</value>
+  </data>
+  <data name="tr_err_download_sha_mismatch" xml:space="preserve">
+    <value>Download rejected: SHA-256 mismatch (file deleted). Got:</value>
   </data>
   <data name="tr_err_download_cancelled" xml:space="preserve">
     <value>Download cancelled.</value>

@@ -2,6 +2,10 @@
 
 PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移植自 [TDS](https://github.com/) 的区域截屏工具。纯 C#/WPF 实现，不依赖 TDS 本体，也不修改 PowerToys。
 
+> **学习向说明：** 文字提取依赖的 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr) NuGet 包（及其随包 OCR 组件）按包说明面向学习/研究场景；商业产品请自行评估合规与替代方案。详见文末「代码来源与许可」。
+
+当前插件元数据版本见 [`plugin.json`](Community.PowerToys.Run.Plugin.Snip/plugin.json)（Author: Jotaro2025）。
+
 ## 功能
 
 在 PowerToys Run 中输入关键词 `snip`，提供三条命令：
@@ -17,11 +21,12 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 拖拽框选、八手柄调整选区、实时尺寸提示
 - 标注工具：矩形、椭圆、箭头、画笔、文字、马赛克
 - 7 色颜色板 + 4 档笔画粗细、撤销（Ctrl+Z）
-- 快捷键：Enter 完成、Esc 取消、Ctrl+C 复制、Ctrl+S 保存、Delete 删除选中标注
+- 快捷键：Enter 完成、Esc 取消、Ctrl+C 复制、Ctrl+S 保存、Ctrl+Z 撤销、Ctrl+Y 重做、Delete 删除选中标注
 - **文字提取（OCR）**：工具栏上的「文字提取」按钮，仿微信截图：识别选区（含标注）中的文字，
   在结果窗口中显示，可编辑/选中，支持「复制」（有选中时复制选中部分）和「全部复制」
 - **图片翻译**：工具栏上的「图片翻译」按钮；OCR 取出带框文字后翻译，擦除原文并重绘译文，
-  结果窗口左侧为翻译图、右侧为可编辑译文列表（需在设置中配置翻译引擎）
+  结果窗口左侧为翻译图、右侧为可编辑译文列表（需在设置中配置翻译引擎）；
+  可「重新贴图」把编辑后的译文再画回左侧，也可「保存图片」/复制图片
 - 多显示器 + 高 DPI 正确适配（取光标所在屏幕，按物理像素捕获）
 
 插件设置（PowerToys 设置 → PowerToys Run → Snip）：
@@ -46,10 +51,14 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 插件体积因此增加约 61 MB（`wco_data\` 约 60 MB + 依赖 DLL 约 1.3 MB）
 - 仅支持 x64 版 PowerToys（OCR 组件只有 x64 版本）
 - OCR 组件缺失、超时、识别失败或没有识别到文字时，结果窗口会给出对应提示
+- 关闭 OCR / 图片翻译结果窗口会取消进行中的识别与翻译；若引擎正被占用会显示忙碌等待提示
 
 ### 图片翻译说明
 
-图片翻译复用 WeChat OCR 的逐行框（`Left/Top/Right/Bottom`），翻译后按框擦除原文并重绘译文（采样附近背景色、对比色文字、自适应字号）。
+图片翻译复用 WeChat OCR 的逐行框（`Left/Top/Right/Bottom`），翻译后按框擦除原文并重绘译文：框外多环中位色采样背景、对比色文字、框内换行（英文按词 / 中文按字）并自适应字号（有下限），边缘留出少量 padding。
+有 `SinglePos` 四角点时按四边形仿射贴字（纯 WPF，无 OpenCV），否则回退轴对齐框；HyMT 首次加载 GGUF 时结果窗显示「正在加载模型…」。
+多行 OCR 结果会**批量**发给翻译引擎（编号对齐；解析失败则回退逐行），HTTP 与 HyMT2Sharp 均减少往返次数。
+结果窗口支持编辑右侧译文后点「重新贴图」仅重绘左侧（不重新 OCR/翻译），以及「保存图片」（默认目录与截屏保存目录一致，可改路径）。
 
 翻译引擎默认**关闭**，需在插件设置中任选其一：
 
@@ -67,11 +76,12 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
      1. **魔搭 ModelScope**（默认）：`https://www.modelscope.cn/api/v1/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF/repo?Revision=master&FilePath=Hy-MT2-1.8B-2Bit.gguf`
      2. **hf-mirror**：`https://hf-mirror.com/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
      3. **Hugging Face**（兜底）：`https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
-   - 某一源中途失败会自动换下一个；全部失败时提示检查网络 / 魔搭
+   - 某一源中途失败会自动换下一个（保留 `.downloading` 断点；支持 HTTP Range 续传，源不支持则该源整文件重下）；全部失败时提示检查网络 / 魔搭
+   - 下载完成后校验官方 SHA-256，不匹配则**删除并拒绝**该文件，改试下一源
    - 下载成功后会自动填入 `HyMtGgufPath`，并写回 PowerToys Run 的 `settings.json`（同时落盘旁路 `.path` sidecar）；缓存已存在且体积看起来完整时会跳过重复下载
    - 可选「自定义 GGUF 下载地址」：填写 HTTPS URL 时优先于魔搭 / 镜像链；留空仍为国内优先默认顺序
    - 也可手动下载后在设置里填写任意 GGUF 路径
-   - 后端可选自动 / CPU / Vulkan（Vulkan 约需 4GB 显存）。模型首次使用时懒加载，推理串行排队（模型非线程安全）
+   - 后端可选自动 / CPU / Vulkan（Vulkan 约需 4GB 显存）。模型首次使用时懒加载，并在进程内按「GGUF 路径 + 后端」缓存，避免每次翻译后释放再重载数 GB 权重；推理串行排队（模型非线程安全）。插件卸载时会显式释放缓存，否则随进程退出清理
 
 未配置或配置错误时，点击「图片翻译」会弹出中文提示，不会关闭截屏窗口。
 
@@ -93,9 +103,34 @@ dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 
 代码按 PowerToys 仓库同款规则集构建（StyleCop + .NET 分析器，警告即错误）。
 
+## 发布打包
+
+推荐用仓库脚本打出可分发的 zip（根目录为 `Snip\`，解压到 PowerToys Run 的 `Plugins\` 下即可）：
+
+```powershell
+# Windows（需本机已装 PowerToys，或用 -PowerToysInstallDir 指向含 Wox.Plugin.dll 的目录）
+.\scripts\pack-release.ps1
+# 若 PowerToys 不在默认路径：
+.\scripts\pack-release.ps1 -PowerToysInstallDir "D:\PowerToys"
+```
+
+```bash
+# Linux / CI 交叉编译（EnableWindowsTargeting），需提供 Wox.Plugin 等引用目录
+./scripts/pack-release.sh --powertoys-dir /path/to/PowerToysOrStubs
+```
+
+脚本会：
+
+1. `dotnet build -c Release -p:EnableWindowsTargeting=true`
+2. 将输出暂存为 `artifacts/staging/Snip/`（跳过 `.pdb`）
+3. 自检关键文件：`plugin.json`、主 DLL、`Images\`、`WeChatOcr.dll`、`Sdcb.HyMT2Sharp.dll`、`wco_data\WeChatOCR.exe`、`zh-CN\*.resources.dll`，并拒绝仍带 Microsoft / aka.ms 元数据的 `plugin.json`
+4. 生成 `artifacts/Snip-<Version>.zip`（版本号读取自 `plugin.json`）
+
+Windows 手工验收可参考 [docs/windows-e2e-checklist.md](docs/windows-e2e-checklist.md)。
+
 ## 部署
 
-把构建输出目录整体复制到 PowerToys 的插件目录，然后重启 PowerToys：
+把构建输出目录（或发布 zip 解压出的 `Snip\`）整体放到 PowerToys 的插件目录，然后重启 PowerToys：
 
 ```
 %LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\

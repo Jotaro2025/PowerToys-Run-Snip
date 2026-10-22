@@ -55,6 +55,15 @@ public class ScreenshotFileSaverTests
     }
 
     [TestMethod]
+    public void BuildTranslatedFileNameUsesTranslatePrefixAndPngExtension()
+    {
+        var name = ScreenshotFileSaver.BuildTranslatedFileName();
+
+        StringAssert.StartsWith(name, "translate_");
+        StringAssert.EndsWith(name, ".png");
+    }
+
+    [TestMethod]
     public void BuildUniquePathDoesNotOverwriteExistingFile()
     {
         var first = ScreenshotFileSaver.BuildUniquePath(_tempDirectory);

@@ -51,6 +51,9 @@ public static class WeChatOcrService
     /// <summary>WeChatOcr keeps process-wide state; run one recognition at a time.</summary>
     private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
 
+    /// <summary>True when another recognition currently holds the process-wide gate.</summary>
+    public static bool IsBusy => Gate.CurrentCount == 0;
+
     /// <summary>Folder holding the bundled OCR component.</summary>
     public static string OcrDataDirectory => Path.Combine(PluginDirectory, "wco_data");
 
@@ -181,10 +184,24 @@ public static class WeChatOcrService
                 continue;
             }
 
+            IReadOnlyList<Point> corners = null;
+            var pos = line.SinglePos?.Pos;
+            if (pos != null && pos.Count >= 4)
+            {
+                corners = new[]
+                {
+                    new Point(pos[0].X, pos[0].Y),
+                    new Point(pos[1].X, pos[1].Y),
+                    new Point(pos[2].X, pos[2].Y),
+                    new Point(pos[3].X, pos[3].Y),
+                };
+            }
+
             lines.Add(new OcrTextLine(
                 line.SingleStrUtf8,
                 new Rect(left, top, right - left, bottom - top),
-                line.SingleRate));
+                line.SingleRate,
+                corners));
         }
 
         // Reading order: top-to-bottom, then left-to-right.

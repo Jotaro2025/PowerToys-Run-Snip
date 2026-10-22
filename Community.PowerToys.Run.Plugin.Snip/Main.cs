@@ -385,6 +385,9 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
                 _context.API.ThemeChanged -= OnThemeChanged;
             }
 
+            // Release process-wide HyMT weights if loaded; otherwise process exit cleans up.
+            HyMT2SharpTranslatorCache.Unload();
+
             _disposed = true;
         }
     }
