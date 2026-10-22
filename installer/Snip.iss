@@ -1,7 +1,7 @@
 ﻿; Snip — PowerToys Run plugin installer (Inno Setup 6.5+).
 ;
 ; One script, four packages, selected with ISCC /D defines:
-;   /DAppVersion=1.3.0   plugin.json version (passed by build\build-installer.ps1)
+;   /DAppVersion=1.4.0   plugin.json version (passed by build\build-installer.ps1)
 ;   /DArch=x64|arm64     target OS architecture (separate AppId per arch)
 ;   /DVariant=slim|full  slim = no wco_data (OCR downloads on demand); full = bundled wco_data
 ;   /DStageDir=<path>    staged plugin folder (contents of Snip\)

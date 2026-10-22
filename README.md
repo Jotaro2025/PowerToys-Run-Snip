@@ -176,6 +176,8 @@ dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 
 ## 发布打包
 
+版本号以 `plugin.json` 的 `Version` 为准，变更记录见 [CHANGELOG.md](CHANGELOG.md)；推送 `v<Version>` 标签即由 CI 附加到 GitHub Release。
+
 ```powershell
 # Windows（需本机 PowerToys，或 -PowerToysInstallDir）
 .\scripts\pack-release.ps1
