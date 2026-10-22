@@ -12,7 +12,8 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// Onion-peels the unknown region from the known border, estimating each pixel
 /// as a distance-weighted blend of nearby known samples (with a cheap gradient term).
 /// Uses a region-local mask and a frontier queue (no full-image <c>bool[W*H]</c>,
-/// no rescanning the whole rect every band).
+/// no rescanning the whole rect every band). Operates on <see cref="Span{T}"/> so
+/// callers can pass <c>WriteableBitmap.BackBuffer</c> without a full-frame <c>byte[]</c>.
 /// </summary>
 public static class LightInpaint
 {
@@ -51,7 +52,7 @@ public static class LightInpaint
     /// </summary>
     /// <returns><c>false</c> when the region is too small/large or could not be filled.</returns>
     public static bool TryInpaintRect(
-        byte[] pixels,
+        Span<byte> pixels,
         int stride,
         int width,
         int height,
@@ -61,9 +62,13 @@ public static class LightInpaint
         int y1,
         int radius = DefaultRadius)
     {
-        ArgumentNullException.ThrowIfNull(pixels);
         LastRegionMaskLength = 0;
         if (width <= 0 || height <= 0 || stride < width * 4)
+        {
+            return false;
+        }
+
+        if (pixels.Length < checked(stride * height))
         {
             return false;
         }
@@ -188,7 +193,7 @@ public static class LightInpaint
 
     /// <summary>Fill a rect with a solid BGRA color (median fallback).</summary>
     public static void FillRectSolid(
-        byte[] pixels,
+        Span<byte> pixels,
         int stride,
         int width,
         int height,
@@ -201,7 +206,11 @@ public static class LightInpaint
         byte r,
         byte a = 255)
     {
-        ArgumentNullException.ThrowIfNull(pixels);
+        if (pixels.Length < checked(stride * height))
+        {
+            throw new ArgumentException("Pixel buffer shorter than stride * height.", nameof(pixels));
+        }
+
         x0 = Math.Clamp(x0, 0, width);
         y0 = Math.Clamp(y0, 0, height);
         x1 = Math.Clamp(x1, 0, width);
@@ -224,16 +233,14 @@ public static class LightInpaint
     /// Mean absolute error of BGR channels between two buffers over a rect (heuristic metric).
     /// </summary>
     public static double MeanAbsErrorBgr(
-        byte[] a,
-        byte[] b,
+        ReadOnlySpan<byte> a,
+        ReadOnlySpan<byte> b,
         int stride,
         int x0,
         int y0,
         int x1,
         int y1)
     {
-        ArgumentNullException.ThrowIfNull(a);
-        ArgumentNullException.ThrowIfNull(b);
         long sum = 0;
         long count = 0;
         for (int y = y0; y < y1; y++)
@@ -256,7 +263,7 @@ public static class LightInpaint
     /// Sum of absolute 4-neighbor Laplacian on luminance inside a rect (high-frequency energy).
     /// </summary>
     public static double HighFreqEnergy(
-        byte[] pixels,
+        ReadOnlySpan<byte> pixels,
         int stride,
         int width,
         int height,
@@ -265,7 +272,6 @@ public static class LightInpaint
         int x1,
         int y1)
     {
-        ArgumentNullException.ThrowIfNull(pixels);
         x0 = Math.Max(1, x0);
         y0 = Math.Max(1, y0);
         x1 = Math.Min(width - 1, x1);
@@ -464,7 +470,7 @@ public static class LightInpaint
     }
 
     private static void EstimatePixel(
-        byte[] pixels,
+        Span<byte> pixels,
         bool[] unknown,
         int stride,
         int width,
@@ -476,7 +482,7 @@ public static class LightInpaint
         int x,
         int y,
         int radius,
-        byte[] dest,
+        Span<byte> dest,
         int destOffset)
     {
         double sumB = 0, sumG = 0, sumR = 0, sumW = 0;
@@ -541,7 +547,7 @@ public static class LightInpaint
     }
 
     private static void SampleGrad(
-        byte[] pixels,
+        Span<byte> pixels,
         bool[] unknown,
         int stride,
         int width,
@@ -598,7 +604,7 @@ public static class LightInpaint
     }
 
     private static float ChannelOrNaN(
-        byte[] pixels,
+        Span<byte> pixels,
         bool[] unknown,
         int stride,
         int width,
@@ -620,7 +626,7 @@ public static class LightInpaint
         return pixels[(y * stride) + (x * 4) + channel];
     }
 
-    private static float Luma(byte[] pixels, int stride, int x, int y)
+    private static float Luma(ReadOnlySpan<byte> pixels, int stride, int x, int y)
     {
         int i = (y * stride) + (x * 4);
         return (0.0722f * pixels[i]) + (0.7152f * pixels[i + 1]) + (0.2126f * pixels[i + 2]);
