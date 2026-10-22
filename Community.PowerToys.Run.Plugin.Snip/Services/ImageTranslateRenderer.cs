@@ -18,7 +18,8 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// <summary>
 /// WeChat-style image translate rendering: sample background near each OCR
 /// region (multi-ring median for text color), erase original text with a pure-C#
-/// Telea-like inpaint (median fill fallback), then draw the translation with
+/// Telea-like inpaint on <c>WriteableBitmap.BackBuffer</c> via <see cref="Span{T}"/>
+/// (median fill fallback; no full-frame <c>byte[]</c> Marshal.Copy), then draw the translation with
 /// wrapping + adaptive font size. Quad path uses a pure WPF affine transform — no OpenCV.
 /// </summary>
 public static class ImageTranslateRenderer
@@ -81,16 +82,24 @@ public static class ImageTranslateRenderer
             ? source
             : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
         var writable = new WriteableBitmap(converted);
+        var jobs = new List<DrawJob>(lines.Count);
+
+        // Inpaint directly on BackBuffer (Span) — no full-frame byte[] + double Marshal.Copy.
+        // Unlock before DrawingVisual so Lock/Unlock only covers pixel mutation.
         writable.Lock();
         try
         {
-            var stride = writable.BackBufferStride;
-            var pixels = new byte[stride * height];
-            System.Runtime.InteropServices.Marshal.Copy(writable.BackBuffer, pixels, 0, pixels.Length);
+            int stride = writable.BackBufferStride;
+            int byteCount = checked(stride * height);
+            Span<byte> pixels;
+            unsafe
+            {
+                pixels = new Span<byte>((void*)writable.BackBuffer, byteCount);
+            }
 
             // Pass 1: sample contrast colors from the *original* buffer, then erase
-            // each region via Telea-like inpaint (median solid fill as fallback).
-            var jobs = new List<DrawJob>(lines.Count);
+            // each OCR region via Telea-like inpaint (median solid fill as fallback).
+            // Dirty only the erased boxes (not the whole frame).
             for (int i = 0; i < lines.Count; i++)
             {
                 var text = translations[i];
@@ -109,6 +118,7 @@ public static class ImageTranslateRenderer
 
                     var bg = SampleBackground(pixels, stride, width, height, bounds);
                     EraseRegion(pixels, stride, width, height, bounds, bg);
+                    AddDirtyRegion(writable, bounds, width, height);
                     jobs.Add(DrawJob.ForQuad(quad, localW, localH, text, ContrastingText(bg)));
                 }
                 else
@@ -122,55 +132,53 @@ public static class ImageTranslateRenderer
                     var bg = SampleBackground(pixels, stride, width, height, raw);
                     var paintBox = ExpandBox(raw, BoxExpandX, BoxExpandY, width, height);
                     EraseRegion(pixels, stride, width, height, paintBox, bg);
+                    AddDirtyRegion(writable, paintBox, width, height);
                     jobs.Add(DrawJob.ForAxis(paintBox, text, ContrastingText(bg)));
                 }
             }
-
-            System.Runtime.InteropServices.Marshal.Copy(pixels, 0, writable.BackBuffer, pixels.Length);
-            writable.AddDirtyRect(new Int32Rect(0, 0, width, height));
-
-            var dv = new DrawingVisual();
-            using (var dc = dv.RenderOpen())
-            {
-                dc.DrawImage(writable, new Rect(0, 0, width, height));
-
-                foreach (var job in jobs)
-                {
-                    if (job.IsQuad)
-                    {
-                        DrawQuadText(dc, job.Quad, job.LocalWidth, job.LocalHeight, job.Text, job.Foreground);
-                    }
-                    else
-                    {
-                        DrawAxisText(dc, job.PaintBox, job.Text, job.Foreground);
-                    }
-                }
-            }
-
-            var rtb = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
-            rtb.Render(dv);
-            rtb.Freeze();
-            return rtb;
         }
         finally
         {
             writable.Unlock();
         }
+
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            dc.DrawImage(writable, new Rect(0, 0, width, height));
+
+            foreach (var job in jobs)
+            {
+                if (job.IsQuad)
+                {
+                    DrawQuadText(dc, job.Quad, job.LocalWidth, job.LocalHeight, job.Text, job.Foreground);
+                }
+                else
+                {
+                    DrawAxisText(dc, job.PaintBox, job.Text, job.Foreground);
+                }
+            }
+        }
+
+        var rtb = new RenderTargetBitmap(width, height, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        rtb.Freeze();
+        return rtb;
     }
 
     /// <summary>
-    /// Telea-like inpaint into <paramref name="pixels"/>; falls back to solid median fill
-    /// for tiny boxes or when propagation fails.
+    /// Telea-like inpaint into <paramref name="pixels"/> (typically a BackBuffer
+    /// <see cref="Span{T}"/>); falls back to solid median fill for tiny boxes or
+    /// when propagation fails.
     /// </summary>
     internal static bool EraseRegion(
-        byte[] pixels,
+        Span<byte> pixels,
         int stride,
         int width,
         int height,
         Rect region,
         Color medianFallback)
     {
-        ArgumentNullException.ThrowIfNull(pixels);
         int x0 = (int)Math.Floor(region.X);
         int y0 = (int)Math.Floor(region.Y);
         int x1 = (int)Math.Ceiling(region.Right);
@@ -198,6 +206,19 @@ public static class ImageTranslateRenderer
             medianFallback.G,
             medianFallback.R);
         return false;
+    }
+
+    /// <summary>Marks only the OCR erase box dirty (not the full bitmap).</summary>
+    private static void AddDirtyRegion(WriteableBitmap bitmap, Rect region, int width, int height)
+    {
+        int x0 = Math.Clamp((int)Math.Floor(region.X), 0, width);
+        int y0 = Math.Clamp((int)Math.Floor(region.Y), 0, height);
+        int x1 = Math.Clamp((int)Math.Ceiling(region.Right), 0, width);
+        int y1 = Math.Clamp((int)Math.Ceiling(region.Bottom), 0, height);
+        if (x1 > x0 && y1 > y0)
+        {
+            bitmap.AddDirtyRect(new Int32Rect(x0, y0, x1 - x0, y1 - y0));
+        }
     }
 
     private static void DrawAxisText(DrawingContext dc, Rect paintBox, string text, Color fg)
@@ -440,22 +461,9 @@ public static class ImageTranslateRenderer
     /// Multi-ring samples around <paramref name="box"/> and returns the per-channel median.
     /// Avoids the muddy average of mixed edge pixels on complex backgrounds.
     /// </summary>
-    internal static Color SampleBackground(byte[] pixels, int stride, int width, int height, Rect box)
+    internal static Color SampleBackground(ReadOnlySpan<byte> pixels, int stride, int width, int height, Rect box)
     {
-        ArgumentNullException.ThrowIfNull(pixels);
-
         var samples = new List<(byte R, byte G, byte B)>(64);
-
-        void Sample(int px, int py)
-        {
-            if (px < 0 || py < 0 || px >= width || py >= height)
-            {
-                return;
-            }
-
-            int i = (py * stride) + (px * 4);
-            samples.Add((pixels[i + 2], pixels[i + 1], pixels[i]));
-        }
 
         int left = (int)Math.Floor(box.X);
         int top = (int)Math.Floor(box.Y);
@@ -470,29 +478,29 @@ public static class ImageTranslateRenderer
         {
             for (int x = left; x <= right; x += stepX)
             {
-                Sample(x, top - ring);
-                Sample(x, bottom + ring - 1);
+                TryAddBackgroundSample(pixels, samples, stride, width, height, x, top - ring);
+                TryAddBackgroundSample(pixels, samples, stride, width, height, x, bottom + ring - 1);
             }
 
             for (int y = top; y <= bottom; y += stepY)
             {
-                Sample(left - ring, y);
-                Sample(right + ring - 1, y);
+                TryAddBackgroundSample(pixels, samples, stride, width, height, left - ring, y);
+                TryAddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, y);
             }
 
-            Sample(left - ring, top - ring);
-            Sample(right + ring - 1, top - ring);
-            Sample(left - ring, bottom + ring - 1);
-            Sample(right + ring - 1, bottom + ring - 1);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, left - ring, top - ring);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, top - ring);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, left - ring, bottom + ring - 1);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, bottom + ring - 1);
         }
 
         if (samples.Count == 0)
         {
-            Sample(left + 1, top + 1);
-            Sample(right - 2, top + 1);
-            Sample(left + 1, bottom - 2);
-            Sample(right - 2, bottom - 2);
-            Sample((left + right) / 2, (top + bottom) / 2);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, left + 1, top + 1);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, right - 2, top + 1);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, left + 1, bottom - 2);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, right - 2, bottom - 2);
+            TryAddBackgroundSample(pixels, samples, stride, width, height, (left + right) / 2, (top + bottom) / 2);
         }
 
         if (samples.Count == 0)
@@ -501,6 +509,24 @@ public static class ImageTranslateRenderer
         }
 
         return MedianColor(samples);
+    }
+
+    private static void TryAddBackgroundSample(
+        ReadOnlySpan<byte> pixels,
+        List<(byte R, byte G, byte B)> samples,
+        int stride,
+        int width,
+        int height,
+        int px,
+        int py)
+    {
+        if (px < 0 || py < 0 || px >= width || py >= height)
+        {
+            return;
+        }
+
+        int i = (py * stride) + (px * 4);
+        samples.Add((pixels[i + 2], pixels[i + 1], pixels[i]));
     }
 
     /// <summary>Per-channel median of RGB samples.</summary>
