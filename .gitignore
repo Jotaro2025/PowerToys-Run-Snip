@@ -16,7 +16,7 @@ arm64/
 ## NuGet
 *.nupkg
 *.snupkg
-.nuget\
+.nuget/
 
 ## IDE
 .idea/
