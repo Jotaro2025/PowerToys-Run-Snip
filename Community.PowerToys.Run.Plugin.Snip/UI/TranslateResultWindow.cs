@@ -245,7 +245,8 @@ public sealed class TranslateResultWindow : Window
         }
         finally
         {
-            if (translator is IDisposable d)
+            // HyMT2Sharp is process-cached (HyMT2SharpTranslatorCache); only dispose short-lived translators.
+            if (translator is not HyMT2SharpTranslator && translator is IDisposable d)
             {
                 d.Dispose();
             }
