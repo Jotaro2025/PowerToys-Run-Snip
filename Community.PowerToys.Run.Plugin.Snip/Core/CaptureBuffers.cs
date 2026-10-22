@@ -8,9 +8,10 @@ using System.Runtime.InteropServices;
 namespace Community.PowerToys.Run.Plugin.Snip.Core;
 
 /// <summary>
-/// Sizing and BITMAPINFO helpers for a single managed BGRA32 capture buffer.
-/// Used by <see cref="Win32CaptureService"/> so CreateDIBSection writes pixels
-/// without an AllocHGlobal + Marshal.Copy staging buffer.
+/// Sizing and BITMAPINFO helpers for top-down BGRA32 capture DIBs.
+/// Used by <see cref="Win32CaptureService"/> so CreateDIBSection + BitBlt
+/// produce pixels that cross the thread boundary as an owned HBITMAP (no
+/// mid-frame managed <c>byte[]</c>); UI Span-copies into WriteableBitmap.
 /// </summary>
 internal static class CaptureBuffers
 {

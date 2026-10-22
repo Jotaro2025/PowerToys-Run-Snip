@@ -88,9 +88,12 @@ public static class SnipController
             var screens = capture.GetScreens();
             var screen = Win32CaptureService.GetScreenAtCursor(screens);
 
-            // GDI BitBlt / GetDIBits off the UI STA; WriteableBitmap on this thread.
-            var frame = await Task.Run(() => capture.CaptureScreenPixels(screen)).ConfigureAwait(true);
-            bitmap = frame.ToWriteableBitmap();
+            // GDI BitBlt off the UI STA (owned DIB, no mid-frame byte[]); Span-copy to WB on STA.
+            using (var frame = await Task.Run(() => capture.CaptureScreenPixels(screen)).ConfigureAwait(true))
+            {
+                bitmap = frame.ToWriteableBitmap();
+            }
+
             RunEditor(bitmap, screen, settings, notify);
         }
         catch (Exception ex)

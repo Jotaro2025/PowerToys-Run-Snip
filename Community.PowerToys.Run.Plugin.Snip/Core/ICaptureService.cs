@@ -15,7 +15,9 @@ public interface ICaptureService
     IReadOnlyList<ScreenInfo> GetScreens();
 
     /// <summary>
-    /// GDI capture into a raw pixel buffer (safe to call off the UI thread).
+    /// GDI capture into an owned DIB / frame (safe to call off the UI thread).
+    /// Dispose the frame (or call <see cref="CapturedFrame.ToWriteableBitmap"/>)
+    /// to release native resources.
     /// </summary>
     CapturedFrame CaptureScreenPixels(ScreenInfo screen);
 

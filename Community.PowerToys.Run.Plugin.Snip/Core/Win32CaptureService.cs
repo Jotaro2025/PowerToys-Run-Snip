@@ -101,13 +101,19 @@ public sealed class Win32CaptureService : ICaptureService
     }
 
     public WriteableBitmap CaptureScreen(ScreenInfo screen)
-        => CaptureScreenPixels(screen).ToWriteableBitmap();
+    {
+        using var frame = CaptureScreenPixels(screen);
+        return frame.ToWriteableBitmap();
+    }
 
     /// <summary>
-    /// BitBlt into a top-down BGRA <c>CreateDIBSection</c>, then one copy into a
-    /// managed <see cref="CapturedFrame"/> buffer. Safe off the UI thread —
-    /// no <see cref="WriteableBitmap"/> is created here.
-    /// Avoids the old AllocHGlobal + Marshal.Copy staging buffer (2–3× peak).
+    /// BitBlt into a top-down BGRA <c>CreateDIBSection</c> and return a
+    /// <see cref="CapturedFrame"/> that <strong>owns</strong> the HBITMAP.
+    /// Safe off the UI thread — no <see cref="WriteableBitmap"/> here and no
+    /// full-frame managed <c>byte[]</c>. UI STA calls
+    /// <see cref="CapturedFrame.ToWriteableBitmap"/> which Span-copies into
+    /// BackBuffer then <c>DeleteObject</c>. Avoids the prior DIB→byte[]→WB
+    /// double peak. Bounds are physical pixels (per-monitor DPI).
     /// </summary>
     public CapturedFrame CaptureScreenPixels(ScreenInfo screen)
     {
@@ -135,8 +141,7 @@ public sealed class Win32CaptureService : ICaptureService
                 throw new InvalidOperationException("CreateCompatibleDC failed.");
             }
 
-            // Top-down 32bpp DIB: BitBlt writes final pixels here (no GetDIBits
-            // into a second native buffer). Bounds are physical pixels (per-monitor DPI).
+            // Top-down 32bpp DIB: BitBlt writes final pixels here.
             var bmi = CaptureBuffers.CreateTopDownBgraInfo(w, h);
             dib = Win32.CreateDIBSection(screenDc, ref bmi, Win32.DibRgbColors, out IntPtr bits, IntPtr.Zero, 0);
             if (dib == IntPtr.Zero || bits == IntPtr.Zero)
@@ -159,29 +164,33 @@ public sealed class Win32CaptureService : ICaptureService
                 throw new InvalidOperationException("BitBlt failed.");
             }
 
-            int stride = CaptureBuffers.BgraStride(w);
-            int bufLen = CaptureBuffers.BgraByteCount(w, h);
-            var pixels = new byte[bufLen];
+            // Unselect before tearing down DCs; DIB stays alive until CapturedFrame.Dispose.
+            if (old != IntPtr.Zero)
+            {
+                _ = Win32.SelectObject(memDc, old);
+                old = IntPtr.Zero;
+            }
 
-            // Single copy: DIB bits → managed CapturedFrame (thread-pool safe for #16).
-            Marshal.Copy(bits, pixels, 0, bufLen);
-            return new CapturedFrame(pixels, w, h, stride);
+            int stride = CaptureBuffers.BgraStride(w);
+            var frame = new CapturedFrame(dib, bits, w, h, stride);
+            dib = IntPtr.Zero; // ownership transferred — finally must not DeleteObject
+            return frame;
         }
         finally
         {
             if (old != IntPtr.Zero && memDc != IntPtr.Zero)
             {
-                Win32.SelectObject(memDc, old);
+                _ = Win32.SelectObject(memDc, old);
             }
 
             if (dib != IntPtr.Zero)
             {
-                Win32.DeleteObject(dib);
+                _ = Win32.DeleteObject(dib);
             }
 
             if (memDc != IntPtr.Zero)
             {
-                Win32.DeleteDC(memDc);
+                _ = Win32.DeleteDC(memDc);
             }
 
             if (screenDc != IntPtr.Zero)
