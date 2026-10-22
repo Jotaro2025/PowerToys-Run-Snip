@@ -19,12 +19,14 @@ public class WeChatOcrServiceTests
     [TestMethod]
     public void BundledOcrComponentIsCopiedNextToPlugin()
     {
-        // The WeChatOcr package copies wco_data\ into the build output of the
-        // plugin (and of this test project, which references it).
-        var dataDirectory = WeChatOcrService.OcrDataDirectory;
+        // Local builds / full packages still get wco_data from the WeChatOcr NuGet content.
+        // Slim release zips strip it; runtime then uses LocalAppData via OcrAssetsDownloader.
+        var dataDirectory = WeChatOcrService.PluginOcrDataDirectory;
 
         Assert.IsTrue(Directory.Exists(dataDirectory), dataDirectory);
         CollectionAssert.AreEqual(Array.Empty<string>(), WeChatOcrService.FindMissingFiles(dataDirectory).ToArray());
+        Assert.IsTrue(WeChatOcrService.IsOcrComponentAvailable());
+        Assert.AreEqual(dataDirectory, WeChatOcrService.ResolveOcrDataDirectory());
     }
 
     [TestMethod]

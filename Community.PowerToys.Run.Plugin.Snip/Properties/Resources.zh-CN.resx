@@ -207,7 +207,7 @@
     <value>文字提取失败：</value>
   </data>
   <data name="ocr_err_component_missing" xml:space="preserve">
-    <value>插件自带的 OCR 组件不完整，请重新安装插件。缺少文件：</value>
+    <value>OCR 组件不完整。请改用完整包，或在首次使用时下载。缺少文件：</value>
   </data>
   <data name="tip_translate" xml:space="preserve">
     <value>图片翻译</value>
@@ -430,5 +430,44 @@
   </data>
   <data name="tr_err_download_all_sources" xml:space="preserve">
     <value>所有下载源均失败（魔搭 ModelScope / hf-mirror / Hugging Face）。请检查网络，或手动从魔搭下载。</value>
+  </data>
+  <data name="ocr_err_need_install" xml:space="preserve">
+    <value>尚未安装 OCR 组件。请使用 Snip-*-full.zip，或在提示时允许下载（约 61MB）。学习向微信 OCR 组件（仅 x64）。</value>
+  </data>
+  <data name="ocr_download_title" xml:space="preserve">
+    <value>下载 OCR 组件</value>
+  </data>
+  <data name="ocr_download_body" xml:space="preserve">
+    <value>正在下载 WeChatOcr 包（约 61MB）并将 wco_data 解压到 LocalAppData。仅供学习/研究；商用请自行评估合规。</value>
+  </data>
+  <data name="ocr_download_prompt" xml:space="preserve">
+    <value>文字提取需要 OCR 组件（约 61MB，x64）。当前为精简安装，未附带该组件。是否立即从 NuGet（nuget.org / 国内 Azure CDN）下载？</value>
+  </data>
+  <data name="ocr_download_starting" xml:space="preserve">
+    <value>开始下载 OCR…</value>
+  </data>
+  <data name="ocr_download_progress" xml:space="preserve">
+    <value>[{2}] 已下载 {0} MB / {1} MB</value>
+  </data>
+  <data name="ocr_download_progress_unknown" xml:space="preserve">
+    <value>[{1}] 已下载 {0} MB…</value>
+  </data>
+  <data name="ocr_download_extracting" xml:space="preserve">
+    <value>[{0}] 正在解压 OCR 组件…</value>
+  </data>
+  <data name="ocr_download_done" xml:space="preserve">
+    <value>OCR 组件已就绪。</value>
+  </data>
+  <data name="ocr_download_cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="ocr_err_download_network" xml:space="preserve">
+    <value>OCR 下载失败（网络错误）：</value>
+  </data>
+  <data name="ocr_err_download_cancelled" xml:space="preserve">
+    <value>已取消 OCR 下载。</value>
+  </data>
+  <data name="ocr_err_download_all_sources" xml:space="preserve">
+    <value>所有 OCR 下载源均失败（nuget.org / 国内 Azure CDN）。请检查网络，或安装 Snip-*-full.zip。</value>
   </data>
 </root>

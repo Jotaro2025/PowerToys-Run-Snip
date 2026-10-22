@@ -1,10 +1,15 @@
 #!/usr/bin/env pwsh
 <#
 .SYNOPSIS
-  Build the Snip PowerToys Run plugin (Release) and zip it for distribution.
+  Build the Snip PowerToys Run plugin (Release) and zip slim + full packages.
 
 .DESCRIPTION
-  Produces artifacts/Snip-<version>.zip whose root folder is "Snip\", matching
+  Produces:
+    artifacts/Snip-<version>-slim.zip  — no wco_data; OCR downloads on first use
+    artifacts/Snip-<version>-full.zip  — includes wco_data (offline OCR)
+    artifacts/Snip-<version>.zip       — copy of slim (default / recommended)
+
+  Archive root folder is "Snip\", matching
   %LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\Snip\.
 
 .PARAMETER PowerToysInstallDir
@@ -67,8 +72,6 @@ if (Test-Path $StageRoot) {
 New-Item -ItemType Directory -Path $StagePlugin -Force | Out-Null
 
 Write-Host "==> Staging plugin files from $BuildOut"
-# Copy everything except symbols (optional) and any accidental host refs
-$excludeNames = @("*.pdb")
 Get-ChildItem -Path $BuildOut -Force | ForEach-Object {
     $name = $_.Name
     if ($name -like "*.pdb") {
@@ -85,21 +88,22 @@ function Assert-Exists([string] $RelativePath) {
     Write-Host "  OK  $RelativePath"
 }
 
-Write-Host "==> Self-check"
+Write-Host "==> Self-check (common)"
 Assert-Exists "plugin.json"
 Assert-Exists "Community.PowerToys.Run.Plugin.Snip.dll"
 Assert-Exists "Images\Snip.dark.png"
 Assert-Exists "Images\Snip.light.png"
 Assert-Exists "WeChatOcr.dll"
 Assert-Exists "Sdcb.HyMT2Sharp.dll"
+Assert-Exists "zh-CN\Community.PowerToys.Run.Plugin.Snip.resources.dll"
+
 Assert-Exists "wco_data"
 Assert-Exists "wco_data\WeChatOCR.exe"
 $wcoFiles = @(Get-ChildItem -Path (Join-Path $StagePlugin "wco_data") -Recurse -File -ErrorAction SilentlyContinue)
 if ($wcoFiles.Count -lt 3) {
     throw "Self-check failed: wco_data looks incomplete ($($wcoFiles.Count) files)"
 }
-Write-Host "  OK  wco_data ($($wcoFiles.Count) files)"
-Assert-Exists "zh-CN\Community.PowerToys.Run.Plugin.Snip.resources.dll"
+Write-Host "  OK  wco_data ($($wcoFiles.Count) files) — will ship in full zip only"
 
 $stagedPluginJson = Get-Content -Raw -Path (Join-Path $StagePlugin "plugin.json") | ConvertFrom-Json
 if ($stagedPluginJson.Author -eq "Microsoft Corporation" -or ($stagedPluginJson.Website -like "*aka.ms*")) {
@@ -111,15 +115,39 @@ if ($stagedPluginJson.Version -ne $Version) {
 Write-Host "  OK  plugin.json Author=$($stagedPluginJson.Author) Version=$($stagedPluginJson.Version)"
 
 New-Item -ItemType Directory -Path $OutputDir -Force | Out-Null
-$ZipPath = Join-Path $OutputDir "Snip-$Version.zip"
-if (Test-Path $ZipPath) {
-    Remove-Item -Force $ZipPath
+
+function Write-PluginZip([string] $ZipPath) {
+    if (Test-Path $ZipPath) {
+        Remove-Item -Force $ZipPath
+    }
+    Compress-Archive -Path $StagePlugin -DestinationPath $ZipPath -Force
+    $zipSize = (Get-Item $ZipPath).Length
+    Write-Host "  -> $ZipPath ($([math]::Round($zipSize/1MB, 1)) MB)"
 }
 
-Write-Host "==> Zipping $ZipPath"
-Compress-Archive -Path $StagePlugin -DestinationPath $ZipPath -Force
+$FullZip = Join-Path $OutputDir "Snip-$Version-full.zip"
+$SlimZip = Join-Path $OutputDir "Snip-$Version-slim.zip"
+$DefaultZip = Join-Path $OutputDir "Snip-$Version.zip"
 
-$zipSize = (Get-Item $ZipPath).Length
-Write-Host "==> Done: $ZipPath ($([math]::Round($zipSize/1MB, 1)) MB)"
+Write-Host "==> Zipping FULL (with wco_data)"
+Write-PluginZip $FullZip
+
+Write-Host "==> Stripping wco_data for SLIM package"
+$wcoPath = Join-Path $StagePlugin "wco_data"
+Remove-Item -Recurse -Force $wcoPath
+if (Test-Path $wcoPath) {
+    throw "Failed to remove wco_data for slim package"
+}
+Write-Host "  OK  wco_data removed from staging"
+
+Write-Host "==> Zipping SLIM (no wco_data; OCR on-demand)"
+Write-PluginZip $SlimZip
+
+Copy-Item -Path $SlimZip -Destination $DefaultZip -Force
+Write-Host "  -> $DefaultZip (copy of slim)"
+
+Write-Host "==> Done"
+Write-Host "  slim (default): $SlimZip  /  $DefaultZip"
+Write-Host "  full (offline OCR): $FullZip"
 Write-Host "Unzip into: %LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Plugins\"
 Write-Host "Then restart PowerToys. Folder name inside the zip is Snip\."

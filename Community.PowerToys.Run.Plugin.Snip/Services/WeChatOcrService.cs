@@ -23,12 +23,11 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// OCR component it bundles (WeChatOCR.exe, mmmojo DLLs and model files).
 /// </summary>
 /// <remarks>
-/// The package copies its files to <c>wco_data\</c> next to the plugin; nothing
-/// has to be installed. <see cref="DataLocation"/> resolves <c>wco_data</c>
-/// against a base directory that defaults to the process working directory (the
-/// PowerToys install folder), so it is pointed at the plugin folder. In this
-/// mode the package only reads from <c>wco_data</c>; the image handed to the OCR
-/// process is written to the user's temp folder.
+/// Full release zips ship <c>wco_data\</c> next to the plugin; slim zips omit it
+/// (~61 MB) and the first OCR / image-translate use downloads the same assets
+/// from the WeChatOcr NuGet package into LocalAppData. <see cref="DataLocation"/>
+/// is pointed at the directory that contains <c>wco_data</c>. The image handed
+/// to the OCR process is written to the user's temp folder.
 /// </remarks>
 public static class WeChatOcrService
 {
@@ -54,8 +53,49 @@ public static class WeChatOcrService
     /// <summary>True when another recognition currently holds the process-wide gate.</summary>
     public static bool IsBusy => Gate.CurrentCount == 0;
 
-    /// <summary>Folder holding the bundled OCR component.</summary>
-    public static string OcrDataDirectory => Path.Combine(PluginDirectory, "wco_data");
+    /// <summary>OCR assets next to the plugin DLL (full package / local build).</summary>
+    public static string PluginOcrDataDirectory => Path.Combine(PluginDirectory, "wco_data");
+
+    /// <summary>
+    /// LocalAppData cache used when the slim package omitted <c>wco_data</c>.
+    /// </summary>
+    public static string CachedOcrDataDirectory => Path.Combine(
+        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+        "PowerToys",
+        "RunPlugins",
+        "Community.PowerToys.Run.Plugin.Snip",
+        "wco_data");
+
+    /// <summary>
+    /// Resolved <c>wco_data</c> folder (plugin first, then cache), or the plugin
+    /// path when neither is complete (for error messages).
+    /// </summary>
+    public static string OcrDataDirectory => ResolveOcrDataDirectory() ?? PluginOcrDataDirectory;
+
+    /// <summary>True when plugin-dir or LocalAppData cache has the required OCR files.</summary>
+    public static bool IsOcrComponentAvailable() => ResolveOcrDataDirectory() != null;
+
+    /// <summary>
+    /// Returns a complete <c>wco_data</c> directory (plugin folder preferred), or
+    /// <c>null</c> when OCR assets still need to be installed / downloaded.
+    /// </summary>
+    public static string ResolveOcrDataDirectory()
+    {
+        if (IsComplete(PluginOcrDataDirectory))
+        {
+            return PluginOcrDataDirectory;
+        }
+
+        if (IsComplete(CachedOcrDataDirectory))
+        {
+            return CachedOcrDataDirectory;
+        }
+
+        return null;
+    }
+
+    private static bool IsComplete(string dataDirectory)
+        => !FindMissingFiles(dataDirectory).Any();
 
     /// <summary>
     /// Recognizes the text in a PNG image. Runs off the calling thread.
@@ -101,10 +141,14 @@ public static class WeChatOcrService
         return await Task.Run(
             async () =>
             {
-                var missing = FindMissingFiles(OcrDataDirectory).ToList();
-                if (missing.Count > 0)
+                var dataDir = ResolveOcrDataDirectory();
+                if (dataDir == null)
                 {
-                    throw new OcrException($"{Properties.Resources.ocr_err_component_missing} {Path.Combine(OcrDataDirectory, missing[0])}");
+                    var missing = FindMissingFiles(PluginOcrDataDirectory).ToList();
+                    var hint = missing.Count > 0
+                        ? Path.Combine(PluginOcrDataDirectory, missing[0])
+                        : PluginOcrDataDirectory;
+                    throw new OcrException($"{Properties.Resources.ocr_err_need_install} {hint}");
                 }
 
                 await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
@@ -223,8 +267,12 @@ public static class WeChatOcrService
         {
             await File.WriteAllBytesAsync(imagePath, png, cancellationToken).ConfigureAwait(false);
 
-            // Resolve wco_data (WeChatOCR.exe, mmmojo_64.dll, models) in the plugin folder.
-            DataLocation.SetBaseDirectory(PluginDirectory);
+            // Point WeChatOcr at the folder that contains wco_data (plugin or LocalAppData).
+            var dataDir = ResolveOcrDataDirectory()
+                ?? throw new OcrException(Properties.Resources.ocr_err_need_install);
+            var baseDir = Path.GetDirectoryName(dataDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                ?? PluginDirectory;
+            DataLocation.SetBaseDirectory(baseDir);
 
             // No path: use the bundled component instead of an installed WeChat.
             using (var ocr = new ImageOcr())
