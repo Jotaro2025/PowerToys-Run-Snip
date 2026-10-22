@@ -24,6 +24,7 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 快捷键：Enter 完成、Esc 取消、Ctrl+C 复制、Ctrl+S 保存、Ctrl+Z 撤销、Ctrl+Y 重做、Delete 删除选中标注
 - **文字提取（OCR）**：工具栏上的「文字提取」按钮，仿微信截图：识别选区（含标注）中的文字，
   在结果窗口中显示，可编辑/选中，支持「复制」（有选中时复制选中部分）和「全部复制」
+- **钉住图片**：工具栏图钉按钮，截屏后以置顶轻量窗口贴在屏幕上（拖动移动；Esc / 双击 / 右键关闭）
 - **图片翻译**：工具栏上的「图片翻译」按钮；OCR 取出带框文字后翻译，擦除原文并重绘译文，
   结果窗口左侧为翻译图、右侧为可编辑译文列表（需在设置中配置翻译引擎）；
   可「重新贴图」把编辑后的译文再画回左侧，也可「保存图片」/复制图片
@@ -88,6 +89,8 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 ## 构建
 
 需要 .NET 10 SDK 和一份已安装的 PowerToys（插件引用其自带的 `Wox.Plugin` 等程序集）：
+
+CI / 无完整安装时可用仓库内 `build/PowerToysRefs` 作为 `-p:PowerToysInstallDir=...`（见 `.github/workflows/ci.yml`）。
 
 ```powershell
 dotnet build Community.PowerToys.Run.Plugin.Snip

@@ -92,6 +92,7 @@ public sealed class SnipToolbar : Border
 
         AddIcon(actions, ToolIcons.Ocr, Properties.Resources.tip_ocr).Click += (sender, e) => ExtractTextClicked?.Invoke(this, EventArgs.Empty);
         AddIcon(actions, ToolIcons.Translate, Properties.Resources.tip_translate).Click += (sender, e) => TranslateImageClicked?.Invoke(this, EventArgs.Empty);
+        AddIcon(actions, ToolIcons.Pin, Properties.Resources.tip_pin).Click += (sender, e) => PinClicked?.Invoke(this, EventArgs.Empty);
 
         if (ShowSaveButton)
         {
@@ -121,6 +122,8 @@ public sealed class SnipToolbar : Border
     public event EventHandler ExtractTextClicked;
 
     public event EventHandler TranslateImageClicked;
+
+    public event EventHandler PinClicked;
 
     public event EventHandler CancelClicked;
 

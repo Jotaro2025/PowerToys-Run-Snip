@@ -487,6 +487,34 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("tip_translate", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Pin image.
+        /// </summary>
+        public static string tip_pin {
+            get {
+                return ResourceManager.GetString("tip_pin", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Pinned image.
+        /// </summary>
+        public static string pin_window_title {
+            get {
+                return ResourceManager.GetString("pin_window_title", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Close.
+        /// </summary>
+        public static string pin_menu_close {
+            get {
+                return ResourceManager.GetString("pin_menu_close", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Image Translate.
         /// </summary>

@@ -140,6 +140,12 @@ public static class SnipController
             return;
         }
 
+        if (result.Outcome == EditOutcome.Pinned)
+        {
+            ShowPinnedImage(result, notify);
+            return;
+        }
+
         if (result.Outcome == EditOutcome.Copied)
         {
             // The editor already copied to the clipboard.
@@ -219,6 +225,22 @@ public static class SnipController
         {
             Log.Exception($"Snip image translate window failed: {ex.Message}", ex, typeof(SnipController));
             notify(Properties.Resources.tr_window_title, ex.Message);
+        }
+    }
+
+    /// <summary>Opens a modeless topmost pin window for the captured bitmap.</summary>
+    private static void ShowPinnedImage(EditResult result, Action<string, string> notify)
+    {
+        try
+        {
+            var window = new PinImageWindow(result.Result);
+            window.Show();
+            window.Activate();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip pin window failed: {ex.Message}", ex, typeof(SnipController));
+            notify(Properties.Resources.pin_window_title, ex.Message);
         }
     }
 

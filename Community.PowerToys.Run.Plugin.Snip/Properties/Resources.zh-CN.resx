@@ -212,6 +212,15 @@
   <data name="tip_translate" xml:space="preserve">
     <value>图片翻译</value>
   </data>
+  <data name="tip_pin" xml:space="preserve">
+    <value>钉住图片</value>
+  </data>
+  <data name="pin_window_title" xml:space="preserve">
+    <value>钉住的图片</value>
+  </data>
+  <data name="pin_menu_close" xml:space="preserve">
+    <value>关闭</value>
+  </data>
   <data name="tr_window_title" xml:space="preserve">
     <value>图片翻译</value>
   </data>

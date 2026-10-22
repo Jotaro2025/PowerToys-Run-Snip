@@ -19,4 +19,7 @@ public enum EditOutcome
 
     /// <summary>The user asked to translate text in the selection (OCR + translate + repaint).</summary>
     TranslateImage,
+
+    /// <summary>The user pinned the selection as a floating topmost image window.</summary>
+    Pinned,
 }

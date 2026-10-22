@@ -26,4 +26,7 @@ public static class ToolIcons
     public const string Save = "M5,5 L17,5 L20,8 L20,19 L5,19 Z M8,5 L8,10 L16,10 L16,5 M7,14 L17,14 L17,19 L7,19 Z";
     public const string Cancel = "M6,6 L18,18 M18,6 L6,18";
     public const string Done = "M5,12 L10,17 L19,7";
+
+    // Pushpin (head + needle).
+    public const string Pin = "M12,3 L16,7 L14,9 L18,13 L16,15 L12,11 L10,13 L8,11 L12,7 L10,5 Z M12,11 L12,21";
 }
