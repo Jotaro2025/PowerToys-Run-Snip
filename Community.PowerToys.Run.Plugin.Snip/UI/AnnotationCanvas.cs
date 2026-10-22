@@ -10,9 +10,11 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 using Community.PowerToys.Run.Plugin.Snip.Core.Annotations;
 using Community.PowerToys.Run.Plugin.Snip.Models;
+using Community.PowerToys.Run.Plugin.Snip.Services;
 
 namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
@@ -41,6 +43,14 @@ public sealed class AnnotationCanvas : FrameworkElement
 
     private TextBox _inlineTextBox;
     private int _inlineTextIndex = -1;
+
+    /// <summary>Reusable BGRA overlay for mosaic tiles (avoids per-tile SolidColorBrush).</summary>
+    private WriteableBitmap _mosaicOverlay;
+
+    /// <summary>Throttle mosaic drag invalidates (~1/frame).</summary>
+    private DateTime _lastMosaicInvalidateUtc = DateTime.MinValue;
+
+    private const int MosaicInvalidateMinMs = 16;
 
     public AnnotationCanvas()
     {
@@ -156,23 +166,23 @@ public sealed class AnnotationCanvas : FrameworkElement
 
     protected override void OnRender(DrawingContext drawingContext)
     {
-        RenderCore(drawingContext, includeChrome: true);
+        RenderCore(drawingContext, includeChrome: true, allowMosaicPreview: true);
     }
 
     /// <summary>
     /// Draws only the annotations (no selection chrome). Used when rendering the
-    /// final image offscreen.
+    /// final image offscreen. Always uses full-quality mosaic (export look).
     /// </summary>
     internal void RenderAnnotations(DrawingContext drawingContext)
     {
-        RenderCore(drawingContext, includeChrome: false);
+        RenderCore(drawingContext, includeChrome: false, allowMosaicPreview: false);
     }
 
-    private void RenderCore(DrawingContext drawingContext, bool includeChrome)
+    private void RenderCore(DrawingContext drawingContext, bool includeChrome, bool allowMosaicPreview)
     {
         for (int i = 0; i < Items.Count; i++)
         {
-            DrawAnnotation(drawingContext, Items[i]);
+            DrawAnnotation(drawingContext, Items[i], allowMosaicPreview);
             if (includeChrome && SelectedIndex == i)
             {
                 DrawSelectionChrome(drawingContext, Items[i]);
@@ -181,7 +191,7 @@ public sealed class AnnotationCanvas : FrameworkElement
 
         if (_livePreview != null)
         {
-            DrawAnnotation(drawingContext, _livePreview);
+            DrawAnnotation(drawingContext, _livePreview, allowMosaicPreview);
         }
     }
 
@@ -205,7 +215,7 @@ public sealed class AnnotationCanvas : FrameworkElement
         }
     }
 
-    private void DrawAnnotation(DrawingContext drawingContext, Annotation a)
+    private void DrawAnnotation(DrawingContext drawingContext, Annotation a, bool allowMosaicPreview)
     {
         switch (a)
         {
@@ -260,7 +270,8 @@ public sealed class AnnotationCanvas : FrameworkElement
                     return;
                 }
 
-                DrawMosaic(drawingContext, m);
+                bool preview = allowMosaicPreview && ShouldPreviewMosaic(m);
+                DrawMosaic(drawingContext, m, preview);
                 break;
         }
     }
@@ -312,76 +323,138 @@ public sealed class AnnotationCanvas : FrameworkElement
         dc.DrawGeometry(fill, pen, CreatePolyline(new[] { p1, a.End, p2 }, true));
     }
 
-    private void DrawMosaic(DrawingContext dc, MosaicAnnotation m)
+    private bool ShouldPreviewMosaic(MosaicAnnotation m)
+    {
+        if (ReferenceEquals(m, _livePreview))
+        {
+            return true;
+        }
+
+        // Select-tool move/resize of a committed mosaic while the mouse is down.
+        if (_dragging
+            && ActiveTool == ToolIds.Select
+            && SelectedIndex is int idx
+            && idx >= 0
+            && idx < Items.Count
+            && ReferenceEquals(Items[idx], m))
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    private void InvalidateMosaicPreview()
+    {
+        var now = DateTime.UtcNow;
+        if ((now - _lastMosaicInvalidateUtc).TotalMilliseconds < MosaicInvalidateMinMs)
+        {
+            return;
+        }
+
+        _lastMosaicInvalidateUtc = now;
+        InvalidateVisual();
+    }
+
+    private bool IsMosaicDragInteraction()
+    {
+        if (ActiveTool == ToolIds.Mosaic)
+        {
+            return true;
+        }
+
+        return ActiveTool == ToolIds.Select
+            && SelectedIndex is int idx
+            && idx >= 0
+            && idx < Items.Count
+            && Items[idx] is MosaicAnnotation;
+    }
+
+    private void DrawMosaic(DrawingContext dc, MosaicAnnotation m, bool preview)
     {
         var src = SourceBitmap;
         int sw = src.PixelWidth;
         int sh = src.PixelHeight;
         var origin = SourceOffset;
         double scale = SourceDpiScale;
+        if (scale <= 0)
+        {
+            scale = 1.0;
+        }
+
+        var rect = m.Rect;
+        int x0 = Math.Max(0, (int)Math.Floor((rect.X + origin.X) * scale));
+        int y0 = Math.Max(0, (int)Math.Floor((rect.Y + origin.Y) * scale));
+        int x1 = Math.Min(sw, (int)Math.Ceiling((rect.Right + origin.X) * scale));
+        int y1 = Math.Min(sh, (int)Math.Ceiling((rect.Bottom + origin.Y) * scale));
+        int regionW = x1 - x0;
+        int regionH = y1 - y0;
+        if (regionW <= 0 || regionH <= 0)
+        {
+            return;
+        }
+
+        int bs = Math.Max(4, (int)Math.Round(m.BlockSize * scale));
+        var mode = preview
+            ? MosaicBlocks.SampleMode.Preview2x2
+            : MosaicBlocks.SampleMode.FullAverage;
+
+        EnsureMosaicOverlay(regionW, regionH);
+        _mosaicOverlay.Lock();
         src.Lock();
         try
         {
             unsafe
             {
-                byte* ptr = (byte*)src.BackBuffer;
-                int srcStride = src.BackBufferStride;
-                int bs = Math.Max(4, (int)Math.Round(m.BlockSize * scale));
-                var rect = m.Rect;
-                int x0 = Math.Max(0, (int)Math.Floor((rect.X + origin.X) * scale));
-                int y0 = Math.Max(0, (int)Math.Floor((rect.Y + origin.Y) * scale));
-                int x1 = Math.Min(sw, (int)Math.Ceiling((rect.Right + origin.X) * scale));
-                int y1 = Math.Min(sh, (int)Math.Ceiling((rect.Bottom + origin.Y) * scale));
-                for (int by = y0; by < y1; by += bs)
-                {
-                    int blockH = Math.Min(bs, y1 - by);
-                    for (int bx = x0; bx < x1; bx += bs)
-                    {
-                        int blockW = Math.Min(bs, x1 - bx);
-                        int bxEnd = bx + blockW;
-                        int byEnd = by + blockH;
-                        long sumR = 0, sumG = 0, sumB = 0, count = 0;
-                        for (int py = by; py < byEnd; py++)
-                        {
-                            int row = py * srcStride;
-                            for (int px = bx; px < bxEnd; px++)
-                            {
-                                int offset = row + (px * 4);
-                                sumB += ptr[offset + 0];
-                                sumG += ptr[offset + 1];
-                                sumR += ptr[offset + 2];
-                                count++;
-                            }
-                        }
-
-                        if (count == 0)
-                        {
-                            continue;
-                        }
-
-                        var color = Color.FromRgb(
-                            (byte)(sumR / count),
-                            (byte)(sumG / count),
-                            (byte)(sumB / count));
-
-                        // Fresh brush per tile: reusing a brush and mutating its
-                        // Color leaves every block at the old color in one pass.
-                        dc.DrawRectangle(
-                            new SolidColorBrush(color),
-                            null,
-                            new Rect(
-                                (bx / scale) - origin.X,
-                                (by / scale) - origin.Y,
-                                blockW / scale,
-                                blockH / scale));
-                    }
-                }
+                MosaicBlocks.Fill(
+                    (byte*)src.BackBuffer,
+                    src.BackBufferStride,
+                    sw,
+                    sh,
+                    (byte*)_mosaicOverlay.BackBuffer,
+                    _mosaicOverlay.BackBufferStride,
+                    x0,
+                    y0,
+                    x1,
+                    y1,
+                    bs,
+                    mode);
             }
+
+            _mosaicOverlay.AddDirtyRect(new Int32Rect(0, 0, regionW, regionH));
         }
         finally
         {
             src.Unlock();
+            _mosaicOverlay.Unlock();
         }
+
+        // Draw only the used sub-rect when the scratch bitmap is larger.
+        var dest = new Rect(
+            (x0 / scale) - origin.X,
+            (y0 / scale) - origin.Y,
+            regionW / scale,
+            regionH / scale);
+        var crop = new CroppedBitmap(_mosaicOverlay, new Int32Rect(0, 0, regionW, regionH));
+        dc.DrawImage(crop, dest);
+    }
+
+    private void EnsureMosaicOverlay(int width, int height)
+    {
+        if (_mosaicOverlay != null
+            && _mosaicOverlay.PixelWidth >= width
+            && _mosaicOverlay.PixelHeight >= height
+            && _mosaicOverlay.Format == PixelFormats.Bgra32)
+        {
+            return;
+        }
+
+        // Grow with a little slack so drag resize reallocates less often.
+        int allocW = Math.Max(width, _mosaicOverlay?.PixelWidth ?? 0);
+        int allocH = Math.Max(height, _mosaicOverlay?.PixelHeight ?? 0);
+        allocW = Math.Max(allocW, width);
+        allocH = Math.Max(allocH, height);
+        _mosaicOverlay = new WriteableBitmap(allocW, allocH, 96, 96, PixelFormats.Bgra32, null);
     }
 
     /// <summary>Maps toolbar stroke width to mosaic tile size (thicker = coarser).</summary>
@@ -499,7 +572,15 @@ public sealed class AnnotationCanvas : FrameworkElement
                 Items[idx] = AnnotationEditor.ApplyHandle(_editSnapshot, handle, p, _editStartBounds);
             }
 
-            InvalidateVisual();
+            if (IsMosaicDragInteraction())
+            {
+                InvalidateMosaicPreview();
+            }
+            else
+            {
+                InvalidateVisual();
+            }
+
             return;
         }
 
@@ -524,7 +605,14 @@ public sealed class AnnotationCanvas : FrameworkElement
         if (_start is Point s)
         {
             _livePreview = CreateShapeAt(s, p);
-            InvalidateVisual();
+            if (ActiveTool == ToolIds.Mosaic)
+            {
+                InvalidateMosaicPreview();
+            }
+            else
+            {
+                InvalidateVisual();
+            }
         }
 
         base.OnMouseMove(e);
@@ -544,6 +632,7 @@ public sealed class AnnotationCanvas : FrameworkElement
             _editSnapshot = null;
             ReleaseMouseCapture();
             NotifyHistory();
+            _lastMosaicInvalidateUtc = DateTime.MinValue;
             InvalidateVisual();
             e.Handled = true;
             return;
@@ -560,6 +649,7 @@ public sealed class AnnotationCanvas : FrameworkElement
             Add(committed);
         }
 
+        _lastMosaicInvalidateUtc = DateTime.MinValue;
         InvalidateVisual();
         e.Handled = true;
         base.OnMouseLeftButtonUp(e);
