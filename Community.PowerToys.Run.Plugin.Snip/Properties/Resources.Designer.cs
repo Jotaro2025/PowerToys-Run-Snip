@@ -1497,6 +1497,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        /// <summary>
+        ///   Looks up a localized string similar to Reached max length ({0}px) — auto-stopped.
+        /// </summary>
+        public static string scroll_hint_max_height {
+            get {
+                return ResourceManager.GetString("scroll_hint_max_height", resourceCulture);
+            }
+        }
+
         public static string scroll_hint_stitching {
             get {
                 return ResourceManager.GetString("scroll_hint_stitching", resourceCulture);

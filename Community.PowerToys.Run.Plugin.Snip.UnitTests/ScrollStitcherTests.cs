@@ -68,6 +68,34 @@ public class ScrollStitcherTests
     }
 
     [TestMethod]
+    public void ResolveMaxStitchedHeight_NarrowUsesPixelCap()
+    {
+        Assert.AreEqual(ScrollStitcher.MaxStitchedHeightPx, ScrollStitcher.ResolveMaxStitchedHeight(Width));
+    }
+
+    [TestMethod]
+    public void ResolveMaxStitchedHeight_WideUsesByteCap()
+    {
+        const int wide = 8192;
+        long expected = ScrollStitcher.MaxStitchedBytes / (wide * 4L);
+        Assert.AreEqual((int)Math.Min(ScrollStitcher.MaxStitchedHeightPx, expected), ScrollStitcher.ResolveMaxStitchedHeight(wide));
+        Assert.IsTrue(ScrollStitcher.ResolveMaxStitchedHeight(wide) < ScrollStitcher.MaxStitchedHeightPx);
+    }
+
+    [TestMethod]
+    public void EstimateContributedRows_MatchesShiftAndZeroForDuplicate()
+    {
+        const int dh = 12;
+        using var a = GradientVerticalTile();
+        using var b = ShiftedDown(a, dh);
+        Assert.AreEqual(dh, ScrollStitcher.EstimateContributedRows(a, b, dh));
+
+        using var c = SolidTile(1, 2, 3);
+        using var d = SolidTile(1, 2, 3);
+        Assert.AreEqual(0, ScrollStitcher.EstimateContributedRows(c, d));
+    }
+
+    [TestMethod]
     public void Stitch_TwoShiftedTiles_ProducesExpectedHeight()
     {
         const int dh = 16;
