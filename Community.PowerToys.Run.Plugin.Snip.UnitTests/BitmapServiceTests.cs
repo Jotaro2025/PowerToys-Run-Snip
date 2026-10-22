@@ -272,7 +272,7 @@ public class BitmapServiceTests
             pixels[2] = 255;
             pixels[3] = 255;
 
-            var frame = new CapturedFrame(pixels, w, h, stride);
+            using var frame = new CapturedFrame(pixels, w, h, stride);
             var wb = frame.ToWriteableBitmap();
             Assert.AreEqual(w, wb.PixelWidth);
             Assert.AreEqual(h, wb.PixelHeight);
@@ -282,6 +282,33 @@ public class BitmapServiceTests
             Assert.AreEqual(255, roundTrip[2], "red channel");
             Assert.AreEqual(255, roundTrip[3], "alpha channel");
         });
+    }
+
+    [TestMethod]
+    public void CapturedFrameToWriteableBitmapIsConsuming()
+    {
+        RunOnStaThread(() =>
+        {
+            const int w = 2;
+            const int h = 2;
+            const int stride = w * 4;
+            var pixels = new byte[stride * h];
+            var frame = new CapturedFrame(pixels, w, h, stride);
+            _ = frame.ToWriteableBitmap();
+            _ = Assert.ThrowsException<ObjectDisposedException>(() => frame.ToWriteableBitmap());
+        });
+    }
+
+    [TestMethod]
+    public void CapturedFrameDisposeIsIdempotent()
+    {
+        const int w = 2;
+        const int h = 1;
+        const int stride = w * 4;
+        var frame = new CapturedFrame(new byte[stride * h], w, h, stride);
+        frame.Dispose();
+        frame.Dispose();
+        _ = Assert.ThrowsException<ObjectDisposedException>(() => frame.ToWriteableBitmap());
     }
 
     [TestMethod]
