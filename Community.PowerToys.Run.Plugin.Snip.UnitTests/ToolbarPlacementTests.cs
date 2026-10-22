@@ -52,4 +52,41 @@ public class ToolbarPlacementTests
         Assert.IsTrue(pos.X + 200 <= 220 - 8 + 0.01);
         Assert.IsTrue(pos.Y + 40 <= 100 - 8 + 0.01);
     }
+
+    [TestMethod]
+    public void AreaOverloadMatchesViewportOverloadAtOrigin()
+    {
+        var selection = new Rect(420, 300, 200, 80);
+        Assert.AreEqual(
+            ToolbarPlacement.Compute(selection, Toolbar, Viewport),
+            ToolbarPlacement.Compute(selection, Toolbar, new Rect(0, 0, Viewport.Width, Viewport.Height)));
+    }
+
+    [TestMethod]
+    public void StaysInsideMonitorAreaOnMultiMonitorOverlay()
+    {
+        // Right monitor (1000..1800, 0..600) is shorter than the overlay (height 1000):
+        // a selection near its bottom must not push the toolbar into the gap below it.
+        var rightMonitor = new Rect(1000, 0, 800, 600);
+        var selection = new Rect(1700, 540, 90, 40);
+
+        var pos = ToolbarPlacement.Compute(selection, Toolbar, rightMonitor);
+
+        Assert.IsTrue(pos.X >= rightMonitor.Left + 8, $"x={pos.X}");
+        Assert.IsTrue(pos.X + Toolbar.Width <= rightMonitor.Right - 8, $"x={pos.X}");
+        Assert.IsTrue(pos.Y + Toolbar.Height <= selection.Y, $"expected above selection, y={pos.Y}");
+        Assert.IsTrue(pos.Y >= rightMonitor.Top + 8);
+    }
+
+    [TestMethod]
+    public void MonitorAreaWithNegativeOriginClampsLeft()
+    {
+        var leftMonitor = new Rect(-1200, 0, 1200, 900);
+        var selection = new Rect(-1195, 100, 40, 40);
+
+        var pos = ToolbarPlacement.Compute(selection, Toolbar, leftMonitor);
+
+        Assert.AreEqual(-1200 + 8, pos.X, 0.01);
+        Assert.AreEqual(selection.Bottom + 12, pos.Y, 0.01);
+    }
 }

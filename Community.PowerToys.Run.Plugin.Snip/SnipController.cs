@@ -164,7 +164,10 @@ public static class SnipController
 
             var capture = CaptureFactory.Create();
             var screens = capture.GetScreens();
-            var screen = Win32CaptureService.GetScreenAtCursor(screens);
+
+            // One monitor: that monitor (unchanged). Several: whole virtual desktop so the
+            // selection may span monitors (physical pixels; overlay maps DIP via its window DPI).
+            var screen = Win32CaptureService.ChooseCaptureTarget(screens);
 
             // GDI BitBlt off the UI STA (owned DIB, no mid-frame byte[]); Span-copy to WB on STA.
             using (var frame = await Task.Run(() => capture.CaptureScreenPixels(screen)).ConfigureAwait(true))
@@ -172,7 +175,7 @@ public static class SnipController
                 bitmap = frame.ToWriteableBitmap();
             }
 
-            await RunEditorAsync(bitmap, screen, settings, notify).ConfigureAwait(true);
+            await RunEditorAsync(bitmap, screen, Win32CaptureService.PhysicalScreens(screens), settings, notify).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -184,10 +187,11 @@ public static class SnipController
     private static async Task RunEditorAsync(
         System.Windows.Media.Imaging.WriteableBitmap bitmap,
         Core.ScreenInfo screen,
+        System.Collections.Generic.IReadOnlyList<Core.ScreenInfo> monitors,
         SnipSettings settings,
         Action<string, string> notify)
     {
-        var window = new SnipWindow(bitmap, screen, new EditRequest(), settings);
+        var window = new SnipWindow(bitmap, screen, new EditRequest(), settings, monitors);
         window.ShowDialog();
 
         // OCR / translate / pin are opened as session children inside SnipWindow
