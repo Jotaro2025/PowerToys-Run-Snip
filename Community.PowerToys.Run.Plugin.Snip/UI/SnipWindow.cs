@@ -44,6 +44,7 @@ public sealed class SnipWindow : Window
     private readonly AnnotationCanvas _annoCanvas;
     private readonly SelectionAdorner _adorner;
     private readonly SnipToolbar _toolbar;
+    private readonly SnipSettings _settings;
 
     private double _dpiScale;
     private Rect _selection;
@@ -57,11 +58,14 @@ public sealed class SnipWindow : Window
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
         ScreenInfo screen,
-        EditRequest request)
+        EditRequest request,
+        SnipSettings settings = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(screen);
         ArgumentNullException.ThrowIfNull(request);
+
+        _settings = settings ?? new SnipSettings();
 
         _source = source;
         _physicalBounds = new Int32Rect(
@@ -132,6 +136,7 @@ public sealed class SnipWindow : Window
         _toolbar.UndoClicked += (sender, e) => _annoCanvas.Undo();
         _toolbar.SaveClicked += async (sender, e) => await DoSaveAsync();
         _toolbar.ExtractTextClicked += (sender, e) => DoExtractText();
+        _toolbar.TranslateImageClicked += (sender, e) => DoTranslateImage();
         _toolbar.CancelClicked += (sender, e) => Cancel();
         _toolbar.ConfirmClicked += (sender, e) => DoConfirm();
 
@@ -628,6 +633,50 @@ public sealed class SnipWindow : Window
         catch (Exception ex)
         {
             Log.Exception($"SnipWindow DoExtractText failed: {ex.Message}", ex, GetType());
+            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
+        }
+
+        Close();
+    }
+
+    /// <summary>
+    /// Hands the selection over for image translate. Shows a clear error and
+    /// keeps the overlay open when the translator is off or misconfigured.
+    /// </summary>
+    private void DoTranslateImage()
+    {
+        if (!_hasSelection)
+        {
+            return;
+        }
+
+        var error = TranslatorFactory.Validate(_settings);
+        if (error != null)
+        {
+            MessageBox.Show(
+                error,
+                Properties.Resources.tip_translate,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+            return;
+        }
+
+        try
+        {
+            var bmp = BuildResultBitmap(_selection);
+            var png = PngEncoder.Encode(bmp);
+            Result = new EditResult
+            {
+                Outcome = EditOutcome.TranslateImage,
+                Selection = _selection,
+                Annotations = _annoCanvas.Items.ToArray(),
+                Result = bmp,
+                PngBytes = png,
+            };
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow DoTranslateImage failed: {ex.Message}", ex, GetType());
             Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
         }
 

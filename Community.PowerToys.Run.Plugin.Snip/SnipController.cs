@@ -119,7 +119,7 @@ public static class SnipController
         SnipSettings settings,
         Action<string, string> notify)
     {
-        var window = new SnipWindow(bitmap, screen, new EditRequest());
+        var window = new SnipWindow(bitmap, screen, new EditRequest(), settings);
         window.ShowDialog();
 
         var result = window.Result;
@@ -131,6 +131,12 @@ public static class SnipController
         if (result.Outcome == EditOutcome.ExtractText)
         {
             ShowTextExtraction(result, notify);
+            return;
+        }
+
+        if (result.Outcome == EditOutcome.TranslateImage)
+        {
+            ShowImageTranslate(result, settings, notify);
             return;
         }
 
@@ -195,6 +201,24 @@ public static class SnipController
         {
             Log.Exception($"Snip text extraction window failed: {ex.Message}", ex, typeof(SnipController));
             notify(Properties.Resources.ocr_window_title, ex.Message);
+        }
+    }
+
+    /// <summary>
+    /// Opens the (modeless) image-translate window on this UI thread.
+    /// </summary>
+    private static void ShowImageTranslate(EditResult result, SnipSettings settings, Action<string, string> notify)
+    {
+        try
+        {
+            var window = new TranslateResultWindow(result.Result, result.PngBytes, settings);
+            window.Show();
+            window.Activate();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip image translate window failed: {ex.Message}", ex, typeof(SnipController));
+            notify(Properties.Resources.tr_window_title, ex.Message);
         }
     }
 

@@ -8,6 +8,7 @@ using System.Globalization;
 using System.Linq;
 using System.Windows.Controls;
 
+using Community.PowerToys.Run.Plugin.Snip.Models;
 using ManagedCommon;
 using Microsoft.PowerToys.Settings.UI.Library;
 using Wox.Plugin;
@@ -26,6 +27,13 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionCopyAfterCapture = "CopyAfterCapture";
     private const string OptionAutoSaveAfterCapture = "AutoSaveAfterCapture";
     private const string OptionCaptureDelayMs = "CaptureDelayMs";
+    private const string OptionTranslatorProvider = "TranslatorProvider";
+    private const string OptionTargetLanguage = "TargetLanguage";
+    private const string OptionHttpBaseUrl = "HttpBaseUrl";
+    private const string OptionHttpApiKey = "HttpApiKey";
+    private const string OptionHttpModel = "HttpModel";
+    private const string OptionHyMtGgufPath = "HyMtGgufPath";
+    private const string OptionHyMtBackend = "HyMtBackend";
 
     private PluginInitContext _context;
     private string _iconPath;
@@ -74,6 +82,78 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             NumberBoxMax = 2000,
             NumberBoxSmallChange = 10,
             NumberBoxLargeChange = 100,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionTranslatorProvider,
+            DisplayLabel = Properties.Resources.opt_tr_provider_label,
+            DisplayDescription = Properties.Resources.opt_tr_provider_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Combobox,
+            ComboBoxValue = (int)_settings.TranslatorProvider,
+            ComboBoxItems = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>(Properties.Resources.opt_tr_provider_off, "0"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_tr_provider_http, "1"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_tr_provider_hymt, "2"),
+            },
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionTargetLanguage,
+            DisplayLabel = Properties.Resources.opt_tr_lang_label,
+            DisplayDescription = Properties.Resources.opt_tr_lang_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.TargetLanguage,
+            PlaceholderText = "简体中文",
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionHttpBaseUrl,
+            DisplayLabel = Properties.Resources.opt_tr_http_url_label,
+            DisplayDescription = Properties.Resources.opt_tr_http_url_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.HttpBaseUrl,
+            PlaceholderText = "http://127.0.0.1:8080/v1",
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionHttpApiKey,
+            DisplayLabel = Properties.Resources.opt_tr_http_key_label,
+            DisplayDescription = Properties.Resources.opt_tr_http_key_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.HttpApiKey,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionHttpModel,
+            DisplayLabel = Properties.Resources.opt_tr_http_model_label,
+            DisplayDescription = Properties.Resources.opt_tr_http_model_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.HttpModel,
+            PlaceholderText = "hy-mt2",
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionHyMtGgufPath,
+            DisplayLabel = Properties.Resources.opt_tr_hymt_path_label,
+            DisplayDescription = Properties.Resources.opt_tr_hymt_path_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.HyMtGgufPath,
+            PlaceholderText = @"D:\models\Hy-MT2-1.8B-2Bit.gguf",
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionHyMtBackend,
+            DisplayLabel = Properties.Resources.opt_tr_hymt_backend_label,
+            DisplayDescription = Properties.Resources.opt_tr_hymt_backend_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Combobox,
+            ComboBoxValue = (int)_settings.HyMtBackend,
+            ComboBoxItems = new List<KeyValuePair<string, string>>
+            {
+                new KeyValuePair<string, string>(Properties.Resources.opt_tr_hymt_backend_auto, "0"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_tr_hymt_backend_cpu, "1"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_tr_hymt_backend_vulkan, "2"),
+            },
         },
     };
 
@@ -158,6 +238,34 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         if (delay.HasValue && delay.Value >= 0)
         {
             _settings.CaptureDelayMs = (int)Math.Min(2000, delay.Value);
+        }
+
+        var providerOpt = options.FirstOrDefault(x => x.Key == OptionTranslatorProvider);
+        if (providerOpt != null
+            && Enum.IsDefined(typeof(TranslatorProvider), providerOpt.ComboBoxValue))
+        {
+            _settings.TranslatorProvider = (TranslatorProvider)providerOpt.ComboBoxValue;
+        }
+
+        _settings.TargetLanguage = options.FirstOrDefault(x => x.Key == OptionTargetLanguage)?.TextValue
+            ?? _settings.TargetLanguage;
+        if (string.IsNullOrWhiteSpace(_settings.TargetLanguage))
+        {
+            _settings.TargetLanguage = "简体中文";
+        }
+
+        _settings.HttpBaseUrl = options.FirstOrDefault(x => x.Key == OptionHttpBaseUrl)?.TextValue
+            ?? _settings.HttpBaseUrl;
+        _settings.HttpApiKey = options.FirstOrDefault(x => x.Key == OptionHttpApiKey)?.TextValue ?? string.Empty;
+        _settings.HttpModel = options.FirstOrDefault(x => x.Key == OptionHttpModel)?.TextValue
+            ?? _settings.HttpModel;
+        _settings.HyMtGgufPath = options.FirstOrDefault(x => x.Key == OptionHyMtGgufPath)?.TextValue ?? string.Empty;
+
+        var backendOpt = options.FirstOrDefault(x => x.Key == OptionHyMtBackend);
+        if (backendOpt != null
+            && Enum.IsDefined(typeof(HyMtBackendKind), backendOpt.ComboBoxValue))
+        {
+            _settings.HyMtBackend = (HyMtBackendKind)backendOpt.ComboBoxValue;
         }
     }
 
