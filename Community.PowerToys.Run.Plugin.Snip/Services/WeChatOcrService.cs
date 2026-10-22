@@ -51,6 +51,9 @@ public static class WeChatOcrService
     /// <summary>WeChatOcr keeps process-wide state; run one recognition at a time.</summary>
     private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
 
+    /// <summary>True when another recognition currently holds the process-wide gate.</summary>
+    public static bool IsBusy => Gate.CurrentCount == 0;
+
     /// <summary>Folder holding the bundled OCR component.</summary>
     public static string OcrDataDirectory => Path.Combine(PluginDirectory, "wco_data");
 

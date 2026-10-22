@@ -283,6 +283,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("tip_undo", resourceCulture);
             }
         }
+        /// <summary>
+        ///   Looks up a localized string similar to Redo (Ctrl+Y)..
+        /// </summary>
+        public static string tip_redo {
+            get {
+                return ResourceManager.GetString("tip_redo", resourceCulture);
+            }
+        }
 
         /// <summary>
         ///   Looks up a localized string similar to Save (Ctrl+S).
@@ -371,6 +379,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string ocr_busy {
             get {
                 return ResourceManager.GetString("ocr_busy", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Waiting for another text recognition to finish….
+        /// </summary>
+        public static string ocr_busy_waiting {
+            get {
+                return ResourceManager.GetString("ocr_busy_waiting", resourceCulture);
             }
         }
 
@@ -504,6 +520,22 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
+        ///   Looks up a localized string similar to Translation engine busy — waiting….
+        /// </summary>
+        public static string tr_busy_hymt_wait {
+            get {
+                return ResourceManager.GetString("tr_busy_hymt_wait", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Waiting for another OCR job to finish….
+        /// </summary>
+        public static string tr_busy_ocr_wait {
+            get {
+                return ResourceManager.GetString("tr_busy_ocr_wait", resourceCulture);
+            }
+        }
+        /// <summary>
         ///   Looks up a localized string similar to Rendering translated image….
         /// </summary>
         public static string tr_busy_render {
@@ -542,6 +574,70 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string tr_image_copied {
             get {
                 return ResourceManager.GetString("tr_image_copied", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Re-apply.
+        /// </summary>
+        public static string tr_reapply {
+            get {
+                return ResourceManager.GetString("tr_reapply", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Save image.
+        /// </summary>
+        public static string tr_save_image {
+            get {
+                return ResourceManager.GetString("tr_save_image", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Re-applying translations….
+        /// </summary>
+        public static string tr_busy_rerender {
+            get {
+                return ResourceManager.GetString("tr_busy_rerender", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Image updated with edited translations.
+        /// </summary>
+        public static string tr_status_reapplied {
+            get {
+                return ResourceManager.GetString("tr_status_reapplied", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Translated image saved.
+        /// </summary>
+        public static string tr_image_saved {
+            get {
+                return ResourceManager.GetString("tr_image_saved", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Save Translated Image.
+        /// </summary>
+        public static string tr_save_dialog_title {
+            get {
+                return ResourceManager.GetString("tr_save_dialog_title", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Re-apply failed:.
+        /// </summary>
+        public static string tr_err_rerender {
+            get {
+                return ResourceManager.GetString("tr_err_rerender", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to save image:.
+        /// </summary>
+        public static string tr_err_save_image {
+            get {
+                return ResourceManager.GetString("tr_err_save_image", resourceCulture);
             }
         }
         /// <summary>
@@ -802,7 +898,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
-        ///   Looks up a localized string similar to Download recommended 2Bit model.
+        ///   Looks up a localized string similar to Download recommended 2Bit model now.
         /// </summary>
         public static string opt_tr_hymt_download_label {
             get {
@@ -810,7 +906,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
-        ///   Looks up a localized string similar to Check and save to download Hy-MT2-1.8B-2Bit.gguf.
+        ///   Looks up a localized string similar to One-shot action: check this box and click Save to start downloading….
         /// </summary>
         public static string opt_tr_hymt_download_desc {
             get {
@@ -911,6 +1007,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string tr_err_download_incomplete {
             get {
                 return ResourceManager.GetString("tr_err_download_incomplete", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download rejected: SHA-256 mismatch….
+        /// </summary>
+        public static string tr_err_download_sha_mismatch {
+            get {
+                return ResourceManager.GetString("tr_err_download_sha_mismatch", resourceCulture);
             }
         }
         /// <summary>

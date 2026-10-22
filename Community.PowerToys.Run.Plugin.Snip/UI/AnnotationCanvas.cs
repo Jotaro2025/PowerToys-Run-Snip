@@ -26,6 +26,7 @@ public sealed class AnnotationCanvas : FrameworkElement
     private static readonly Color SelectionColor = Color.FromRgb(72, 210, 110);
     private static readonly Typeface TextTypeface = new Typeface("Segoe UI");
     private readonly List<Point> _penPoints = new();
+    private readonly Stack<Annotation> _redoStack = new();
 
     private Point? _start;
     private bool _dragging;
@@ -68,10 +69,18 @@ public sealed class AnnotationCanvas : FrameworkElement
 
     public event EventHandler<Annotation> Committed;
 
-    public event EventHandler<int> UndoCountChanged;
+    /// <summary>Raised when undo/redo availability changes. Argument is unused; query <see cref="UndoDepth"/> / <see cref="RedoDepth"/>.</summary>
+    public event EventHandler HistoryChanged;
+
+    /// <summary>Number of annotations that can still be undone (Items count).</summary>
+    public int UndoDepth => Items.Count;
+
+    /// <summary>Number of undone annotations that can be redone.</summary>
+    public int RedoDepth => _redoStack.Count;
 
     public void Add(Annotation a)
     {
+        _redoStack.Clear();
         Items.Add(a);
         if (Items.Count > UndoLimit)
         {
@@ -79,7 +88,7 @@ public sealed class AnnotationCanvas : FrameworkElement
         }
 
         Committed?.Invoke(this, a);
-        UndoCountChanged?.Invoke(this, Items.Count);
+        NotifyHistory();
         InvalidateVisual();
     }
 
@@ -90,13 +99,33 @@ public sealed class AnnotationCanvas : FrameworkElement
             return false;
         }
 
+        var removed = Items[Items.Count - 1];
         Items.RemoveAt(Items.Count - 1);
+        _redoStack.Push(removed);
         if (SelectedIndex >= Items.Count)
         {
             SelectedIndex = null;
         }
 
-        UndoCountChanged?.Invoke(this, Items.Count);
+        NotifyHistory();
+        InvalidateVisual();
+        return true;
+    }
+
+    public bool Redo()
+    {
+        if (_redoStack.Count == 0)
+        {
+            return false;
+        }
+
+        Items.Add(_redoStack.Pop());
+        if (Items.Count > UndoLimit)
+        {
+            Items.RemoveAt(0);
+        }
+
+        NotifyHistory();
         InvalidateVisual();
         return true;
     }
@@ -108,11 +137,14 @@ public sealed class AnnotationCanvas : FrameworkElement
             return;
         }
 
+        _redoStack.Push(Items[idx]);
         Items.RemoveAt(idx);
         SelectedIndex = null;
-        UndoCountChanged?.Invoke(this, Items.Count);
+        NotifyHistory();
         InvalidateVisual();
     }
+
+    private void NotifyHistory() => HistoryChanged?.Invoke(this, EventArgs.Empty);
 
     public void ClearSelection() => Select(null);
 
@@ -511,7 +543,7 @@ public sealed class AnnotationCanvas : FrameworkElement
             _editHandle = null;
             _editSnapshot = null;
             ReleaseMouseCapture();
-            UndoCountChanged?.Invoke(this, Items.Count);
+            NotifyHistory();
             InvalidateVisual();
             e.Handled = true;
             return;
@@ -699,7 +731,7 @@ public sealed class AnnotationCanvas : FrameworkElement
             }
 
             _inlineTextIndex = -1;
-            UndoCountChanged?.Invoke(this, Items.Count);
+            NotifyHistory();
             InvalidateVisual();
             return;
         }
