@@ -230,6 +230,9 @@
   <data name="tr_copy_all" xml:space="preserve">
     <value>全部复制</value>
   </data>
+  <data name="tr_edit_translations" xml:space="preserve">
+    <value>调整译文</value>
+  </data>
   <data name="tr_copy_image" xml:space="preserve">
     <value>复制图片</value>
   </data>

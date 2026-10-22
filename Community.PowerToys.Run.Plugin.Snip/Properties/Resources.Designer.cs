@@ -658,6 +658,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
+        ///   Looks up a localized string similar to Edit translations.
+        /// </summary>
+        public static string tr_edit_translations {
+            get {
+                return ResourceManager.GetString("tr_edit_translations", resourceCulture);
+            }
+        }
+        /// <summary>
         ///   Looks up a localized string similar to Copy image.
         /// </summary>
         public static string tr_copy_image {
