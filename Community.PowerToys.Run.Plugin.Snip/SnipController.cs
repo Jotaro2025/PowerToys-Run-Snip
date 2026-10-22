@@ -4,6 +4,7 @@
 
 using System;
 using System.Threading;
+using System.Threading.Tasks;
 using System.Windows.Threading;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
@@ -21,10 +22,9 @@ namespace Community.PowerToys.Run.Plugin.Snip;
 /// waits for the Run window to disappear, captures, then shows the editor.
 /// </summary>
 /// <remarks>
-/// Everything WPF (capture bitmap, overlay window, toolbar, clipboard) happens
-/// on this one thread, mirroring how a single-UI-thread app hosts the editor.
-/// Sharing brushes, cursors or bitmaps across several short-lived threads makes
-/// WPF throw cross-thread Freezable/DependencyObject exceptions.
+/// Heavy GDI capture and PNG encode run on the thread pool; WPF bitmaps,
+/// overlay window, toolbar and clipboard stay on this one STA thread so
+/// Freezable/DependencyObject affinity is preserved.
 /// </remarks>
 public static class SnipController
 {
@@ -40,7 +40,7 @@ public static class SnipController
         ArgumentNullException.ThrowIfNull(settings);
 
         Dispatcher dispatcher = EnsureUiDispatcher();
-        dispatcher.BeginInvoke(new Action(() => Run(settings, notify)), DispatcherPriority.Normal);
+        dispatcher.BeginInvoke(new Action(() => _ = RunAsync(settings, notify)), DispatcherPriority.Normal);
     }
 
     private static Dispatcher EnsureUiDispatcher()
@@ -73,7 +73,7 @@ public static class SnipController
         }
     }
 
-    private static void Run(SnipSettings settings, Action<string, string> notify)
+    private static async Task RunAsync(SnipSettings settings, Action<string, string> notify)
     {
         System.Windows.Media.Imaging.WriteableBitmap bitmap = null;
         try
@@ -81,13 +81,16 @@ public static class SnipController
             // Give PowerToys Run time to hide its window before the capture.
             if (settings.CaptureDelayMs > 0)
             {
-                Thread.Sleep(settings.CaptureDelayMs);
+                await Task.Delay(settings.CaptureDelayMs).ConfigureAwait(true);
             }
 
             var capture = CaptureFactory.Create();
             var screens = capture.GetScreens();
             var screen = Win32CaptureService.GetScreenAtCursor(screens);
-            bitmap = capture.CaptureScreen(screen);
+
+            // GDI BitBlt / GetDIBits off the UI STA; WriteableBitmap on this thread.
+            var frame = await Task.Run(() => capture.CaptureScreenPixels(screen)).ConfigureAwait(true);
+            bitmap = frame.ToWriteableBitmap();
             RunEditor(bitmap, screen, settings, notify);
         }
         catch (Exception ex)

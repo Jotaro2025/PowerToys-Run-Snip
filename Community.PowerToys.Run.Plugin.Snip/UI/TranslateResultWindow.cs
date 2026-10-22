@@ -58,7 +58,18 @@ public sealed class TranslateResultWindow : Window, IDisposable
         ArgumentNullException.ThrowIfNull(png);
         ArgumentNullException.ThrowIfNull(settings);
 
-        _originalImage = image;
+        // Freeze so ImageTranslateRenderer.Render can safely run via Task.Run.
+        if (image.IsFrozen)
+        {
+            _originalImage = image;
+        }
+        else
+        {
+            var clone = image.Clone();
+            clone.Freeze();
+            _originalImage = clone;
+        }
+
         _png = png;
         _settings = settings;
 
@@ -469,8 +480,8 @@ public sealed class TranslateResultWindow : Window, IDisposable
         UpdateActionButtons(enabled: false);
         try
         {
-            // Encode on the UI thread: the bitmap belongs to it.
-            var png = PngEncoder.Encode(bmp);
+            // Freeze snapshot on UI, encode PNG off the STA thread.
+            var png = await PngEncoder.EncodeAsync(bmp);
 
             var initialDir = ScreenshotFileSaver.ResolveDirectory(
                 _settings.SaveDirectory, SnipSettings.DefaultSaveFolder);
