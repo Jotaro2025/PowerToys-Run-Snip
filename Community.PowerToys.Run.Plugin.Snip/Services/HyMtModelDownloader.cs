@@ -586,7 +586,7 @@ public static class HyMtModelDownloader
             bufferSize: 1024 * 256,
             options: FileOptions.Asynchronous | FileOptions.SequentialScan);
         byte[] hash = await SHA256.HashDataAsync(stream, cancellationToken).ConfigureAwait(false);
-        return Convert.ToHexString(hash).ToLowerInvariant();
+        return Convert.ToHexStringLower(hash);
     }
 }
 
