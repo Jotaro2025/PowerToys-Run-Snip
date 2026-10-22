@@ -20,7 +20,9 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// In-process HyMT2Sharp translator. The GGUF is loaded lazily on first use and
 /// guarded by a single-flight gate (the model is not thread-safe). Weights are
 /// never bundled: the user points <see cref="SnipSettings.HyMtGgufPath"/> at a
-/// local GGUF file.
+/// local GGUF file. Prefer obtaining instances via
+/// <see cref="HyMT2SharpTranslatorCache"/> so the ~multi-GB model is not reloaded
+/// after every translation.
 /// </summary>
 public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 {
