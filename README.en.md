@@ -122,7 +122,7 @@ Uses the [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/) NuGet package (s
 
 ## Image translation
 
-Reuses WeChat OCR line boxes; after translation, erases the original and redraws the translated text. Multi-line results are batched to the engine. The result window supports editing the right-hand text then “Re-render”, plus “Save image”.
+Reuses WeChat OCR line boxes; after translation, erases the original and redraws the translated text. Multi-line results are batched to the engine. The result window is **image-first** (processing animation; translation list collapsed under “Edit translations”), with Re-render / Save image; Cancel or Esc aborts while busy.
 
 Translation is **off** by default; pick one engine in settings:
 
