@@ -102,6 +102,7 @@ public static class SnipController
 
     private static void ShowSettingsWindowCore(SnipSettings settings, Action onSaved, bool setOwner)
     {
+        UiLanguageHelper.Apply(settings.UiLanguage);
         var window = new SnipSettingsWindow(settings);
         if (setOwner)
         {

@@ -467,6 +467,12 @@
   <data name="opt_hotkey_placeholder" xml:space="preserve">
     <value>留空=禁用（如 Ctrl+Shift+S）</value>
   </data>
+  <data name="opt_ui_lang_label" xml:space="preserve">
+    <value>界面语言</value>
+  </data>
+  <data name="opt_ui_lang_desc" xml:space="preserve">
+    <value>覆盖插件界面语言（设置窗口与 Run 命令「截屏 / 设置」）。不影响翻译引擎的目标语言。</value>
+  </data>
   <data name="settings_window_title" xml:space="preserve">
     <value>Snip 设置</value>
   </data>

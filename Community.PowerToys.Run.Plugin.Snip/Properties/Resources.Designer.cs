@@ -1197,6 +1197,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to UI language.
+        /// </summary>
+        public static string opt_ui_lang_label {
+            get {
+                return ResourceManager.GetString("opt_ui_lang_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Override plugin UI language for the settings window and Run commands (snip / settings). Does not change the translator target language..
+        /// </summary>
+        public static string opt_ui_lang_desc {
+            get {
+                return ResourceManager.GetString("opt_ui_lang_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Snip Settings.
         /// </summary>
         public static string settings_window_title {

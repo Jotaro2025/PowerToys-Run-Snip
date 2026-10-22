@@ -86,6 +86,15 @@ public class SnipSettingsPersisterTests
         Assert.IsTrue(patches.Any(p => p.Key == "TranslatorProvider" && p.ComboBoxValue == 1));
         Assert.IsTrue(patches.Any(p => p.Key == "CopyAfterCapture" && p.BoolValue == false));
         Assert.IsTrue(patches.Any(p => p.Key == "CaptureDelayMs" && p.NumberValue == 200));
+        Assert.IsTrue(patches.Any(p => p.Key == "UiLanguage" && p.TextValue == string.Empty));
+    }
+
+    [TestMethod]
+    public void BuildPatchesPersistsExplicitUiLanguage()
+    {
+        var settings = new SnipSettings { UiLanguage = "zh-CN" };
+        var patches = SnipSettingsPersister.BuildPatchesFromSettings(settings);
+        Assert.IsTrue(patches.Any(p => p.Key == "UiLanguage" && p.TextValue == "zh-CN"));
     }
 
     private static JsonNode Find(JsonArray options, string key)

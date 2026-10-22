@@ -39,6 +39,14 @@ public sealed class SnipSettings
     /// <summary>Target language name passed to the translator prompt (free text).</summary>
     public string TargetLanguage { get; set; } = "简体中文";
 
+    /// <summary>
+    /// Plugin UI language override.
+    /// Empty or <c>system</c> = follow PowerToys / OS UI culture;
+    /// <c>en</c> = English; <c>zh-CN</c> = 简体中文.
+    /// Independent of <see cref="TargetLanguage"/>.
+    /// </summary>
+    public string UiLanguage { get; set; } = string.Empty;
+
     /// <summary>OpenAI-compatible API base URL, e.g. http://127.0.0.1:8080/v1.</summary>
     public string HttpBaseUrl { get; set; } = "http://127.0.0.1:8080/v1";
 
@@ -76,6 +84,7 @@ public sealed class SnipSettings
             GlobalHotkey = GlobalHotkey,
             TranslatorProvider = TranslatorProvider,
             TargetLanguage = TargetLanguage,
+            UiLanguage = UiLanguage,
             HttpBaseUrl = HttpBaseUrl,
             HttpApiKey = HttpApiKey,
             HttpModel = HttpModel,
@@ -96,6 +105,7 @@ public sealed class SnipSettings
         GlobalHotkey = other.GlobalHotkey;
         TranslatorProvider = other.TranslatorProvider;
         TargetLanguage = other.TargetLanguage;
+        UiLanguage = other.UiLanguage;
         HttpBaseUrl = other.HttpBaseUrl;
         HttpApiKey = other.HttpApiKey;
         HttpModel = other.HttpModel;
