@@ -196,6 +196,9 @@ public sealed class SnipWindow : Window
 
         // Tunnel so Esc closes immediately even when a child (e.g. inline TextBox) has focus.
         PreviewKeyDown += OnKeyDown;
+        // Right-click cancels the whole session (same as Esc / Cancel toolbar),
+        // including mid-drag selection. Toolbar buttons only use left click.
+        PreviewMouseRightButtonDown += OnPreviewMouseRightButtonDown;
         SourceInitialized += OnSourceInitialized;
         Loaded += OnLoaded;
         Closed += OnClosed;
@@ -262,8 +265,21 @@ public sealed class SnipWindow : Window
     // -----------------------------------------------------------------------------------
     //  Selection drag (creating a new region)
     // -----------------------------------------------------------------------------------
+    private void OnPreviewMouseRightButtonDown(object sender, MouseButtonEventArgs e)
+    {
+        // Same outcome as Esc / Cancel — discard session even mid-drag.
+        Cancel();
+        e.Handled = true;
+    }
+
     private void OnRootPointerPressed(object sender, MouseButtonEventArgs e)
     {
+        // Selection drag is left-button only (handler is MouseLeftButtonDown).
+        if (e.ChangedButton != MouseButton.Left)
+        {
+            return;
+        }
+
         if (_dragMovingHandle)
         {
             return;

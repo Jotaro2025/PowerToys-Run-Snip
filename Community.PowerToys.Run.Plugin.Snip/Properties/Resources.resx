@@ -138,7 +138,7 @@
     <value>Save (Ctrl+S)</value>
   </data>
   <data name="tip_cancel" xml:space="preserve">
-    <value>Cancel (Esc)</value>
+    <value>Cancel (Esc / Right-click)</value>
   </data>
   <data name="tip_done" xml:space="preserve">
     <value>Done (Enter)</value>
