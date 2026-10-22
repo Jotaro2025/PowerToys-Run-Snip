@@ -32,6 +32,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionScrollIntervalMs = "ScrollIntervalMs";
     private const string OptionScrollMaxTiles = "ScrollMaxTiles";
     private const string OptionUnloadHyMt = "UnloadHyMtModel";
+    private const string OptionHyMtIdleUnloadMinutes = "HyMtIdleUnloadMinutes";
     private const string OptionGlobalHotkey = "GlobalHotkey";
     private const string OptionTranslatorProvider = "TranslatorProvider";
     private const string OptionTargetLanguage = "TargetLanguage";
@@ -124,6 +125,18 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayDescription = Properties.Resources.opt_unload_hymt_desc,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
             Value = false,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionHyMtIdleUnloadMinutes,
+            DisplayLabel = Properties.Resources.opt_hymt_idle_unload_label,
+            DisplayDescription = Properties.Resources.opt_hymt_idle_unload_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Numberbox,
+            NumberValue = _settings.HyMtIdleUnloadMinutes,
+            NumberBoxMin = 0,
+            NumberBoxMax = HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes,
+            NumberBoxSmallChange = 1,
+            NumberBoxLargeChange = 10,
         },
         new PluginAdditionalOption()
         {
@@ -352,6 +365,14 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             _settings.ScrollMaxTiles = (int)Math.Clamp(scrollMax.Value, 10, 500);
         }
 
+        var idleUnload = options.FirstOrDefault(x => x.Key == OptionHyMtIdleUnloadMinutes)?.NumberValue;
+        if (idleUnload.HasValue)
+        {
+            _settings.HyMtIdleUnloadMinutes = (int)Math.Clamp(idleUnload.Value, 0, HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes);
+        }
+
+        HyMT2SharpTranslatorCache.ConfigureIdleUnload(_settings.HyMtIdleUnloadMinutes);
+
         var unloadHyMt = options.FirstOrDefault(x => x.Key == OptionUnloadHyMt);
         if (unloadHyMt is { Value: true })
         {
@@ -425,6 +446,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         SnipController.ShowSettingsWindow(_settings, onSaved: () =>
         {
             UiLanguageHelper.Apply(_settings.UiLanguage);
+            HyMT2SharpTranslatorCache.ConfigureIdleUnload(_settings.HyMtIdleUnloadMinutes);
             ApplyHotkeyRegistration();
         });
     }

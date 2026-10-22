@@ -606,6 +606,12 @@
   <data name="opt_unload_hymt_desc" xml:space="preserve">
     <value>勾选并保存后释放进程内 GGUF；下次翻译再加载。</value>
   </data>
+  <data name="opt_hymt_idle_unload_label" xml:space="preserve">
+    <value>HyMT 闲置自动卸载（分钟）</value>
+  </data>
+  <data name="opt_hymt_idle_unload_desc" xml:space="preserve">
+    <value>闲置达到该分钟数后释放已缓存的 GGUF；0 表示不自动卸载（最大 240）。</value>
+  </data>
   <data name="opt_unload_hymt_done" xml:space="preserve">
     <value>已卸载 HyMT 模型。</value>
   </data>

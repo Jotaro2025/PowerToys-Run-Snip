@@ -142,7 +142,7 @@ public class MainTests
 
         main.UpdateSettings(null);
 
-        Assert.HasCount(13, main.AdditionalOptions.ToList());
+        Assert.HasCount(19, main.AdditionalOptions.ToList());
     }
 
     [TestMethod]

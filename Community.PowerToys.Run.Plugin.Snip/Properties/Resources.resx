@@ -606,6 +606,12 @@
   <data name="opt_unload_hymt_desc" xml:space="preserve">
     <value>Check and save to free process-wide GGUF weights until next translate.</value>
   </data>
+  <data name="opt_hymt_idle_unload_label" xml:space="preserve">
+    <value>HyMT idle auto-unload (minutes)</value>
+  </data>
+  <data name="opt_hymt_idle_unload_desc" xml:space="preserve">
+    <value>Free the cached GGUF after this many idle minutes; 0 = never (max 240).</value>
+  </data>
   <data name="opt_unload_hymt_done" xml:space="preserve">
     <value>HyMT model unloaded.</value>
   </data>

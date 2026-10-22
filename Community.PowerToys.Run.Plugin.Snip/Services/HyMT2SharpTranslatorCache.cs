@@ -4,8 +4,10 @@
 
 using System;
 using System.IO;
+using System.Threading;
 
 using Community.PowerToys.Run.Plugin.Snip.Models;
+using Wox.Plugin.Logger;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
@@ -14,6 +16,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// multi-GB GGUF weights after every image translate. Keyed by (gguf path, backend).
 /// The model is not thread-safe; callers share the cached instance's single-flight gate.
 /// Call <see cref="Unload"/> from the plugin dispose hook; otherwise process exit cleans up.
+/// Optional idle auto-unload (<see cref="ConfigureIdleUnload(int)"/>) frees weights after N idle minutes.
 /// </summary>
 public static class HyMT2SharpTranslatorCache
 {
@@ -21,6 +24,79 @@ public static class HyMT2SharpTranslatorCache
     private static HyMT2SharpTranslator _instance;
     private static string _ggufPath;
     private static HyMtBackendKind _backend;
+    private static TimeSpan _idleTimeout = TimeSpan.FromMinutes(DefaultIdleUnloadMinutes);
+    private static DateTime _lastTouchUtc = DateTime.UtcNow;
+    private static Timer _idleTimer;
+
+    /// <summary>Default idle minutes before the cached model is unloaded (0 = never).</summary>
+    public const int DefaultIdleUnloadMinutes = 10;
+
+    /// <summary>Upper bound accepted by <see cref="ConfigureIdleUnload(int)"/>.</summary>
+    public const int MaxIdleUnloadMinutes = 240;
+
+    /// <summary>Current idle timeout; <see cref="TimeSpan.Zero"/> means auto-unload is off.</summary>
+    public static TimeSpan IdleTimeout
+    {
+        get
+        {
+            lock (Sync)
+            {
+                return _idleTimeout;
+            }
+        }
+    }
+
+    /// <summary>Sets idle auto-unload in minutes (0 = off, clamped to 0–<see cref="MaxIdleUnloadMinutes"/>).</summary>
+    public static void ConfigureIdleUnload(int minutes)
+    {
+        int m = Math.Clamp(minutes, 0, MaxIdleUnloadMinutes);
+        ConfigureIdleUnload(m == 0 ? TimeSpan.Zero : TimeSpan.FromMinutes(m));
+    }
+
+    /// <summary>Test/advanced hook: exact idle timeout (<see cref="TimeSpan.Zero"/> = off).</summary>
+    internal static void ConfigureIdleUnload(TimeSpan timeout)
+    {
+        lock (Sync)
+        {
+            _idleTimeout = timeout < TimeSpan.Zero ? TimeSpan.Zero : timeout;
+            RescheduleUnlocked(_idleTimeout);
+        }
+    }
+
+    /// <summary>
+    /// Unloads the cached model when it has been idle for at least <see cref="IdleTimeout"/>
+    /// at <paramref name="nowUtc"/>. Never unloads while a translation holds the gate.
+    /// Returns true when the model was unloaded.
+    /// </summary>
+    internal static bool TryUnloadIfIdle(DateTime nowUtc)
+    {
+        lock (Sync)
+        {
+            if (_instance == null || _idleTimeout <= TimeSpan.Zero)
+            {
+                return false;
+            }
+
+            if (_instance.IsBusy)
+            {
+                _lastTouchUtc = nowUtc;
+                RescheduleUnlocked(_idleTimeout);
+                return false;
+            }
+
+            var last = _instance.LastUsedUtc > _lastTouchUtc ? _instance.LastUsedUtc : _lastTouchUtc;
+            var idle = nowUtc - last;
+            if (idle < _idleTimeout)
+            {
+                RescheduleUnlocked(_idleTimeout - idle);
+                return false;
+            }
+
+            Log.Info($"Snip HyMT2Sharp idle {idle.TotalMinutes:F1} min — unloading cached model.", typeof(HyMT2SharpTranslatorCache));
+            DisposeUnlocked();
+            return true;
+        }
+    }
 
     /// <summary>
     /// Returns the cached translator for <paramref name="ggufPath"/> + <paramref name="backend"/>.
@@ -34,14 +110,17 @@ public static class HyMT2SharpTranslatorCache
         var key = NormalizePath(ggufPath);
         lock (Sync)
         {
+            _lastTouchUtc = DateTime.UtcNow;
             if (_instance != null
                 && string.Equals(_ggufPath, key, StringComparison.OrdinalIgnoreCase)
                 && _backend == backend)
             {
+                RescheduleUnlocked(_idleTimeout);
                 return _instance;
             }
 
             ReplaceUnlocked(key, backend);
+            RescheduleUnlocked(_idleTimeout);
             return _instance;
         }
     }
@@ -90,6 +169,36 @@ public static class HyMT2SharpTranslatorCache
         _instance.Dispose();
         _instance = null;
         _ggufPath = null;
+        _idleTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+    }
+
+    private static void RescheduleUnlocked(TimeSpan dueIn)
+    {
+        if (_instance == null || _idleTimeout <= TimeSpan.Zero)
+        {
+            _idleTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+            return;
+        }
+
+        if (dueIn < TimeSpan.FromSeconds(1))
+        {
+            dueIn = TimeSpan.FromSeconds(1);
+        }
+
+        _idleTimer ??= new Timer(static _ => OnIdleTimer(), null, Timeout.Infinite, Timeout.Infinite);
+        _idleTimer.Change(dueIn, Timeout.InfiniteTimeSpan);
+    }
+
+    private static void OnIdleTimer()
+    {
+        try
+        {
+            TryUnloadIfIdle(DateTime.UtcNow);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip HyMT2Sharp idle unload failed: {ex.Message}", ex, typeof(HyMT2SharpTranslatorCache));
+        }
     }
 
     private static string NormalizePath(string ggufPath)

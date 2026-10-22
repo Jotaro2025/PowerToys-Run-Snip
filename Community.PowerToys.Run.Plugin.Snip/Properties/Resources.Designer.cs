@@ -1564,6 +1564,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to HyMT idle auto-unload (minutes).
+        /// </summary>
+        public static string opt_hymt_idle_unload_label {
+            get {
+                return ResourceManager.GetString("opt_hymt_idle_unload_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Free the cached GGUF after this many idle minutes; 0 = never (max 240)..
+        /// </summary>
+        public static string opt_hymt_idle_unload_desc {
+            get {
+                return ResourceManager.GetString("opt_hymt_idle_unload_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to HyMT model unloaded..
         /// </summary>
         public static string opt_unload_hymt_done {

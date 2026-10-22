@@ -34,6 +34,7 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
     private readonly object _loadLock = new object();
     private HunyuanDenseModel _model;
     private bool _disposed;
+    private long _lastUsedUtcTicks = DateTime.UtcNow.Ticks;
 
     /// <summary>Raised once when the GGUF is about to be loaded (first inference).</summary>
     public event EventHandler ModelLoading;
@@ -47,6 +48,9 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 
     /// <summary>True when another TranslateAsync call currently holds the single-flight gate.</summary>
     public bool IsBusy => _gate.CurrentCount == 0;
+
+    /// <summary>UTC time the last <see cref="TranslateAsync"/> call finished (or construction time).</summary>
+    public DateTime LastUsedUtc => new DateTime(Interlocked.Read(ref _lastUsedUtcTicks), DateTimeKind.Utc);
 
     public async Task<IReadOnlyList<string>> TranslateAsync(
         IReadOnlyList<string> texts,
@@ -133,6 +137,7 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         }
         finally
         {
+            Interlocked.Exchange(ref _lastUsedUtcTicks, DateTime.UtcNow.Ticks);
             _gate.Release();
         }
     }

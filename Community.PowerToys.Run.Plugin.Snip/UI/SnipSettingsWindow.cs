@@ -36,6 +36,7 @@ public sealed class SnipSettingsWindow : Window
     private TextBox _delayMs;
     private TextBox _scrollIntervalMs;
     private TextBox _scrollMaxTiles;
+    private TextBox _hymtIdleUnload;
     private TextBox _hotkeyBox;
     private TextBlock _hotkeyStatus;
     private ComboBox _provider;
@@ -342,6 +343,11 @@ public sealed class SnipSettingsWindow : Window
         _hymtBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_hymt_backend_vulkan, Tag = HyMtBackendKind.Vulkan });
         _hymtPanel.Children.Add(_hymtBackend);
 
+        _hymtPanel.Children.Add(Label(Properties.Resources.opt_hymt_idle_unload_label));
+        _hymtIdleUnload = new TextBox { Width = 100, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 2) };
+        _hymtPanel.Children.Add(_hymtIdleUnload);
+        _hymtPanel.Children.Add(Hint(Properties.Resources.opt_hymt_idle_unload_desc));
+
         var unload = new Button
         {
             Content = Properties.Resources.settings_unload_hymt,
@@ -431,6 +437,7 @@ public sealed class SnipSettingsWindow : Window
         _delayMs.Text = _draft.CaptureDelayMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
         _scrollIntervalMs.Text = _draft.ScrollIntervalMs.ToString(System.Globalization.CultureInfo.InvariantCulture);
         _scrollMaxTiles.Text = _draft.ScrollMaxTiles.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _hymtIdleUnload.Text = _draft.HyMtIdleUnloadMinutes.ToString(System.Globalization.CultureInfo.InvariantCulture);
 
         var hotkey = _draft.GlobalHotkey ?? string.Empty;
         _hotkeyBox.Text = hotkey;
@@ -497,6 +504,12 @@ public sealed class SnipSettingsWindow : Window
         }
 
         _draft.ScrollMaxTiles = Math.Clamp(scrollMax, 10, 500);
+        if (!int.TryParse(_hymtIdleUnload.Text?.Trim(), out var idleUnload))
+        {
+            idleUnload = _draft.HyMtIdleUnloadMinutes;
+        }
+
+        _draft.HyMtIdleUnloadMinutes = Math.Clamp(idleUnload, 0, HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes);
         _draft.GlobalHotkey = HotkeyParser.Normalize(hotkeyText);
         _draft.TranslatorProvider = SelectedProvider();
         _draft.TargetLanguage = string.IsNullOrWhiteSpace(_targetLang.Text) ? "简体中文" : _targetLang.Text.Trim();
