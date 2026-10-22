@@ -1394,5 +1394,101 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+
+        public static string tip_scroll {
+            get {
+                return ResourceManager.GetString("tip_scroll", resourceCulture);
+            }
+        }
+
+        public static string tip_scroll_stop {
+            get {
+                return ResourceManager.GetString("tip_scroll_stop", resourceCulture);
+            }
+        }
+
+        public static string tip_scroll_cancel {
+            get {
+                return ResourceManager.GetString("tip_scroll_cancel", resourceCulture);
+            }
+        }
+
+        public static string tip_scroll_done {
+            get {
+                return ResourceManager.GetString("tip_scroll_done", resourceCulture);
+            }
+        }
+
+        public static string tip_scroll_save {
+            get {
+                return ResourceManager.GetString("tip_scroll_save", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_title {
+            get {
+                return ResourceManager.GetString("scroll_hint_title", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_title_count {
+            get {
+                return ResourceManager.GetString("scroll_hint_title_count", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_subtitle {
+            get {
+                return ResourceManager.GetString("scroll_hint_subtitle", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_subtitle_active {
+            get {
+                return ResourceManager.GetString("scroll_hint_subtitle_active", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_capturing {
+            get {
+                return ResourceManager.GetString("scroll_hint_capturing", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_capturing_sub {
+            get {
+                return ResourceManager.GetString("scroll_hint_capturing_sub", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_stopped {
+            get {
+                return ResourceManager.GetString("scroll_hint_stopped", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_stopped_count {
+            get {
+                return ResourceManager.GetString("scroll_hint_stopped_count", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_stopped_sub {
+            get {
+                return ResourceManager.GetString("scroll_hint_stopped_sub", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_stitching {
+            get {
+                return ResourceManager.GetString("scroll_hint_stitching", resourceCulture);
+            }
+        }
+
+        public static string scroll_hint_stitching_sub {
+            get {
+                return ResourceManager.GetString("scroll_hint_stitching_sub", resourceCulture);
+            }
+        }
     }
 }

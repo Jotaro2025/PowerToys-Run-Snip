@@ -22,4 +22,7 @@ public sealed class EditRequest
 
     /// <summary>Initial tool selected on toolbar (Select by default).</summary>
     public string InitialTool { get; init; } = ToolIds.Select;
+
+    /// <summary>When true, toolbar shows the scroll-capture button (TDS-style).</summary>
+    public bool EnableScrollCapture { get; init; } = true;
 }

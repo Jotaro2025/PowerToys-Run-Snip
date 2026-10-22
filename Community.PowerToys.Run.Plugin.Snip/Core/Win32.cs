@@ -210,4 +210,41 @@ internal static class Win32
     [DllImport(User32, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool UnregisterHotKey(IntPtr hWnd, int id);
+
+    public const uint WmMouseWheel = 0x020A;
+    public const int WheelDelta = 120;
+    public const uint GaRoot = 2;
+    public const int RgnDiff = 4;
+
+    [DllImport(User32)]
+    public static extern IntPtr WindowFromPoint(POINT point);
+
+    [DllImport(User32)]
+    public static extern IntPtr ChildWindowFromPoint(IntPtr hWndParent, POINT point);
+
+    [DllImport(User32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool ScreenToClient(IntPtr hWnd, ref POINT lpPoint);
+
+    [DllImport(User32)]
+    public static extern IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
+
+    [DllImport(User32, SetLastError = true)]
+    public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    [DllImport(Gdi32)]
+    public static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
+
+    [DllImport(Gdi32)]
+    public static extern int CombineRgn(IntPtr hrgnDst, IntPtr hrgnSrc1, IntPtr hrgnSrc2, int iMode);
+
+    [DllImport(User32)]
+    public static extern int SetWindowRgn(IntPtr hWnd, IntPtr hRgn, [MarshalAs(UnmanagedType.Bool)] bool bRedraw);
+
+    [DllImport(User32)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool GetClientRect(IntPtr hWnd, out RECT lpRect);
+
+    [DllImport("dwmapi.dll")]
+    public static extern int DwmFlush();
 }

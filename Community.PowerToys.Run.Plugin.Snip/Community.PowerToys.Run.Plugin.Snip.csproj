@@ -62,6 +62,9 @@
       the user supplies a GGUF path in settings (Sdcb.GgufWeights.* would add ~573MB).
     -->
     <PackageReference Include="Sdcb.HyMT2Sharp" Version="2.0.0" />
+
+    <!-- Scroll-capture FFT phase correlation (same as TDS). Copied locally via DynamicLoading. -->
+    <PackageReference Include="MathNet.Numerics" Version="5.0.0" />
   </ItemGroup>
 
   <!--

@@ -102,3 +102,17 @@ using System.Diagnostics.CodeAnalysis;
 [assembly: SuppressMessage("StyleCop.CSharp.SpacingRules", "SA1025:Code should not contain multiple whitespace in a row", Justification = "<Code port with style preservation>", Scope = "namespaceanddescendants", Target = "RegistryPreviewUILib.HexBox")]
 [assembly: SuppressMessage("StyleCop.CSharp.SpacingRules", "SA1028:Code should not contain trailing whitespace", Justification = "<Code port with style preservation>", Scope = "namespaceanddescendants", Target = "RegistryPreviewUILib.HexBox")]
 [assembly: SuppressMessage("Usage", "CsWinRT1028:Class is not marked partial", Justification = "<Code port with style preservation>", Scope = "namespaceanddescendants", Target = "RegistryPreviewUILib.HexBox")]
+
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Microsoft.Usage",
+    "CA1001:TypesThatOwnDisposableFieldsShouldBeDisposable",
+    Justification = "ScrollCaptureController lifetime is tied to the snip session; CleanupResources / Cancel dispose it.",
+    Scope = "type",
+    Target = "~T:Community.PowerToys.Run.Plugin.Snip.UI.SnipWindow")]
+
+[assembly: System.Diagnostics.CodeAnalysis.SuppressMessage(
+    "Microsoft.Usage",
+    "CA1001:TypesThatOwnDisposableFieldsShouldBeDisposable",
+    Justification = "CancellationTokenSource is disposed in Stop/Cancel paths.",
+    Scope = "type",
+    Target = "~T:Community.PowerToys.Run.Plugin.Snip.Services.ScrollCaptureController")]

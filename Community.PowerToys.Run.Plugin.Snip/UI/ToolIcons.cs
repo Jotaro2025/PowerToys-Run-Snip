@@ -29,4 +29,9 @@ public static class ToolIcons
 
     // Pushpin (head + needle).
     public const string Pin = "M12,3 L16,7 L14,9 L18,13 L16,15 L12,11 L10,13 L8,11 L12,7 L10,5 Z M12,11 L12,21";
+
+    // Scroll capture: stacked pages + downward arrow (from TDS ToolIcons).
+    public const string ScrollCapture =
+        "M7,4 L17,4 L17,17 L7,17 Z M7,7 L17,7 M7,10 L17,10 M7,13 L15,13 " +
+        "M5,19 L19,19 M12,17 L12,22 M8,19 L12,22 L16,19";
 }

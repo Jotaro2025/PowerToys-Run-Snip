@@ -533,4 +533,53 @@
   <data name="hotkey_register_failed" xml:space="preserve">
     <value>注册 Snip 全局快捷键失败</value>
   </data>
+
+  <data name="tip_scroll" xml:space="preserve">
+    <value>滚动截屏</value>
+  </data>
+  <data name="tip_scroll_stop" xml:space="preserve">
+    <value>停止滚动截屏</value>
+  </data>
+  <data name="tip_scroll_cancel" xml:space="preserve">
+    <value>取消滚动 (Esc / 右键)</value>
+  </data>
+  <data name="tip_scroll_done" xml:space="preserve">
+    <value>完成拼接并退出</value>
+  </data>
+  <data name="tip_scroll_save" xml:space="preserve">
+    <value>保存长图并退出</value>
+  </data>
+  <data name="scroll_hint_title" xml:space="preserve">
+    <value>滚动截屏中…</value>
+  </data>
+  <data name="scroll_hint_title_count" xml:space="preserve">
+    <value>滚动截屏中…  已存 {0} 张原图</value>
+  </data>
+  <data name="scroll_hint_subtitle" xml:space="preserve">
+    <value>选区内自动滚动 · 点按钮停止</value>
+  </data>
+  <data name="scroll_hint_subtitle_active" xml:space="preserve">
+    <value>截图 → 滚轮 → 等待 · √/保存时一次性拼接</value>
+  </data>
+  <data name="scroll_hint_capturing" xml:space="preserve">
+    <value>截图中…  第 {0} 张</value>
+  </data>
+  <data name="scroll_hint_capturing_sub" xml:space="preserve">
+    <value>截取当前画面</value>
+  </data>
+  <data name="scroll_hint_stopped" xml:space="preserve">
+    <value>滚动截屏已结束</value>
+  </data>
+  <data name="scroll_hint_stopped_count" xml:space="preserve">
+    <value>滚动截屏已结束 · 已存 {0} 张原图</value>
+  </data>
+  <data name="scroll_hint_stopped_sub" xml:space="preserve">
+    <value>点 √ 确认或保存时再拼接长图</value>
+  </data>
+  <data name="scroll_hint_stitching" xml:space="preserve">
+    <value>拼接中…</value>
+  </data>
+  <data name="scroll_hint_stitching_sub" xml:space="preserve">
+    <value>正在合成滚动长图，请稍候</value>
+  </data>
 </root>

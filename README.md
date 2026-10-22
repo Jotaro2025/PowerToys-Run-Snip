@@ -13,7 +13,7 @@ PowerToys Run（PowerToys 启动器）的**区域截屏**插件：框选标注�
 | 项目 | 作用 | 许可 / 说明 |
 |------|------|-------------|
 | **[microsoft/PowerToys](https://github.com/microsoft/PowerToys)** | PowerToys Run 插件宿主；引用其自带的 `Wox.Plugin` 等程序集 | MIT |
-| **[LdotJdot/TDS](https://github.com/LdotJdot/TDS)**（[`TDSAot/ScreenShot/`](https://github.com/LdotJdot/TDS/tree/main/TDSAot/ScreenShot)） | 区域截屏的捕获、遮罩、标注等实现思路；本仓库为面向 PowerToys Run 的纯 C#/WPF 重写 | 不依赖 TDS 二进制；不修改 PowerToys |
+| **[LdotJdot/TDS](https://github.com/LdotJdot/TDS)**（[`TDSAot/ScreenShot/`](https://github.com/LdotJdot/TDS/tree/main/TDSAot/ScreenShot)） | 区域截屏的捕获、遮罩、标注、**滚动截屏拼接**等实现思路；本仓库为面向 PowerToys Run 的纯 C#/WPF 重写 | 不依赖 TDS 二进制；不修改 PowerToys |
 | **[WeChatOcr](https://github.com/ZGGSONG/WeChatOcr)**（[NuGet](https://www.nuget.org/packages/WeChatOcr/)） | 文字提取 / 图片翻译的 OCR | 仅包引用；包说明为 “Study only, do not use for commercial purposes”；OCR 组件来自微信生态 |
 | **[Sdcb.HyMT2Sharp](https://github.com/sdcb/HyMT2Sharp)**（[NuGet](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)，Apache-2.0） | 可选进程内本地翻译；另可选用 HTTP OpenAI 兼容服务 | 推荐权重 **腾讯混元 Hy-MT2** GGUF（[ModelScope](https://www.modelscope.cn/models/Tencent-Hunyuan/Hy-MT2-1.8B-2Bit-GGUF) / [Hugging Face](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)，Apache-2.0）；**权重不随插件捆绑** |
 | 本仓库新增代码 | 插件本体 | [MIT](LICENSE) |
@@ -34,7 +34,8 @@ PowerToys Run（PowerToys 启动器）的**区域截屏**插件：框选标注�
 - 拖拽框选、八手柄调整选区、实时尺寸提示
 - 标注：矩形、椭圆、箭头、画笔、文字、马赛克
 - 7 色颜色板 + 4 档笔画粗细；撤销 / 重做
-- 快捷键：Enter 完成、Esc 取消、Ctrl+C 复制、Ctrl+S 保存、Ctrl+Z 撤销、Ctrl+Y 重做、Delete 删除选中标注
+- 快捷键：Enter 完成、Esc 取消、右键取消、Ctrl+C 复制、Ctrl+S 保存、Ctrl+Z 撤销、Ctrl+Y 重做、Delete 删除选中标注
+- **滚动截屏**（思路来自 TDS）：框选后点工具栏「滚动截屏」，选区挖洞露出桌面并自动滚轮逐帧捕获，停止后点完成/保存一次性拼接长图（依赖 MathNet.Numerics；部分应用不响应 `WM_MOUSEWHEEL` 时效果有限）
 - **文字提取（OCR）**：识别选区文字，结果窗可编辑 / 复制；关闭后回到遮罩可继续标注
 - **钉住图片**：置顶轻量浮窗（拖动移动；Esc / 双击 / 右键关闭）；不结束截屏会话
 - **图片翻译**：OCR 取框后翻译，擦除原文并重绘译文；可「重新贴图」/「保存图片」

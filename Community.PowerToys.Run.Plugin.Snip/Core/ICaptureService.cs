@@ -27,4 +27,10 @@ public interface ICaptureService
     /// <see cref="CapturedFrame.ToWriteableBitmap"/> when offloading GDI work.
     /// </summary>
     WriteableBitmap CaptureScreen(ScreenInfo screen);
+
+    /// <summary>
+    /// GDI BitBlt of a physical-pixel rectangle (for scroll-capture tiles).
+    /// Safe off the UI thread; convert with <see cref="CapturedFrame.ToWriteableBitmap"/> on STA.
+    /// </summary>
+    CapturedFrame CaptureScreenRectPixels(int physicalX, int physicalY, int width, int height);
 }
