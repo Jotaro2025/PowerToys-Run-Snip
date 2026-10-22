@@ -34,6 +34,7 @@ public sealed class SnipToolbar : Border
 
     private readonly Dictionary<string, ToolbarButton> _toolButtons = new();
     private readonly ToolbarButton _undoButton;
+    private readonly ToolbarButton _redoButton;
     private readonly Dictionary<Color, Border> _colorChips = new();
     private readonly Dictionary<double, Border> _widthChips = new();
     private readonly List<double> _widthPresets = new() { 2, 3, 5, 8 };
@@ -84,6 +85,11 @@ public sealed class SnipToolbar : Border
         _undoButton.Opacity = 0.38;
         _undoButton.Click += (sender, e) => UndoClicked?.Invoke(this, EventArgs.Empty);
 
+        _redoButton = AddIcon(actions, ToolIcons.Redo, Properties.Resources.tip_redo);
+        _redoButton.IsEnabled = false;
+        _redoButton.Opacity = 0.38;
+        _redoButton.Click += (sender, e) => RedoClicked?.Invoke(this, EventArgs.Empty);
+
         AddIcon(actions, ToolIcons.Ocr, Properties.Resources.tip_ocr).Click += (sender, e) => ExtractTextClicked?.Invoke(this, EventArgs.Empty);
         AddIcon(actions, ToolIcons.Translate, Properties.Resources.tip_translate).Click += (sender, e) => TranslateImageClicked?.Invoke(this, EventArgs.Empty);
 
@@ -108,6 +114,8 @@ public sealed class SnipToolbar : Border
 
     public event EventHandler UndoClicked;
 
+    public event EventHandler RedoClicked;
+
     public event EventHandler SaveClicked;
 
     public event EventHandler ExtractTextClicked;
@@ -130,10 +138,12 @@ public sealed class SnipToolbar : Border
 
     public double CurrentStrokeWidth { get; private set; }
 
-    public void NotifyUndoCount(int count)
+    public void NotifyHistory(int undoCount, int redoCount)
     {
-        _undoButton.IsEnabled = count > 0;
-        _undoButton.Opacity = count > 0 ? 1.0 : 0.38;
+        _undoButton.IsEnabled = undoCount > 0;
+        _undoButton.Opacity = undoCount > 0 ? 1.0 : 0.38;
+        _redoButton.IsEnabled = redoCount > 0;
+        _redoButton.Opacity = redoCount > 0 ? 1.0 : 0.38;
     }
 
     public void SetActiveTool(string id)

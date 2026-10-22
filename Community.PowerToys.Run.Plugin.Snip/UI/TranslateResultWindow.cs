@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -25,7 +26,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 /// translation list on the right. Runs OCR → translate → erase+repaint on open.
 /// Supports re-applying edited translations onto the image and saving the result.
 /// </summary>
-public sealed class TranslateResultWindow : Window
+public sealed class TranslateResultWindow : Window, IDisposable
 {
     private static readonly Color Accent = Color.FromRgb(72, 210, 110);
     private static readonly Color ErrorColor = Color.FromRgb(214, 48, 49);
@@ -45,7 +46,9 @@ public sealed class TranslateResultWindow : Window
     private readonly Button _reapplyButton;
     private readonly Button _saveImageButton;
     private readonly List<TextBox> _translationBoxes = new();
+    private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private bool _closed;
+    private bool _disposed;
     private bool _actionBusy;
     private IReadOnlyList<OcrTextLine> _lines = Array.Empty<OcrTextLine>();
 
@@ -201,11 +204,13 @@ public sealed class TranslateResultWindow : Window
 
     private async Task RunPipelineAsync()
     {
-        SetBusy(Properties.Resources.tr_busy_ocr);
+        SetBusy(WeChatOcrService.IsBusy
+            ? Properties.Resources.tr_busy_ocr_wait
+            : Properties.Resources.tr_busy_ocr);
         ITranslator translator = null;
         try
         {
-            _lines = await WeChatOcrService.RecognizeLinesAsync(_png);
+            _lines = await WeChatOcrService.RecognizeLinesAsync(_png, _cts.Token);
             if (_closed)
             {
                 return;
@@ -219,15 +224,23 @@ public sealed class TranslateResultWindow : Window
 
             SetBusy(Properties.Resources.tr_busy_translate);
             translator = TranslatorFactory.Create(_settings);
+            if (translator is HyMT2SharpTranslator hymt && hymt.IsBusy)
+            {
+                SetBusy(Properties.Resources.tr_busy_hymt_wait);
+            }
+
             var sources = _lines.Select(l => l.Text).ToList();
-            var translations = await translator.TranslateAsync(sources, _settings.TargetLanguage);
+            var translations = await translator.TranslateAsync(sources, _settings.TargetLanguage, _cts.Token);
             if (_closed)
             {
                 return;
             }
 
             SetBusy(Properties.Resources.tr_busy_render);
-            var rendered = await Task.Run(() => ImageTranslateRenderer.Render(_originalImage, _lines, translations));
+            var lines = _lines;
+            var rendered = await Task.Run(
+                () => ImageTranslateRenderer.Render(_originalImage, lines, translations),
+                _cts.Token);
             if (_closed)
             {
                 return;
@@ -243,16 +256,34 @@ public sealed class TranslateResultWindow : Window
                 .Replace("{0}", _lines.Count.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)
                 .Replace("{1}", _settings.TargetLanguage ?? string.Empty, StringComparison.Ordinal);
         }
+        catch (OperationCanceledException)
+        {
+            // Closed while OCR / translate / render was in flight.
+        }
+        catch (ObjectDisposedException)
+        {
+        }
         catch (OcrException ex)
         {
-            ShowMessage(ex.Message, isError: true);
+            if (!_closed)
+            {
+                ShowMessage(ex.Message, isError: true);
+            }
         }
         catch (TranslatorException ex)
         {
-            ShowMessage(ex.Message, isError: true);
+            if (!_closed)
+            {
+                ShowMessage(ex.Message, isError: true);
+            }
         }
         catch (Exception ex)
         {
+            if (_closed)
+            {
+                return;
+            }
+
             Log.Exception($"Snip image translate failed: {ex.Message}", ex, GetType());
             ShowMessage($"{Properties.Resources.tr_err_failed} {ex.Message}", isError: true);
         }
@@ -555,5 +586,29 @@ public sealed class TranslateResultWindow : Window
     private void OnClosed(object sender, EventArgs e)
     {
         _closed = true;
+        Dispose();
+    }
+
+    public void Dispose()
+    {
+        if (_disposed)
+        {
+            return;
+        }
+
+        _disposed = true;
+        try
+        {
+            if (!_cts.IsCancellationRequested)
+            {
+                _cts.Cancel();
+            }
+        }
+        catch (ObjectDisposedException)
+        {
+        }
+
+        _cts.Dispose();
+        GC.SuppressFinalize(this);
     }
 }

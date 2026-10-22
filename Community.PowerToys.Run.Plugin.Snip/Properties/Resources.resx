@@ -149,6 +149,9 @@
   <data name="tip_undo" xml:space="preserve">
     <value>Undo (Ctrl+Z)</value>
   </data>
+  <data name="tip_redo" xml:space="preserve">
+    <value>Redo (Ctrl+Y)</value>
+  </data>
   <data name="tip_save" xml:space="preserve">
     <value>Save (Ctrl+S)</value>
   </data>
@@ -172,6 +175,9 @@
   </data>
   <data name="ocr_busy" xml:space="preserve">
     <value>Recognizing text…</value>
+  </data>
+  <data name="ocr_busy_waiting" xml:space="preserve">
+    <value>Waiting for another text recognition to finish…</value>
   </data>
   <data name="ocr_copy" xml:space="preserve">
     <value>Copy</value>
@@ -217,6 +223,12 @@
   </data>
   <data name="tr_busy_translate" xml:space="preserve">
     <value>Translating text…</value>
+  </data>
+  <data name="tr_busy_hymt_wait" xml:space="preserve">
+    <value>Translation engine busy — waiting for the current job to finish…</value>
+  </data>
+  <data name="tr_busy_ocr_wait" xml:space="preserve">
+    <value>Waiting for another OCR job to finish…</value>
   </data>
   <data name="tr_busy_render" xml:space="preserve">
     <value>Rendering translated image…</value>
