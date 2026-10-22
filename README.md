@@ -20,6 +20,8 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 快捷键：Enter 完成、Esc 取消、Ctrl+C 复制、Ctrl+S 保存、Delete 删除选中标注
 - **文字提取（OCR）**：工具栏上的「文字提取」按钮，仿微信截图：识别选区（含标注）中的文字，
   在结果窗口中显示，可编辑/选中，支持「复制」（有选中时复制选中部分）和「全部复制」
+- **图片翻译**：工具栏上的「图片翻译」按钮；OCR 取出带框文字后翻译，擦除原文并重绘译文，
+  结果窗口左侧为翻译图、右侧为可编辑译文列表（需在设置中配置翻译引擎）
 - 多显示器 + 高 DPI 正确适配（取光标所在屏幕，按物理像素捕获）
 
 插件设置（PowerToys 设置 → PowerToys Run → Snip）：
@@ -28,6 +30,10 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 截屏后复制到剪贴板（默认开）
 - 区域截屏后自动保存
 - 截屏延迟（毫秒，默认 150，给 PowerToys Run 隐藏窗口的时间）
+- **图片翻译引擎**：`关闭` / `HTTP（OpenAI 兼容）` / `HyMT2Sharp（本地 GGUF）`（默认关闭）
+- 目标语言（自由文本，默认 `简体中文`）
+- HTTP：Base URL、可选 API Key、模型名
+- HyMT2Sharp：GGUF 路径、后端（自动 / CPU / Vulkan）
 
 界面语言跟随 PowerToys（内置英文 + 简体中文）。
 
@@ -40,6 +46,23 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
 - 插件体积因此增加约 61 MB（`wco_data\` 约 60 MB + 依赖 DLL 约 1.3 MB）
 - 仅支持 x64 版 PowerToys（OCR 组件只有 x64 版本）
 - OCR 组件缺失、超时、识别失败或没有识别到文字时，结果窗口会给出对应提示
+
+### 图片翻译说明
+
+图片翻译复用 WeChat OCR 的逐行框（`Left/Top/Right/Bottom`），翻译后按框擦除原文并重绘译文（采样附近背景色、对比色文字、自适应字号）。
+
+翻译引擎默认**关闭**，需在插件设置中任选其一：
+
+1. **HTTP（OpenAI 兼容）**  
+   指向任意实现 `POST /v1/chat/completions` 的服务，例如 [HyMT2Sharp.Server](https://github.com/sdcb/HyMT2Sharp)：
+   `http://127.0.0.1:8080/v1`。可选 API Key 与模型名。
+
+2. **HyMT2Sharp（进程内）**  
+   引用 NuGet 包 [`Sdcb.HyMT2Sharp`](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)（Apache-2.0，约 460KB），
+   **不**捆绑 `Sdcb.GgufWeights.*`（2Bit 约 573MB）。请自行下载 GGUF（推荐 [2Bit](https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF)），
+   在设置里填写路径；后端可选自动 / CPU / Vulkan（Vulkan 约需 4GB 显存）。模型首次使用时懒加载，推理串行排队（模型非线程安全）。
+
+未配置或配置错误时，点击「图片翻译」会弹出中文提示，不会关闭截屏窗口。
 
 ## 构建
 
@@ -71,6 +94,7 @@ dotnet test Community.PowerToys.Run.Plugin.Snip.UnitTests
 ├── Images\Snip.dark.png
 ├── Images\Snip.light.png
 ├── WeChatOcr.dll、Google.Protobuf.dll、Newtonsoft.Json.dll         (文字提取依赖)
+├── Sdcb.HyMT2Sharp.dll 等                                           (图片翻译：进程内引擎，不含 GGUF)
 ├── wco_data\WeChatOCR.exe、mmmojo*.dll、x64.config、Model\*          (文字提取 OCR 组件)
 ├── Community.PowerToys.Run.Plugin.Snip.deps.json 等其余构建输出
 └── zh-CN\Community.PowerToys.Run.Plugin.Snip.resources.dll   (中文资源)
@@ -102,4 +126,6 @@ PowerToys 0.9x 及更早版本的插件目录是 `%LOCALAPPDATA%\Microsoft\Power
 - 文字提取使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr)（NuGet 标注 MIT 许可，仅以包引用，
   未复制其源码）。该包的描述注明“Study only, do not use for commercial purposes”（仅供学习，勿用于商业用途）；
   其自带的 OCR 组件（`WeChatOCR.exe`、mmmojo DLL、模型文件）来自腾讯微信，构建时由该包复制到输出目录。
+- 图片翻译可选引用 [Sdcb.HyMT2Sharp](https://www.nuget.org/packages/Sdcb.HyMT2Sharp)（Apache-2.0）；
+  **不**引用 `Sdcb.GgufWeights.*`，GGUF 由用户自行下载配置。
 - 本仓库新增代码以 MIT 许可发布，见 [LICENSE](LICENSE)。

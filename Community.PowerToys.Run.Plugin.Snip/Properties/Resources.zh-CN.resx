@@ -203,4 +203,127 @@
   <data name="ocr_err_component_missing" xml:space="preserve">
     <value>插件自带的 OCR 组件不完整，请重新安装插件。缺少文件：</value>
   </data>
+  <data name="tip_translate" xml:space="preserve">
+    <value>图片翻译</value>
+  </data>
+  <data name="tr_window_title" xml:space="preserve">
+    <value>图片翻译</value>
+  </data>
+  <data name="tr_busy" xml:space="preserve">
+    <value>正在翻译…</value>
+  </data>
+  <data name="tr_busy_ocr" xml:space="preserve">
+    <value>正在识别文字…</value>
+  </data>
+  <data name="tr_busy_translate" xml:space="preserve">
+    <value>正在翻译文字…</value>
+  </data>
+  <data name="tr_busy_render" xml:space="preserve">
+    <value>正在生成翻译图片…</value>
+  </data>
+  <data name="tr_copy_all" xml:space="preserve">
+    <value>全部复制</value>
+  </data>
+  <data name="tr_copy_image" xml:space="preserve">
+    <value>复制图片</value>
+  </data>
+  <data name="tr_image_copied" xml:space="preserve">
+    <value>已复制翻译图片到剪贴板</value>
+  </data>
+  <data name="tr_status_done" xml:space="preserve">
+    <value>已翻译 {0} 行 → {1}</value>
+  </data>
+  <data name="tr_err_failed" xml:space="preserve">
+    <value>图片翻译失败：</value>
+  </data>
+  <data name="tr_err_provider_off" xml:space="preserve">
+    <value>图片翻译未启用。请到 PowerToys 设置 → PowerToys Run → Snip，选择翻译引擎（HTTP 或 HyMT2Sharp）。</value>
+  </data>
+  <data name="tr_err_no_language" xml:space="preserve">
+    <value>请在 Snip 插件设置中填写目标语言。</value>
+  </data>
+  <data name="tr_err_http_url" xml:space="preserve">
+    <value>请在 Snip 插件设置中填写有效的 HTTP Base URL（例如 http://127.0.0.1:8080/v1）。</value>
+  </data>
+  <data name="tr_err_http_model" xml:space="preserve">
+    <value>请在 Snip 插件设置中填写 HTTP 模型名称。</value>
+  </data>
+  <data name="tr_err_http" xml:space="preserve">
+    <value>HTTP 翻译出错：</value>
+  </data>
+  <data name="tr_err_http_empty" xml:space="preserve">
+    <value>HTTP 翻译返回了空结果。</value>
+  </data>
+  <data name="tr_err_gguf_path" xml:space="preserve">
+    <value>请在 Snip 插件设置中填写 HyMT2Sharp 的 GGUF 文件路径。</value>
+  </data>
+  <data name="tr_err_gguf_missing" xml:space="preserve">
+    <value>找不到 HyMT2Sharp GGUF 文件：</value>
+  </data>
+  <data name="tr_err_hymt_load" xml:space="preserve">
+    <value>加载 HyMT2Sharp 模型失败：</value>
+  </data>
+  <data name="tr_err_hymt_failed" xml:space="preserve">
+    <value>HyMT2Sharp 翻译失败：</value>
+  </data>
+  <data name="opt_tr_provider_label" xml:space="preserve">
+    <value>图片翻译引擎</value>
+  </data>
+  <data name="opt_tr_provider_desc" xml:space="preserve">
+    <value>默认关闭，需自行配置。HTTP 可对接任意 OpenAI 兼容的 /v1/chat/completions（如 HyMT2Sharp.Server）。HyMT2Sharp 从本机 GGUF 加载（不捆绑权重）。</value>
+  </data>
+  <data name="opt_tr_provider_off" xml:space="preserve">
+    <value>关闭</value>
+  </data>
+  <data name="opt_tr_provider_http" xml:space="preserve">
+    <value>HTTP（OpenAI 兼容）</value>
+  </data>
+  <data name="opt_tr_provider_hymt" xml:space="preserve">
+    <value>HyMT2Sharp（本地 GGUF）</value>
+  </data>
+  <data name="opt_tr_lang_label" xml:space="preserve">
+    <value>目标语言</value>
+  </data>
+  <data name="opt_tr_lang_desc" xml:space="preserve">
+    <value>写入翻译提示词的自由文本，例如 简体中文 / English / 日本語。</value>
+  </data>
+  <data name="opt_tr_http_url_label" xml:space="preserve">
+    <value>HTTP Base URL</value>
+  </data>
+  <data name="opt_tr_http_url_desc" xml:space="preserve">
+    <value>OpenAI 兼容 API 根地址，例如 http://127.0.0.1:8080/v1</value>
+  </data>
+  <data name="opt_tr_http_key_label" xml:space="preserve">
+    <value>HTTP API Key（可选）</value>
+  </data>
+  <data name="opt_tr_http_key_desc" xml:space="preserve">
+    <value>非空时作为 Bearer Token 发送。</value>
+  </data>
+  <data name="opt_tr_http_model_label" xml:space="preserve">
+    <value>HTTP 模型名称</value>
+  </data>
+  <data name="opt_tr_http_model_desc" xml:space="preserve">
+    <value>chat completions 请求中的 model 字段。</value>
+  </data>
+  <data name="opt_tr_hymt_path_label" xml:space="preserve">
+    <value>HyMT2Sharp GGUF 路径</value>
+  </data>
+  <data name="opt_tr_hymt_path_desc" xml:space="preserve">
+    <value>请自行下载 Hy-MT2 GGUF（推荐 2Bit）。插件不捆绑权重包。</value>
+  </data>
+  <data name="opt_tr_hymt_backend_label" xml:space="preserve">
+    <value>HyMT2Sharp 后端</value>
+  </data>
+  <data name="opt_tr_hymt_backend_desc" xml:space="preserve">
+    <value>自动按 Metal → Vulkan → CPU 选择。Vulkan 约需 4GB 显存。</value>
+  </data>
+  <data name="opt_tr_hymt_backend_auto" xml:space="preserve">
+    <value>自动</value>
+  </data>
+  <data name="opt_tr_hymt_backend_cpu" xml:space="preserve">
+    <value>CPU</value>
+  </data>
+  <data name="opt_tr_hymt_backend_vulkan" xml:space="preserve">
+    <value>Vulkan</value>
+  </data>
 </root>

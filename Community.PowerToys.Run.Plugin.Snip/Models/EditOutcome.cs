@@ -16,4 +16,7 @@ public enum EditOutcome
 
     /// <summary>The user asked to extract the text of the selection (OCR).</summary>
     ExtractText,
+
+    /// <summary>The user asked to translate text in the selection (OCR + translate + repaint).</summary>
+    TranslateImage,
 }

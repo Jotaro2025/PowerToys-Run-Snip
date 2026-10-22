@@ -463,5 +463,334 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("ocr_err_component_missing", resourceCulture);
             }
         }
+        /// <summary>
+        ///   Looks up a localized string similar to Image translate.
+        /// </summary>
+        public static string tip_translate {
+            get {
+                return ResourceManager.GetString("tip_translate", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Image Translate.
+        /// </summary>
+        public static string tr_window_title {
+            get {
+                return ResourceManager.GetString("tr_window_title", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Translating….
+        /// </summary>
+        public static string tr_busy {
+            get {
+                return ResourceManager.GetString("tr_busy", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Recognizing text….
+        /// </summary>
+        public static string tr_busy_ocr {
+            get {
+                return ResourceManager.GetString("tr_busy_ocr", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Translating text….
+        /// </summary>
+        public static string tr_busy_translate {
+            get {
+                return ResourceManager.GetString("tr_busy_translate", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Rendering translated image….
+        /// </summary>
+        public static string tr_busy_render {
+            get {
+                return ResourceManager.GetString("tr_busy_render", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Copy all.
+        /// </summary>
+        public static string tr_copy_all {
+            get {
+                return ResourceManager.GetString("tr_copy_all", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Copy image.
+        /// </summary>
+        public static string tr_copy_image {
+            get {
+                return ResourceManager.GetString("tr_copy_image", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Translated image copied to the clipboard.
+        /// </summary>
+        public static string tr_image_copied {
+            get {
+                return ResourceManager.GetString("tr_image_copied", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to {0} lines → {1}.
+        /// </summary>
+        public static string tr_status_done {
+            get {
+                return ResourceManager.GetString("tr_status_done", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Image translate failed:.
+        /// </summary>
+        public static string tr_err_failed {
+            get {
+                return ResourceManager.GetString("tr_err_failed", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Image translate is off. Open PowerToys settings → PowerToys Run → Snip and choose a translator (HTTP or HyMT2Sharp)..
+        /// </summary>
+        public static string tr_err_provider_off {
+            get {
+                return ResourceManager.GetString("tr_err_provider_off", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Please set a target language in the Snip plugin settings..
+        /// </summary>
+        public static string tr_err_no_language {
+            get {
+                return ResourceManager.GetString("tr_err_no_language", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Please set a valid HTTP Base URL (e.g. http://127.0.0.1:8080/v1) in the Snip plugin settings..
+        /// </summary>
+        public static string tr_err_http_url {
+            get {
+                return ResourceManager.GetString("tr_err_http_url", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Please set the HTTP model name in the Snip plugin settings..
+        /// </summary>
+        public static string tr_err_http_model {
+            get {
+                return ResourceManager.GetString("tr_err_http_model", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HTTP translator error:.
+        /// </summary>
+        public static string tr_err_http {
+            get {
+                return ResourceManager.GetString("tr_err_http", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to The HTTP translator returned an empty response..
+        /// </summary>
+        public static string tr_err_http_empty {
+            get {
+                return ResourceManager.GetString("tr_err_http_empty", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Please set the HyMT2Sharp GGUF file path in the Snip plugin settings..
+        /// </summary>
+        public static string tr_err_gguf_path {
+            get {
+                return ResourceManager.GetString("tr_err_gguf_path", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HyMT2Sharp GGUF file not found:.
+        /// </summary>
+        public static string tr_err_gguf_missing {
+            get {
+                return ResourceManager.GetString("tr_err_gguf_missing", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to load HyMT2Sharp model:.
+        /// </summary>
+        public static string tr_err_hymt_load {
+            get {
+                return ResourceManager.GetString("tr_err_hymt_load", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HyMT2Sharp translation failed:.
+        /// </summary>
+        public static string tr_err_hymt_failed {
+            get {
+                return ResourceManager.GetString("tr_err_hymt_failed", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Image translator.
+        /// </summary>
+        public static string opt_tr_provider_label {
+            get {
+                return ResourceManager.GetString("opt_tr_provider_label", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Off until configured. HTTP talks to any OpenAI-compatible /v1/chat/completions (e.g. HyMT2Sharp.Server). HyMT2Sharp loads a local GGUF (weights not bundled)..
+        /// </summary>
+        public static string opt_tr_provider_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_provider_desc", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Off.
+        /// </summary>
+        public static string opt_tr_provider_off {
+            get {
+                return ResourceManager.GetString("opt_tr_provider_off", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HTTP (OpenAI-compatible).
+        /// </summary>
+        public static string opt_tr_provider_http {
+            get {
+                return ResourceManager.GetString("opt_tr_provider_http", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HyMT2Sharp (local GGUF).
+        /// </summary>
+        public static string opt_tr_provider_hymt {
+            get {
+                return ResourceManager.GetString("opt_tr_provider_hymt", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Target language.
+        /// </summary>
+        public static string opt_tr_lang_label {
+            get {
+                return ResourceManager.GetString("opt_tr_lang_label", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Free text passed to the translator prompt, e.g. 简体中文 / English / 日本語..
+        /// </summary>
+        public static string opt_tr_lang_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_lang_desc", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HTTP Base URL.
+        /// </summary>
+        public static string opt_tr_http_url_label {
+            get {
+                return ResourceManager.GetString("opt_tr_http_url_label", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to OpenAI-compatible API root, e.g. http://127.0.0.1:8080/v1.
+        /// </summary>
+        public static string opt_tr_http_url_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_http_url_desc", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HTTP API key (optional).
+        /// </summary>
+        public static string opt_tr_http_key_label {
+            get {
+                return ResourceManager.GetString("opt_tr_http_key_label", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Sent as Bearer token when non-empty..
+        /// </summary>
+        public static string opt_tr_http_key_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_http_key_desc", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HTTP model name.
+        /// </summary>
+        public static string opt_tr_http_model_label {
+            get {
+                return ResourceManager.GetString("opt_tr_http_model_label", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Model field in the chat completions request..
+        /// </summary>
+        public static string opt_tr_http_model_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_http_model_desc", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HyMT2Sharp GGUF path.
+        /// </summary>
+        public static string opt_tr_hymt_path_label {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_path_label", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download a Hy-MT2 GGUF separately (2Bit recommended). Weights are not shipped with the plugin..
+        /// </summary>
+        public static string opt_tr_hymt_path_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_path_desc", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HyMT2Sharp backend.
+        /// </summary>
+        public static string opt_tr_hymt_backend_label {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_backend_label", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Auto picks Metal → Vulkan → CPU. Vulkan needs ~4 GB VRAM..
+        /// </summary>
+        public static string opt_tr_hymt_backend_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_backend_desc", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Auto.
+        /// </summary>
+        public static string opt_tr_hymt_backend_auto {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_backend_auto", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to CPU.
+        /// </summary>
+        public static string opt_tr_hymt_backend_cpu {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_backend_cpu", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Vulkan.
+        /// </summary>
+        public static string opt_tr_hymt_backend_vulkan {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_backend_vulkan", resourceCulture);
+            }
+        }
+
     }
 }

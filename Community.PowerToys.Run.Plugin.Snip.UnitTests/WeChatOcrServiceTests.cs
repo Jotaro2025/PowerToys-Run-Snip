@@ -61,4 +61,28 @@ public class WeChatOcrServiceTests
         Assert.AreEqual(string.Empty, WeChatOcrService.JoinLines(null));
         Assert.AreEqual(string.Empty, WeChatOcrService.JoinLines(new WeChatOcrResult()));
     }
+
+    [TestMethod]
+    public void ExtractLinesKeepsBoxesAndReadingOrder()
+    {
+        var result = new WeChatOcrResult
+        {
+            OcrResult = new OcrResult
+            {
+                SingleResult = new List<SingleResult>
+                {
+                    new SingleResult { SingleStrUtf8 = "bottom", Left = 10, Top = 80, Right = 50, Bottom = 100, SingleRate = 0.9f },
+                    new SingleResult { SingleStrUtf8 = "top", Left = 5, Top = 10, Right = 40, Bottom = 30, SingleRate = 0.95f },
+                    new SingleResult { SingleStrUtf8 = string.Empty, Left = 0, Top = 0, Right = 1, Bottom = 1 },
+                },
+            },
+        };
+
+        var lines = WeChatOcrService.ExtractLines(result);
+        Assert.HasCount(2, lines);
+        Assert.AreEqual("top", lines[0].Text);
+        Assert.AreEqual("bottom", lines[1].Text);
+        Assert.AreEqual(5, lines[0].Box.X, 0.01);
+        Assert.AreEqual(20, lines[0].Box.Height, 0.01);
+    }
 }

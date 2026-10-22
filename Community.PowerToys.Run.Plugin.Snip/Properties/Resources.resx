@@ -203,4 +203,127 @@
   <data name="ocr_err_component_missing" xml:space="preserve">
     <value>The bundled OCR component is incomplete; reinstall the plugin. Missing file:</value>
   </data>
+  <data name="tip_translate" xml:space="preserve">
+    <value>Image translate</value>
+  </data>
+  <data name="tr_window_title" xml:space="preserve">
+    <value>Image Translate</value>
+  </data>
+  <data name="tr_busy" xml:space="preserve">
+    <value>Translating…</value>
+  </data>
+  <data name="tr_busy_ocr" xml:space="preserve">
+    <value>Recognizing text…</value>
+  </data>
+  <data name="tr_busy_translate" xml:space="preserve">
+    <value>Translating text…</value>
+  </data>
+  <data name="tr_busy_render" xml:space="preserve">
+    <value>Rendering translated image…</value>
+  </data>
+  <data name="tr_copy_all" xml:space="preserve">
+    <value>Copy all</value>
+  </data>
+  <data name="tr_copy_image" xml:space="preserve">
+    <value>Copy image</value>
+  </data>
+  <data name="tr_image_copied" xml:space="preserve">
+    <value>Translated image copied to the clipboard</value>
+  </data>
+  <data name="tr_status_done" xml:space="preserve">
+    <value>{0} lines → {1}</value>
+  </data>
+  <data name="tr_err_failed" xml:space="preserve">
+    <value>Image translate failed:</value>
+  </data>
+  <data name="tr_err_provider_off" xml:space="preserve">
+    <value>Image translate is off. Open PowerToys settings → PowerToys Run → Snip and choose a translator (HTTP or HyMT2Sharp).</value>
+  </data>
+  <data name="tr_err_no_language" xml:space="preserve">
+    <value>Please set a target language in the Snip plugin settings.</value>
+  </data>
+  <data name="tr_err_http_url" xml:space="preserve">
+    <value>Please set a valid HTTP Base URL (e.g. http://127.0.0.1:8080/v1) in the Snip plugin settings.</value>
+  </data>
+  <data name="tr_err_http_model" xml:space="preserve">
+    <value>Please set the HTTP model name in the Snip plugin settings.</value>
+  </data>
+  <data name="tr_err_http" xml:space="preserve">
+    <value>HTTP translator error:</value>
+  </data>
+  <data name="tr_err_http_empty" xml:space="preserve">
+    <value>The HTTP translator returned an empty response.</value>
+  </data>
+  <data name="tr_err_gguf_path" xml:space="preserve">
+    <value>Please set the HyMT2Sharp GGUF file path in the Snip plugin settings.</value>
+  </data>
+  <data name="tr_err_gguf_missing" xml:space="preserve">
+    <value>HyMT2Sharp GGUF file not found:</value>
+  </data>
+  <data name="tr_err_hymt_load" xml:space="preserve">
+    <value>Failed to load HyMT2Sharp model:</value>
+  </data>
+  <data name="tr_err_hymt_failed" xml:space="preserve">
+    <value>HyMT2Sharp translation failed:</value>
+  </data>
+  <data name="opt_tr_provider_label" xml:space="preserve">
+    <value>Image translator</value>
+  </data>
+  <data name="opt_tr_provider_desc" xml:space="preserve">
+    <value>Off until configured. HTTP talks to any OpenAI-compatible /v1/chat/completions (e.g. HyMT2Sharp.Server). HyMT2Sharp loads a local GGUF (weights not bundled).</value>
+  </data>
+  <data name="opt_tr_provider_off" xml:space="preserve">
+    <value>Off</value>
+  </data>
+  <data name="opt_tr_provider_http" xml:space="preserve">
+    <value>HTTP (OpenAI-compatible)</value>
+  </data>
+  <data name="opt_tr_provider_hymt" xml:space="preserve">
+    <value>HyMT2Sharp (local GGUF)</value>
+  </data>
+  <data name="opt_tr_lang_label" xml:space="preserve">
+    <value>Target language</value>
+  </data>
+  <data name="opt_tr_lang_desc" xml:space="preserve">
+    <value>Free text passed to the translator prompt, e.g. 简体中文 / English / 日本語.</value>
+  </data>
+  <data name="opt_tr_http_url_label" xml:space="preserve">
+    <value>HTTP Base URL</value>
+  </data>
+  <data name="opt_tr_http_url_desc" xml:space="preserve">
+    <value>OpenAI-compatible API root, e.g. http://127.0.0.1:8080/v1</value>
+  </data>
+  <data name="opt_tr_http_key_label" xml:space="preserve">
+    <value>HTTP API key (optional)</value>
+  </data>
+  <data name="opt_tr_http_key_desc" xml:space="preserve">
+    <value>Sent as Bearer token when non-empty.</value>
+  </data>
+  <data name="opt_tr_http_model_label" xml:space="preserve">
+    <value>HTTP model name</value>
+  </data>
+  <data name="opt_tr_http_model_desc" xml:space="preserve">
+    <value>Model field in the chat completions request.</value>
+  </data>
+  <data name="opt_tr_hymt_path_label" xml:space="preserve">
+    <value>HyMT2Sharp GGUF path</value>
+  </data>
+  <data name="opt_tr_hymt_path_desc" xml:space="preserve">
+    <value>Download a Hy-MT2 GGUF separately (2Bit recommended). Weights are not shipped with the plugin.</value>
+  </data>
+  <data name="opt_tr_hymt_backend_label" xml:space="preserve">
+    <value>HyMT2Sharp backend</value>
+  </data>
+  <data name="opt_tr_hymt_backend_desc" xml:space="preserve">
+    <value>Auto picks Metal → Vulkan → CPU. Vulkan needs ~4 GB VRAM.</value>
+  </data>
+  <data name="opt_tr_hymt_backend_auto" xml:space="preserve">
+    <value>Auto</value>
+  </data>
+  <data name="opt_tr_hymt_backend_cpu" xml:space="preserve">
+    <value>CPU</value>
+  </data>
+  <data name="opt_tr_hymt_backend_vulkan" xml:space="preserve">
+    <value>Vulkan</value>
+  </data>
 </root>

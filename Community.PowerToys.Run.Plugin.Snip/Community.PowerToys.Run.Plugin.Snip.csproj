@@ -22,7 +22,7 @@
     <NeutralLanguage>en-US</NeutralLanguage>
 
     <!--
-      Copy NuGet dependencies (WeChatOcr, Google.Protobuf, Newtonsoft.Json) next to
+      Copy NuGet dependencies (WeChatOcr, Sdcb.HyMT2Sharp, Google.Protobuf, Newtonsoft.Json) next to
       the plugin and emit a .deps.json, so PowerToys Run can resolve them from the
       plugin folder when plugin.json sets "DynamicLoading": true.
     -->
@@ -55,6 +55,12 @@
       in the output folder; the plugin runs OCR from there.
     -->
     <PackageReference Include="WeChatOcr" Version="1.0.5" />
+
+    <!--
+      In-process Hunyuan MT2 translator (Apache-2.0). Weights are NOT referenced:
+      the user supplies a GGUF path in settings (Sdcb.GgufWeights.* would add ~573MB).
+    -->
+    <PackageReference Include="Sdcb.HyMT2Sharp" Version="2.0.0" />
   </ItemGroup>
 
   <!--

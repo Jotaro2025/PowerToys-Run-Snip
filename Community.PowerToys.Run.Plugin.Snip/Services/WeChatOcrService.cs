@@ -10,7 +10,9 @@ using System.Runtime.InteropServices;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Windows;
 
+using Community.PowerToys.Run.Plugin.Snip.Models;
 using WeChatOcr;
 using Wox.Plugin.Logger;
 
@@ -61,6 +63,29 @@ public static class WeChatOcrService
     /// <exception cref="OcrException">The OCR component is missing or unusable, or OCR failed.</exception>
     public static async Task<string> RecognizeAsync(byte[] png, CancellationToken cancellationToken = default)
     {
+        var lines = await RecognizeLinesAsync(png, cancellationToken).ConfigureAwait(false);
+        if (lines.Count == 0)
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder();
+        foreach (var line in lines)
+        {
+            sb.AppendLine(line.Text);
+        }
+
+        return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>
+    /// Recognizes text lines with their axis-aligned boxes (for erase+repaint).
+    /// Lines are returned in reading order (top-to-bottom, then left-to-right).
+    /// </summary>
+    public static async Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(
+        byte[] png,
+        CancellationToken cancellationToken = default)
+    {
         ArgumentNullException.ThrowIfNull(png);
 
         // mmmojo_64.dll / WeChatOCR.exe are x64 binaries.
@@ -82,7 +107,7 @@ public static class WeChatOcrService
                 await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
                 {
-                    return await RunOcrAsync(png, cancellationToken).ConfigureAwait(false);
+                    return await RunOcrLinesAsync(png, cancellationToken).ConfigureAwait(false);
                 }
                 finally
                 {
@@ -101,8 +126,8 @@ public static class WeChatOcrService
     /// <summary>Joins the recognized lines of a WeChatOcr result.</summary>
     public static string JoinLines(WeChatOcrResult result)
     {
-        var lines = result?.OcrResult?.SingleResult;
-        if (lines == null)
+        var lines = ExtractLines(result);
+        if (lines.Count == 0)
         {
             return string.Empty;
         }
@@ -110,23 +135,73 @@ public static class WeChatOcrService
         var sb = new StringBuilder();
         foreach (var line in lines)
         {
-            if (!string.IsNullOrEmpty(line?.SingleStrUtf8))
-            {
-                sb.AppendLine(line.SingleStrUtf8);
-            }
+            sb.AppendLine(line.Text);
         }
 
         return sb.ToString().TrimEnd();
+    }
+
+    /// <summary>Maps a WeChatOcr result to ordered <see cref="OcrTextLine"/> boxes.</summary>
+    public static IReadOnlyList<OcrTextLine> ExtractLines(WeChatOcrResult result)
+    {
+        var raw = result?.OcrResult?.SingleResult;
+        if (raw == null || raw.Count == 0)
+        {
+            return Array.Empty<OcrTextLine>();
+        }
+
+        var lines = new List<OcrTextLine>(raw.Count);
+        foreach (var line in raw)
+        {
+            if (line == null || string.IsNullOrEmpty(line.SingleStrUtf8))
+            {
+                continue;
+            }
+
+            double left = line.Left;
+            double top = line.Top;
+            double right = line.Right;
+            double bottom = line.Bottom;
+
+            // Prefer polygon bounds when the axis-aligned box looks empty.
+            if (right <= left || bottom <= top)
+            {
+                var pts = line.SinglePos?.Pos;
+                if (pts != null && pts.Count > 0)
+                {
+                    left = pts.Min(p => p.X);
+                    top = pts.Min(p => p.Y);
+                    right = pts.Max(p => p.X);
+                    bottom = pts.Max(p => p.Y);
+                }
+            }
+
+            if (right <= left || bottom <= top)
+            {
+                continue;
+            }
+
+            lines.Add(new OcrTextLine(
+                line.SingleStrUtf8,
+                new Rect(left, top, right - left, bottom - top),
+                line.SingleRate));
+        }
+
+        // Reading order: top-to-bottom, then left-to-right.
+        return lines
+            .OrderBy(l => l.Box.Top)
+            .ThenBy(l => l.Box.Left)
+            .ToList();
     }
 
     /// <summary>User-facing "text extraction failed" message with the technical detail appended.</summary>
     public static string FailedMessage(string detail)
         => $"{Properties.Resources.ocr_err_failed} {detail}";
 
-    private static async Task<string> RunOcrAsync(byte[] png, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<OcrTextLine>> RunOcrLinesAsync(byte[] png, CancellationToken cancellationToken)
     {
         var imagePath = Path.Combine(Path.GetTempPath(), $"snip-ocr-{Guid.NewGuid():N}.png");
-        var tcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+        var tcs = new TaskCompletionSource<IReadOnlyList<OcrTextLine>>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             await File.WriteAllBytesAsync(imagePath, png, cancellationToken).ConfigureAwait(false);
@@ -144,7 +219,7 @@ public static class WeChatOcrService
                         // WeChatOcr may report progress with a null result; wait for the real one.
                         if (result != null)
                         {
-                            tcs.TrySetResult(JoinLines(result));
+                            tcs.TrySetResult(ExtractLines(result));
                         }
                     });
 
