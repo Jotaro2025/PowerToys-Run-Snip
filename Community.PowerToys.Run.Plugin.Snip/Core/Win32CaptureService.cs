@@ -34,7 +34,7 @@ public sealed class Win32CaptureService : ICaptureService
         var primaryScale = list.FirstOrDefault(s => s.IsPrimary)?.DpiScale ?? list[0].DpiScale;
         list.Add(new ScreenInfo(
             Handle: IntPtr.Zero,
-            DeviceName: "VirtualDesktop",
+            DeviceName: VirtualDesktopName,
             Bounds: new Rect(left, top, right - left, bottom - top),
             WorkingArea: new Rect(left, top, right - left, bottom - top),
             DpiScale: primaryScale,
@@ -77,10 +77,37 @@ public sealed class Win32CaptureService : ICaptureService
         return 1.0;
     }
 
+    /// <summary>Device name of the synthetic entry covering the union of all monitors.</summary>
+    public const string VirtualDesktopName = "VirtualDesktop";
+
+    /// <summary>
+    /// Capture target: the single physical monitor when only one exists (unchanged behavior),
+    /// otherwise the synthetic virtual-desktop entry so a selection can span monitors.
+    /// </summary>
+    public static ScreenInfo ChooseCaptureTarget(IReadOnlyList<ScreenInfo> screens)
+    {
+        ArgumentNullException.ThrowIfNull(screens);
+        var physical = PhysicalScreens(screens);
+        if (physical.Count > 1)
+        {
+            var virtualDesktop = screens.FirstOrDefault(s => s.DeviceName == VirtualDesktopName);
+            if (virtualDesktop != null)
+            {
+                return virtualDesktop;
+            }
+        }
+
+        return GetScreenAtCursor(screens);
+    }
+
+    /// <summary>All real monitors (without the synthetic virtual-desktop entry).</summary>
+    public static IReadOnlyList<ScreenInfo> PhysicalScreens(IReadOnlyList<ScreenInfo> screens)
+        => screens?.Where(s => s.DeviceName != VirtualDesktopName).ToList() ?? [];
+
     /// <summary>Returns the monitor under the cursor, or primary / first physical screen.</summary>
     public static ScreenInfo GetScreenAtCursor(IReadOnlyList<ScreenInfo> screens)
     {
-        var physical = screens.Where(s => s.DeviceName != "VirtualDesktop").ToList();
+        var physical = screens.Where(s => s.DeviceName != VirtualDesktopName).ToList();
         if (physical.Count == 0)
         {
             return screens.First(s => s.IsPrimary);

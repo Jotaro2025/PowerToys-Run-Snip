@@ -97,6 +97,12 @@ public sealed class ScrollCaptureController
     }
 
     /// <summary>
+    /// Optional area (overlay-host DIP) to center the scroll hint in, e.g. the monitor that holds
+    /// the selection on a multi-monitor overlay. Null = center across the whole host.
+    /// </summary>
+    public Rect? OverlayArea { get; set; }
+
+    /// <summary>
     /// Begin auto-scroll capture. Caller must hole-punch and hide adorners first.
     /// </summary>
     public void Begin()
@@ -617,6 +623,13 @@ public sealed class ScrollCaptureController
 
             _overlay.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
             var sz = _overlay.DesiredSize;
+            if (OverlayArea is Rect area && area.Width > 0)
+            {
+                Canvas.SetLeft(_overlay, Math.Max(area.X + 8, area.X + (area.Width / 2) - (sz.Width / 2)));
+                Canvas.SetTop(_overlay, area.Y + 24);
+                return;
+            }
+
             Canvas.SetLeft(_overlay, Math.Max(8, (hostW / 2) - (sz.Width / 2)));
             Canvas.SetTop(_overlay, 24);
         }

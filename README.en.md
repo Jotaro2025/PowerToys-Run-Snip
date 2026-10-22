@@ -40,7 +40,7 @@ You can also configure a **global hotkey** in settings to start a region capture
 - **Pin image**: lightweight always-on-top window (drag to move; Esc / double-click / right-click to close); does not end the capture session
 - **Image translation**: OCR boxes → translate → erase original and redraw translated text; “re-render” / “save image”
 - **Session keep-alive**: OCR / translate hide the overlay first, then restore the same selection and annotations; pin leaves the overlay open
-- Multi-monitor + high-DPI (capture the screen under the cursor in physical pixels)
+- Multi-monitor + high-DPI: with one monitor only that monitor is captured (unchanged); with several, the overlay covers the whole virtual desktop so **a selection can span monitors**, captured in physical pixels and converted with the overlay window's actual DPI under mixed scaling (e.g. 100% + 150%); the toolbar and scroll hint stay on the monitor holding the selection. Areas of the virtual desktop not covered by any monitor (different monitor sizes) capture as black
 
 UI language follows PowerToys (built-in English + Simplified Chinese).
 

@@ -4,6 +4,7 @@
 
 using System;
 using System.IO;
+using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -36,7 +37,12 @@ public sealed class SnipWindow : Window
     private readonly SolidColorBrush _selectionDimBrush = new SolidColorBrush(Color.FromArgb(210, 0, 0, 0));
 
     private readonly Int32Rect _physicalBounds;
-    private readonly Size _logicalSize;
+
+    /// <summary>Physical bounds of each real monitor when the overlay spans the virtual desktop; else empty.</summary>
+    private readonly Int32Rect[] _monitorBounds;
+
+    /// <summary>True when the overlay covers several monitors (virtual desktop capture).</summary>
+    private readonly bool _spansMonitors;
     private readonly Canvas _root;
 
     private readonly SnipBackground _screenshotImage;
@@ -49,6 +55,7 @@ public sealed class SnipWindow : Window
     private readonly ICaptureService _captureService = CaptureFactory.Create();
 
     private System.Windows.Media.Imaging.WriteableBitmap _source;
+    private Size _logicalSize;
     private double _dpiScale;
     private Rect _selection;
     private bool _hasSelection;
@@ -71,7 +78,8 @@ public sealed class SnipWindow : Window
         System.Windows.Media.Imaging.WriteableBitmap source,
         ScreenInfo screen,
         EditRequest request,
-        SnipSettings settings = null)
+        SnipSettings settings = null,
+        System.Collections.Generic.IReadOnlyList<ScreenInfo> monitors = null)
     {
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(screen);
@@ -87,6 +95,10 @@ public sealed class SnipWindow : Window
             (int)screen.Bounds.Height);
         _dpiScale = screen.DpiScale > 0 ? screen.DpiScale : 1.0;
         _logicalSize = new Size(_physicalBounds.Width / _dpiScale, _physicalBounds.Height / _dpiScale);
+        _spansMonitors = screen.DeviceName == Win32CaptureService.VirtualDesktopName && monitors is { Count: > 1 };
+        _monitorBounds = _spansMonitors
+            ? monitors.Select(m => new Int32Rect((int)m.Bounds.X, (int)m.Bounds.Y, (int)m.Bounds.Width, (int)m.Bounds.Height)).ToArray()
+            : [];
 
         // Window configuration: borderless, topmost, full coverage.
         WindowStyle = WindowStyle.None;
@@ -240,6 +252,15 @@ public sealed class SnipWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyNativePhysicalBounds();
+        if (_spansMonitors)
+        {
+            // The virtual-desktop entry starts with the primary monitor's DPI; the window really
+            // renders at the DPI of the monitor Windows assigned it to. Use that one scale for
+            // every DIP <-> physical conversion (per-monitor-v2 windows are not bitmap-scaled).
+            ApplyWindowDpiScale(VisualTreeHelper.GetDpi(this).DpiScaleX);
+            ApplyNativePhysicalBounds();
+        }
+
         Activate();
         _annoCanvas.Focus();
 
@@ -254,6 +275,97 @@ public sealed class SnipWindow : Window
     {
         DismissSessionChild(restoreOverlay: false);
         CleanupResources();
+    }
+
+    protected override void OnDpiChanged(DpiScale oldDpi, DpiScale newDpi)
+    {
+        base.OnDpiChanged(oldDpi, newDpi);
+        if (!_spansMonitors)
+        {
+            return;
+        }
+
+        // WPF resizes the window to the suggested rect; keep our physical virtual-desktop rect
+        // and switch every DIP layout to the new window DPI instead.
+        ApplyWindowDpiScale(newDpi.DpiScaleX);
+        Dispatcher.BeginInvoke(new Action(ApplyNativePhysicalBounds), System.Windows.Threading.DispatcherPriority.Loaded);
+    }
+
+    /// <summary>
+    /// Re-derives the DIP layout from the fixed physical bounds for a new window DPI scale.
+    /// Only used when the overlay spans monitors; single-monitor sessions keep the monitor DPI.
+    /// </summary>
+    private void ApplyWindowDpiScale(double scale)
+    {
+        if (scale <= 0 || Math.Abs(scale - _dpiScale) < 0.0001)
+        {
+            return;
+        }
+
+        double ratio = _dpiScale / scale;
+        _dpiScale = scale;
+        _logicalSize = new Size(_physicalBounds.Width / scale, _physicalBounds.Height / scale);
+        Width = _logicalSize.Width;
+        Height = _logicalSize.Height;
+        _screenshotImage.Width = _logicalSize.Width;
+        _screenshotImage.Height = _logicalSize.Height;
+        _inputCatcher.Width = _logicalSize.Width;
+        _inputCatcher.Height = _logicalSize.Height;
+        _annoCanvas.Width = _logicalSize.Width;
+        _annoCanvas.Height = _logicalSize.Height;
+        _annoCanvas.SourceDpiScale = scale;
+        if (_hasSelection || _dragCreating)
+        {
+            _selection = new Rect(_selection.X * ratio, _selection.Y * ratio, _selection.Width * ratio, _selection.Height * ratio);
+        }
+
+        UpdateSelectionVisuals();
+    }
+
+    /// <summary>
+    /// DIP rect (overlay coordinates) of the monitor that holds most of <paramref name="selection"/>;
+    /// the whole overlay when it covers a single monitor.
+    /// </summary>
+    private Rect MonitorAreaFor(Rect selection)
+    {
+        var whole = new Rect(0, 0, _logicalSize.Width, _logicalSize.Height);
+        if (_monitorBounds.Length == 0)
+        {
+            return whole;
+        }
+
+        var center = new Point(selection.X + (selection.Width / 2), selection.Y + (selection.Height / 2));
+        Rect best = Rect.Empty;
+        double bestScore = double.NegativeInfinity;
+        foreach (var m in _monitorBounds)
+        {
+            var dip = new Rect(
+                (m.X - _physicalBounds.X) / _dpiScale,
+                (m.Y - _physicalBounds.Y) / _dpiScale,
+                m.Width / _dpiScale,
+                m.Height / _dpiScale);
+            if (dip.Contains(center))
+            {
+                return dip;
+            }
+
+            var overlap = Rect.Intersect(dip, selection);
+            double score = overlap.IsEmpty ? -DistanceSquared(dip, center) : overlap.Width * overlap.Height;
+            if (score > bestScore)
+            {
+                bestScore = score;
+                best = dip;
+            }
+        }
+
+        return best.IsEmpty ? whole : best;
+    }
+
+    private static double DistanceSquared(Rect r, Point p)
+    {
+        double dx = Math.Max(Math.Max(r.Left - p.X, 0), p.X - r.Right);
+        double dy = Math.Max(Math.Max(r.Top - p.Y, 0), p.Y - r.Bottom);
+        return (dx * dx) + (dy * dy);
     }
 
     /// <summary>
@@ -467,7 +579,7 @@ public sealed class SnipWindow : Window
     {
         _toolbar.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
         var sz = _toolbar.DesiredSize;
-        var pos = ToolbarPlacement.Compute(_selection, sz, _logicalSize);
+        var pos = ToolbarPlacement.Compute(_selection, sz, MonitorAreaFor(_selection));
         Canvas.SetLeft(_toolbar, pos.X);
         Canvas.SetTop(_toolbar, pos.Y);
     }
@@ -606,6 +718,11 @@ public sealed class SnipWindow : Window
             scrollIntervalMs: Math.Clamp(_settings.ScrollIntervalMs, 50, 1000),
             scrollUp: scrollUp,
             maxTiles: Math.Clamp(_settings.ScrollMaxTiles, 10, 500));
+        if (_spansMonitors)
+        {
+            _scrollController.OverlayArea = MonitorAreaFor(_selection);
+        }
+
         _scrollController.CapturingStopped += OnScrollCapturingStopped;
         _scrollController.Cancelled += OnScrollCaptureCancelled;
         _toolbar.SetScrollCaptureActive(true, scrollUp);

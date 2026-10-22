@@ -23,6 +23,19 @@ public static class ToolbarPlacement
         Size viewport,
         double margin = 8,
         double gap = 12)
+        => Compute(selection, toolbarSize, new Rect(0, 0, viewport.Width, viewport.Height), margin, gap);
+
+    /// <summary>
+    /// Same as <see cref="Compute(Rect, Size, Size, double, double)"/> but keeps the toolbar inside
+    /// <paramref name="area"/> (e.g. the monitor holding the selection on a multi-monitor overlay,
+    /// so the toolbar never lands in a gap between monitors of different sizes).
+    /// </summary>
+    public static Point Compute(
+        Rect selection,
+        Size toolbarSize,
+        Rect area,
+        double margin = 8,
+        double gap = 12)
     {
         if (toolbarSize.Width < 1)
         {
@@ -34,16 +47,18 @@ public static class ToolbarPlacement
             toolbarSize.Height = 1;
         }
 
-        double maxX = Math.Max(margin, viewport.Width - toolbarSize.Width - margin);
-        double maxY = Math.Max(margin, viewport.Height - toolbarSize.Height - margin);
+        double minX = area.X + margin;
+        double minY = area.Y + margin;
+        double maxX = Math.Max(minX, area.Right - toolbarSize.Width - margin);
+        double maxY = Math.Max(minY, area.Bottom - toolbarSize.Height - margin);
 
         double x = selection.X + (selection.Width / 2) - (toolbarSize.Width / 2);
         double yBelow = selection.Bottom + gap;
         double yAbove = selection.Y - toolbarSize.Height - gap;
 
         double y;
-        bool belowFits = yBelow + toolbarSize.Height <= viewport.Height - margin;
-        bool aboveFits = yAbove >= margin;
+        bool belowFits = yBelow + toolbarSize.Height <= area.Bottom - margin;
+        bool aboveFits = yAbove >= minY;
         if (belowFits)
         {
             y = yBelow;
@@ -55,11 +70,11 @@ public static class ToolbarPlacement
         else
         {
             // Neither side has full room: clamp into the viewport.
-            y = Math.Clamp(yBelow, margin, maxY);
+            y = Math.Clamp(yBelow, minY, maxY);
         }
 
-        x = Math.Clamp(x, margin, maxX);
-        y = Math.Clamp(y, margin, maxY);
+        x = Math.Clamp(x, minX, maxX);
+        y = Math.Clamp(y, minY, maxY);
         return new Point(x, y);
     }
 }
