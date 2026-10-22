@@ -3,7 +3,6 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
-using System.IO;
 
 using Community.PowerToys.Run.Plugin.Snip.Models;
 
@@ -50,15 +49,20 @@ public static class TranslatorFactory
                 return null;
 
             case TranslatorProvider.HyMT2Sharp:
-                if (string.IsNullOrWhiteSpace(settings.HyMtGgufPath))
+            {
+                var resolved = HyMtModelDownloader.ResolveGgufPath(settings);
+                if (resolved == null)
                 {
-                    return Properties.Resources.tr_err_gguf_path;
-                }
+                    if (string.IsNullOrWhiteSpace(settings.HyMtGgufPath))
+                    {
+                        return Properties.Resources.tr_err_gguf_path;
+                    }
 
-                if (!File.Exists(settings.HyMtGgufPath.Trim()))
-                {
                     return $"{Properties.Resources.tr_err_gguf_missing} {settings.HyMtGgufPath.Trim()}";
                 }
+
+                // Keep settings in sync when falling back to the LocalAppData cache.
+                settings.HyMtGgufPath = resolved;
 
                 if (string.IsNullOrWhiteSpace(settings.TargetLanguage))
                 {
@@ -66,6 +70,7 @@ public static class TranslatorFactory
                 }
 
                 return null;
+            }
 
             default:
                 return Properties.Resources.tr_err_provider_off;

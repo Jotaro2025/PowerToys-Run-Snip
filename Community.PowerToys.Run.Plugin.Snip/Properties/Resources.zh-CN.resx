@@ -309,7 +309,7 @@
     <value>HyMT2Sharp GGUF 路径</value>
   </data>
   <data name="opt_tr_hymt_path_desc" xml:space="preserve">
-    <value>请自行下载 Hy-MT2 GGUF（推荐 2Bit）。插件不捆绑权重包。</value>
+    <value>Hy-MT2 GGUF 路径（推荐 2Bit）。留空则在下载后使用 LocalAppData 缓存。插件不捆绑权重包。</value>
   </data>
   <data name="opt_tr_hymt_backend_label" xml:space="preserve">
     <value>HyMT2Sharp 后端</value>
@@ -325,5 +325,50 @@
   </data>
   <data name="opt_tr_hymt_backend_vulkan" xml:space="preserve">
     <value>Vulkan</value>
+  </data>
+  <data name="opt_tr_hymt_download_label" xml:space="preserve">
+    <value>下载推荐的 2Bit 模型</value>
+  </data>
+  <data name="opt_tr_hymt_download_desc" xml:space="preserve">
+    <value>勾选并保存后，将从 Hugging Face 下载 Hy-MT2-1.8B-2Bit.gguf（约 573MB，Apache-2.0）到 LocalAppData 缓存并自动填入 GGUF 路径；缓存已存在且完整时会跳过。插件不捆绑权重。</value>
+  </data>
+    <data name="tr_download_title" xml:space="preserve">
+    <value>下载 Hy-MT2 模型</value>
+  </data>
+  <data name="tr_download_body" xml:space="preserve">
+    <value>正在从 Hugging Face 下载推荐的 Hy-MT2 2Bit GGUF（约 573MB）到本地缓存，请保持窗口打开。</value>
+  </data>
+  <data name="tr_download_starting" xml:space="preserve">
+    <value>开始下载…</value>
+  </data>
+  <data name="tr_download_progress" xml:space="preserve">
+    <value>已下载 {0} MB / {1} MB</value>
+  </data>
+  <data name="tr_download_progress_unknown" xml:space="preserve">
+    <value>已下载 {0} MB…</value>
+  </data>
+  <data name="tr_download_done" xml:space="preserve">
+    <value>下载完成，已写入 GGUF 路径。</value>
+  </data>
+  <data name="tr_download_cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="tr_download_prompt" xml:space="preserve">
+    <value>HyMT2Sharp 需要本地 GGUF 文件（约 573MB）。是否立即从 Hugging Face 下载推荐的 Hy-MT2 2Bit 模型到本地缓存？</value>
+  </data>
+  <data name="tr_download_settings_ok" xml:space="preserve">
+    <value>Hy-MT2 2Bit GGUF 已就绪：</value>
+  </data>
+  <data name="tr_err_download_network" xml:space="preserve">
+    <value>下载失败（网络错误）：</value>
+  </data>
+  <data name="tr_err_download_disk_full" xml:space="preserve">
+    <value>下载失败：磁盘空间不足。</value>
+  </data>
+  <data name="tr_err_download_incomplete" xml:space="preserve">
+    <value>下载失败：文件不完整，请重试。</value>
+  </data>
+  <data name="tr_err_download_cancelled" xml:space="preserve">
+    <value>已取消下载。</value>
   </data>
 </root>

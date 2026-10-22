@@ -4,11 +4,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Linq;
+using System.Windows;
 using System.Windows.Controls;
 
 using Community.PowerToys.Run.Plugin.Snip.Models;
+using Community.PowerToys.Run.Plugin.Snip.Services;
+using Community.PowerToys.Run.Plugin.Snip.UI;
 using ManagedCommon;
 using Microsoft.PowerToys.Settings.UI.Library;
 using Wox.Plugin;
@@ -34,6 +36,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionHttpModel = "HttpModel";
     private const string OptionHyMtGgufPath = "HyMtGgufPath";
     private const string OptionHyMtBackend = "HyMtBackend";
+    private const string OptionDownloadHyMt = "DownloadRecommendedHyMtModel";
 
     private PluginInitContext _context;
     private string _iconPath;
@@ -138,8 +141,19 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayLabel = Properties.Resources.opt_tr_hymt_path_label,
             DisplayDescription = Properties.Resources.opt_tr_hymt_path_desc,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
-            TextValue = _settings.HyMtGgufPath,
-            PlaceholderText = @"D:\models\Hy-MT2-1.8B-2Bit.gguf",
+            TextValue = string.IsNullOrWhiteSpace(_settings.HyMtGgufPath)
+                && HyMtModelDownloader.IsValidCachedFile(HyMtModelDownloader.DefaultCachePath)
+                ? HyMtModelDownloader.DefaultCachePath
+                : _settings.HyMtGgufPath,
+            PlaceholderText = HyMtModelDownloader.DefaultCachePath,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionDownloadHyMt,
+            DisplayLabel = Properties.Resources.opt_tr_hymt_download_label,
+            DisplayDescription = Properties.Resources.opt_tr_hymt_download_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = false,
         },
         new PluginAdditionalOption()
         {
@@ -266,6 +280,67 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             && Enum.IsDefined(typeof(HyMtBackendKind), backendOpt.ComboBoxValue))
         {
             _settings.HyMtBackend = (HyMtBackendKind)backendOpt.ComboBoxValue;
+        }
+
+        // Action-like checkbox: download recommended GGUF, fill path, then clear the check.
+        var downloadOpt = options.FirstOrDefault(x => x.Key == OptionDownloadHyMt);
+        if (downloadOpt != null && downloadOpt.Value)
+        {
+            downloadOpt.Value = false;
+            TryDownloadRecommendedModel(options);
+        }
+
+        // Prefer an existing LocalAppData cache when the path textbox is empty.
+        if (string.IsNullOrWhiteSpace(_settings.HyMtGgufPath)
+            && HyMtModelDownloader.IsValidCachedFile(HyMtModelDownloader.DefaultCachePath))
+        {
+            ApplyGgufPath(options, HyMtModelDownloader.DefaultCachePath);
+        }
+    }
+
+    private void TryDownloadRecommendedModel(IEnumerable<PluginAdditionalOption> options)
+    {
+        try
+        {
+            var (ok, path, error) = HyMtModelDownloadDialog.ShowDialogAndDownload();
+            if (ok && !string.IsNullOrWhiteSpace(path))
+            {
+                ApplyGgufPath(options, path);
+                MessageBox.Show(
+                    $"{Properties.Resources.tr_download_settings_ok} {path}",
+                    Properties.Resources.tr_download_title,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Information);
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(error))
+            {
+                MessageBox.Show(
+                    error,
+                    Properties.Resources.tr_download_title,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip recommended Hy-MT2 download failed: {ex.Message}", ex, GetType());
+            MessageBox.Show(
+                $"{Properties.Resources.tr_err_download_network} {ex.Message}",
+                Properties.Resources.tr_download_title,
+                MessageBoxButton.OK,
+                MessageBoxImage.Error);
+        }
+    }
+
+    private void ApplyGgufPath(IEnumerable<PluginAdditionalOption> options, string path)
+    {
+        _settings.HyMtGgufPath = path;
+        var pathOpt = options?.FirstOrDefault(x => x.Key == OptionHyMtGgufPath);
+        if (pathOpt != null)
+        {
+            pathOpt.TextValue = path;
         }
     }
 

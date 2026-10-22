@@ -744,7 +744,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
-        ///   Looks up a localized string similar to Download a Hy-MT2 GGUF separately (2Bit recommended). Weights are not shipped with the plugin..
+        ///   Looks up a localized string similar to Path to Hy-MT2 GGUF (2Bit recommended). Leave empty to use the LocalAppData cache after download. Weights are not shipped with the plugin..
         /// </summary>
         public static string opt_tr_hymt_path_desc {
             get {
@@ -789,6 +789,127 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string opt_tr_hymt_backend_vulkan {
             get {
                 return ResourceManager.GetString("opt_tr_hymt_backend_vulkan", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Download recommended 2Bit model.
+        /// </summary>
+        public static string opt_tr_hymt_download_label {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_download_label", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Check and save to download Hy-MT2-1.8B-2Bit.gguf.
+        /// </summary>
+        public static string opt_tr_hymt_download_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_download_desc", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download Hy-MT2 model.
+        /// </summary>
+        public static string tr_download_title {
+            get {
+                return ResourceManager.GetString("tr_download_title", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Downloading the recommended Hy-MT2 2Bit GGUF.
+        /// </summary>
+        public static string tr_download_body {
+            get {
+                return ResourceManager.GetString("tr_download_body", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Starting download….
+        /// </summary>
+        public static string tr_download_starting {
+            get {
+                return ResourceManager.GetString("tr_download_starting", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Downloaded {0} MB / {1} MB.
+        /// </summary>
+        public static string tr_download_progress {
+            get {
+                return ResourceManager.GetString("tr_download_progress", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Downloaded {0} MB….
+        /// </summary>
+        public static string tr_download_progress_unknown {
+            get {
+                return ResourceManager.GetString("tr_download_progress_unknown", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download complete. GGUF path has been set..
+        /// </summary>
+        public static string tr_download_done {
+            get {
+                return ResourceManager.GetString("tr_download_done", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Cancel.
+        /// </summary>
+        public static string tr_download_cancel {
+            get {
+                return ResourceManager.GetString("tr_download_cancel", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to HyMT2Sharp needs a local GGUF file.
+        /// </summary>
+        public static string tr_download_prompt {
+            get {
+                return ResourceManager.GetString("tr_download_prompt", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Hy-MT2 2Bit GGUF is ready:.
+        /// </summary>
+        public static string tr_download_settings_ok {
+            get {
+                return ResourceManager.GetString("tr_download_settings_ok", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download failed (network error):.
+        /// </summary>
+        public static string tr_err_download_network {
+            get {
+                return ResourceManager.GetString("tr_err_download_network", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download failed: disk is full..
+        /// </summary>
+        public static string tr_err_download_disk_full {
+            get {
+                return ResourceManager.GetString("tr_err_download_disk_full", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download failed: incomplete file. Please try again..
+        /// </summary>
+        public static string tr_err_download_incomplete {
+            get {
+                return ResourceManager.GetString("tr_err_download_incomplete", resourceCulture);
+            }
+        }
+        /// <summary>
+        ///   Looks up a localized string similar to Download cancelled..
+        /// </summary>
+        public static string tr_err_download_cancelled {
+            get {
+                return ResourceManager.GetString("tr_err_download_cancelled", resourceCulture);
             }
         }
 
