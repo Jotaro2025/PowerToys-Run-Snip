@@ -706,7 +706,9 @@ public sealed class SnipWindow : Window
             return false;
         }
 
-        var (ok, path, downloadError) = HyMtModelDownloadDialog.ShowDialogAndDownload(owner: this);
+        var (ok, path, downloadError) = HyMtModelDownloadDialog.ShowDialogAndDownload(
+            owner: this,
+            customDownloadUrl: _settings.HyMtCustomDownloadUrl);
         if (!ok || string.IsNullOrWhiteSpace(path))
         {
             MessageBox.Show(
@@ -718,6 +720,7 @@ public sealed class SnipWindow : Window
         }
 
         _settings.HyMtGgufPath = path;
+        HyMtGgufPathPersister.Persist(path);
         return true;
     }
 

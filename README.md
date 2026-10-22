@@ -78,7 +78,8 @@ PowerToys Run（PowerToys 启动器/搜索）的区域截屏插件，功能移�
      3. **Hugging Face**（兜底）：`https://huggingface.co/tencent/Hy-MT2-1.8B-2Bit-GGUF/resolve/main/Hy-MT2-1.8B-2Bit.gguf`
    - 某一源中途失败会自动换下一个（保留 `.downloading` 断点；支持 HTTP Range 续传，源不支持则该源整文件重下）；全部失败时提示检查网络 / 魔搭
    - 下载完成后校验官方 SHA-256，不匹配则**删除并拒绝**该文件，改试下一源
-   - 下载成功后会自动填入 `HyMtGgufPath`；缓存已存在且体积看起来完整时会跳过重复下载
+   - 下载成功后会自动填入 `HyMtGgufPath`，并写回 PowerToys Run 的 `settings.json`（同时落盘旁路 `.path` sidecar）；缓存已存在且体积看起来完整时会跳过重复下载
+   - 可选「自定义 GGUF 下载地址」：填写 HTTPS URL 时优先于魔搭 / 镜像链；留空仍为国内优先默认顺序
    - 也可手动下载后在设置里填写任意 GGUF 路径
    - 后端可选自动 / CPU / Vulkan（Vulkan 约需 4GB 显存）。模型首次使用时懒加载，并在进程内按「GGUF 路径 + 后端」缓存，避免每次翻译后释放再重载数 GB 权重；推理串行排队（模型非线程安全）。插件卸载时会显式释放缓存，否则随进程退出清理
 

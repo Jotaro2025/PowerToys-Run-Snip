@@ -371,6 +371,12 @@
   <data name="opt_tr_hymt_download_desc" xml:space="preserve">
     <value>One-shot action: check this box and click Save to start downloading Hy-MT2-1.8B-2Bit.gguf (~573 MB, Apache-2.0) into LocalAppData (ModelScope first, then hf-mirror / Hugging Face) and fill the GGUF path. Incomplete downloads resume on retry. The checkbox does not stay enabled. Skips if the cache already looks valid. Weights are not shipped with the plugin.</value>
   </data>
+  <data name="opt_tr_hymt_custom_url_label" xml:space="preserve">
+    <value>Custom GGUF download URL (optional)</value>
+  </data>
+  <data name="opt_tr_hymt_custom_url_desc" xml:space="preserve">
+    <value>HTTPS URL tried before ModelScope / hf-mirror / Hugging Face when downloading the recommended 2Bit GGUF. Leave empty for the default China-friendly chain. Size and SHA checks still apply.</value>
+  </data>
     <data name="tr_download_title" xml:space="preserve">
     <value>Download Hy-MT2 model</value>
   </data>

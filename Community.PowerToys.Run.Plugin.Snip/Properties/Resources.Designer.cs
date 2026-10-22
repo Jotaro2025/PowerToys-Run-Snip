@@ -913,6 +913,25 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("opt_tr_hymt_download_desc", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Custom GGUF download URL (optional).
+        /// </summary>
+        public static string opt_tr_hymt_custom_url_label {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_custom_url_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to HTTPS URL tried before ModelScope….
+        /// </summary>
+        public static string opt_tr_hymt_custom_url_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_hymt_custom_url_desc", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Download Hy-MT2 model.
         /// </summary>
