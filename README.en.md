@@ -176,6 +176,8 @@ Built with the same rule set as PowerToys (StyleCop + .NET analyzers, warnings a
 
 ## Pack & release
 
+The version comes from `Version` in `plugin.json`; see [CHANGELOG.md](CHANGELOG.md) for changes. Pushing a `v<Version>` tag lets CI attach the artifacts to a GitHub Release.
+
 ```powershell
 # Windows (local PowerToys, or -PowerToysInstallDir)
 .\scripts\pack-release.ps1

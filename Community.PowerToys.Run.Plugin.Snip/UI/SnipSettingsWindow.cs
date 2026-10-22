@@ -751,19 +751,19 @@ public sealed class SnipSettingsWindow : Window
             var dir = Path.GetDirectoryName(typeof(SnipSettingsWindow).Assembly.Location);
             if (string.IsNullOrEmpty(dir))
             {
-                return "1.3.0";
+                return "1.4.0";
             }
 
             var jsonPath = Path.Combine(dir, "plugin.json");
             if (!File.Exists(jsonPath))
             {
-                return "1.3.0";
+                return "1.4.0";
             }
 
             using var doc = JsonDocument.Parse(File.ReadAllText(jsonPath));
             if (doc.RootElement.TryGetProperty("Version", out var v))
             {
-                return v.GetString() ?? "1.3.0";
+                return v.GetString() ?? "1.4.0";
             }
         }
         catch (Exception ex)
@@ -771,7 +771,7 @@ public sealed class SnipSettingsWindow : Window
             Log.Exception($"Snip settings: read plugin.json version failed: {ex.Message}", ex, typeof(SnipSettingsWindow));
         }
 
-        return "1.3.0";
+        return "1.4.0";
     }
 
     private static TextBlock Label(string text)
