@@ -138,7 +138,7 @@
     <value>保存 (Ctrl+S)</value>
   </data>
   <data name="tip_cancel" xml:space="preserve">
-    <value>取消 (Esc)</value>
+    <value>取消 (Esc / 右键)</value>
   </data>
   <data name="tip_done" xml:space="preserve">
     <value>完成 (Enter)</value>
