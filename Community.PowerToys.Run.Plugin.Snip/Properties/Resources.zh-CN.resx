@@ -452,4 +452,79 @@
   <data name="ocr_err_download_all_sources" xml:space="preserve">
     <value>所有 OCR 下载源均失败（nuget.org / 国内 Azure CDN）。请检查网络，或安装 Snip-*-full.zip。</value>
   </data>
+  <data name="cmd_settings_title" xml:space="preserve">
+    <value>设置</value>
+  </data>
+  <data name="cmd_settings_subtitle" xml:space="preserve">
+    <value>打开 Snip 设置窗口（快捷键、翻译引擎、关于）</value>
+  </data>
+  <data name="opt_hotkey_label" xml:space="preserve">
+    <value>全局快捷键</value>
+  </data>
+  <data name="opt_hotkey_desc" xml:space="preserve">
+    <value>无需在 Run 中输入即可开始区域截屏。留空表示禁用（默认）。例如：Ctrl+Shift+S。插件加载期间生效；不会占用 PowerToys Run 自身的启动快捷键。</value>
+  </data>
+  <data name="opt_hotkey_placeholder" xml:space="preserve">
+    <value>留空=禁用（如 Ctrl+Shift+S）</value>
+  </data>
+  <data name="settings_window_title" xml:space="preserve">
+    <value>Snip 设置</value>
+  </data>
+  <data name="settings_tab_general" xml:space="preserve">
+    <value>常规</value>
+  </data>
+  <data name="settings_tab_hotkey" xml:space="preserve">
+    <value>快捷键</value>
+  </data>
+  <data name="settings_tab_translate" xml:space="preserve">
+    <value>翻译</value>
+  </data>
+  <data name="settings_tab_about" xml:space="preserve">
+    <value>关于</value>
+  </data>
+  <data name="settings_save" xml:space="preserve">
+    <value>保存</value>
+  </data>
+  <data name="settings_cancel" xml:space="preserve">
+    <value>取消</value>
+  </data>
+  <data name="settings_browse" xml:space="preserve">
+    <value>浏览…</value>
+  </data>
+  <data name="settings_hotkey_hint" xml:space="preserve">
+    <value>点击输入框后按下修饰键组合（Ctrl / Alt / Shift / Win + 主键）。留空表示禁用，避免意外占用按键。</value>
+  </data>
+  <data name="settings_hotkey_clear" xml:space="preserve">
+    <value>清除</value>
+  </data>
+  <data name="settings_hotkey_disabled" xml:space="preserve">
+    <value>快捷键已禁用（默认）。设置后可无需输入 snip 直接截屏。</value>
+  </data>
+  <data name="settings_hotkey_current" xml:space="preserve">
+    <value>当前：{0}</value>
+  </data>
+  <data name="settings_hotkey_need_modifier" xml:space="preserve">
+    <value>请至少包含一个修饰键（Ctrl / Alt / Shift / Win）。</value>
+  </data>
+  <data name="settings_hotkey_invalid" xml:space="preserve">
+    <value>快捷键无效。</value>
+  </data>
+  <data name="settings_tr_fold_hint" xml:space="preserve">
+    <value>仅显示当前翻译引擎相关字段（PowerToys AdditionalOptions 无法按引擎折叠，故推荐使用本窗口）。</value>
+  </data>
+  <data name="settings_about_version" xml:space="preserve">
+    <value>版本</value>
+  </data>
+  <data name="settings_about_author" xml:space="preserve">
+    <value>作者</value>
+  </data>
+  <data name="settings_about_github" xml:space="preserve">
+    <value>GitHub</value>
+  </data>
+  <data name="settings_about_ocr_note" xml:space="preserve">
+    <value>WeChatOcr NuGet 包（及其随包 OCR 组件）面向学习/研究场景；商业用途请自行评估合规与替代方案。</value>
+  </data>
+  <data name="hotkey_register_failed" xml:space="preserve">
+    <value>注册 Snip 全局快捷键失败</value>
+  </data>
 </root>

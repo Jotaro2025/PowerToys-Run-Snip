@@ -4,8 +4,6 @@
 
 using System;
 using System.IO;
-using System.Text.Json;
-using System.Text.Json.Nodes;
 
 using Wox.Plugin.Logger;
 
@@ -14,6 +12,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// <summary>
 /// Persists the Hy-MT GGUF path into PowerToys Run <c>settings.json</c> (real PT store)
 /// and a small sidecar next to the cache so restarts still resolve the path.
+/// Multi-key patches live in <see cref="SnipSettingsPersister"/>.
 /// </summary>
 internal static class HyMtGgufPathPersister
 {
@@ -97,152 +96,11 @@ internal static class HyMtGgufPathPersister
     internal static bool TryPatchPowerToysRunSettings(string ggufPath, string settingsFilePath)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(settingsFilePath);
-        try
-        {
-            if (!File.Exists(settingsFilePath))
-            {
-                Log.Info(
-                    $"Snip HyMT path persist: PowerToys Run settings not found at {settingsFilePath}; sidecar only.",
-                    typeof(HyMtGgufPathPersister));
-                return false;
-            }
-
-            var json = File.ReadAllText(settingsFilePath).Trim('\0');
-            var root = JsonNode.Parse(json) as JsonObject;
-            if (root == null)
-            {
-                return false;
-            }
-
-            var plugins = FindArray(root, "plugins", "Plugins");
-            if (plugins == null)
-            {
-                return false;
-            }
-
-            JsonObject pluginObj = null;
-            foreach (var node in plugins)
-            {
-                if (node is not JsonObject po)
-                {
-                    continue;
-                }
-
-                var id = GetString(po, "id", "Id");
-                if (string.Equals(id, PluginId, StringComparison.OrdinalIgnoreCase))
-                {
-                    pluginObj = po;
-                    break;
-                }
-            }
-
-            if (pluginObj == null)
-            {
-                Log.Info("Snip HyMT path persist: plugin entry not in settings.json yet; sidecar only.", typeof(HyMtGgufPathPersister));
-                return false;
-            }
-
-            var options = FindArray(pluginObj, "additionalOptions", "AdditionalOptions");
-            if (options == null)
-            {
-                options = new JsonArray();
-                pluginObj["AdditionalOptions"] = options;
-            }
-
-            UpsertTextOption(options, GgufPathOptionKey, ggufPath);
-            UpsertBoolOption(options, DownloadOptionKey, false);
-
-            var tmp = settingsFilePath + ".snip.tmp";
-            var written = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
-            File.WriteAllText(tmp, written);
-            File.Copy(tmp, settingsFilePath, overwrite: true);
-            TryDelete(tmp);
-            Log.Info($"Snip HyMT path persisted to PowerToys Run settings → {ggufPath}", typeof(HyMtGgufPathPersister));
-            return true;
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"Snip HyMT path persist to settings.json failed: {ex.Message}", ex, typeof(HyMtGgufPathPersister));
-            return false;
-        }
-    }
-
-    private static void UpsertTextOption(JsonArray options, string key, string textValue)
-    {
-        foreach (var node in options)
-        {
-            if (node is JsonObject opt && string.Equals(GetString(opt, "key", "Key"), key, StringComparison.Ordinal))
-            {
-                opt["TextValue"] = textValue;
-                return;
-            }
-        }
-
-        options.Add(new JsonObject
-        {
-            ["Key"] = key,
-            ["TextValue"] = textValue,
-        });
-    }
-
-    private static void UpsertBoolOption(JsonArray options, string key, bool value)
-    {
-        foreach (var node in options)
-        {
-            if (node is JsonObject opt && string.Equals(GetString(opt, "key", "Key"), key, StringComparison.Ordinal))
-            {
-                opt["Value"] = value;
-                return;
-            }
-        }
-
-        options.Add(new JsonObject
-        {
-            ["Key"] = key,
-            ["Value"] = value,
-        });
-    }
-
-    private static JsonArray FindArray(JsonObject obj, params string[] names)
-    {
-        foreach (var n in names)
-        {
-            if (obj[n] is JsonArray arr)
-            {
-                return arr;
-            }
-        }
-
-        return null;
-    }
-
-    private static string GetString(JsonObject obj, params string[] names)
-    {
-        foreach (var n in names)
-        {
-            if (obj[n] is JsonValue v && v.TryGetValue<string>(out var s))
-            {
-                return s;
-            }
-        }
-
-        return null;
-    }
-
-    private static void TryDelete(string path)
-    {
-        try
-        {
-            if (File.Exists(path))
-            {
-                File.Delete(path);
-            }
-        }
-        catch (IOException)
-        {
-        }
-        catch (UnauthorizedAccessException)
-        {
-        }
+        return SnipSettingsPersister.TryPatchPowerToysRunSettings(
+            [
+                SnipSettingsPersister.OptionPatch.Text(GgufPathOptionKey, ggufPath),
+                SnipSettingsPersister.OptionPatch.Bool(DownloadOptionKey, false),
+            ],
+            settingsFilePath);
     }
 }

@@ -1151,5 +1151,230 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        /// <summary>
+        ///   Looks up a localized string similar to Settings.
+        /// </summary>
+        public static string cmd_settings_title {
+            get {
+                return ResourceManager.GetString("cmd_settings_title", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Open the Snip settings window (hotkey, translator, about).
+        /// </summary>
+        public static string cmd_settings_subtitle {
+            get {
+                return ResourceManager.GetString("cmd_settings_subtitle", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Global hotkey.
+        /// </summary>
+        public static string opt_hotkey_label {
+            get {
+                return ResourceManager.GetString("opt_hotkey_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Start a region snip without typing in Run. Leave empty to….
+        /// </summary>
+        public static string opt_hotkey_desc {
+            get {
+                return ResourceManager.GetString("opt_hotkey_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Empty = disabled (e.g. Ctrl+Shift+S).
+        /// </summary>
+        public static string opt_hotkey_placeholder {
+            get {
+                return ResourceManager.GetString("opt_hotkey_placeholder", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Snip Settings.
+        /// </summary>
+        public static string settings_window_title {
+            get {
+                return ResourceManager.GetString("settings_window_title", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to General.
+        /// </summary>
+        public static string settings_tab_general {
+            get {
+                return ResourceManager.GetString("settings_tab_general", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Hotkey.
+        /// </summary>
+        public static string settings_tab_hotkey {
+            get {
+                return ResourceManager.GetString("settings_tab_hotkey", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Translate.
+        /// </summary>
+        public static string settings_tab_translate {
+            get {
+                return ResourceManager.GetString("settings_tab_translate", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to About.
+        /// </summary>
+        public static string settings_tab_about {
+            get {
+                return ResourceManager.GetString("settings_tab_about", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Save.
+        /// </summary>
+        public static string settings_save {
+            get {
+                return ResourceManager.GetString("settings_save", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Cancel.
+        /// </summary>
+        public static string settings_cancel {
+            get {
+                return ResourceManager.GetString("settings_cancel", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Browse….
+        /// </summary>
+        public static string settings_browse {
+            get {
+                return ResourceManager.GetString("settings_browse", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Click the box and press a modifier combination (Ctrl / Al….
+        /// </summary>
+        public static string settings_hotkey_hint {
+            get {
+                return ResourceManager.GetString("settings_hotkey_hint", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Clear.
+        /// </summary>
+        public static string settings_hotkey_clear {
+            get {
+                return ResourceManager.GetString("settings_hotkey_clear", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Hotkey disabled (default). Set one to start snip without ….
+        /// </summary>
+        public static string settings_hotkey_disabled {
+            get {
+                return ResourceManager.GetString("settings_hotkey_disabled", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Current: {0}.
+        /// </summary>
+        public static string settings_hotkey_current {
+            get {
+                return ResourceManager.GetString("settings_hotkey_current", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Include at least one modifier (Ctrl / Alt / Shift / Win)..
+        /// </summary>
+        public static string settings_hotkey_need_modifier {
+            get {
+                return ResourceManager.GetString("settings_hotkey_need_modifier", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Invalid hotkey..
+        /// </summary>
+        public static string settings_hotkey_invalid {
+            get {
+                return ResourceManager.GetString("settings_hotkey_invalid", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Engine-specific fields are shown only for the selected tr….
+        /// </summary>
+        public static string settings_tr_fold_hint {
+            get {
+                return ResourceManager.GetString("settings_tr_fold_hint", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Version.
+        /// </summary>
+        public static string settings_about_version {
+            get {
+                return ResourceManager.GetString("settings_about_version", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Author.
+        /// </summary>
+        public static string settings_about_author {
+            get {
+                return ResourceManager.GetString("settings_about_author", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to GitHub.
+        /// </summary>
+        public static string settings_about_github {
+            get {
+                return ResourceManager.GetString("settings_about_github", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The WeChatOcr NuGet package (and its bundled OCR componen….
+        /// </summary>
+        public static string settings_about_ocr_note {
+            get {
+                return ResourceManager.GetString("settings_about_ocr_note", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Failed to register Snip global hotkey.
+        /// </summary>
+        public static string hotkey_register_failed {
+            get {
+                return ResourceManager.GetString("hotkey_register_failed", resourceCulture);
+            }
+        }
+
     }
 }

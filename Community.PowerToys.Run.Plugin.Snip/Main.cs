@@ -29,6 +29,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionCopyAfterCapture = "CopyAfterCapture";
     private const string OptionAutoSaveAfterCapture = "AutoSaveAfterCapture";
     private const string OptionCaptureDelayMs = "CaptureDelayMs";
+    private const string OptionGlobalHotkey = "GlobalHotkey";
     private const string OptionTranslatorProvider = "TranslatorProvider";
     private const string OptionTargetLanguage = "TargetLanguage";
     private const string OptionHttpBaseUrl = "HttpBaseUrl";
@@ -42,6 +43,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private PluginInitContext _context;
     private string _iconPath;
     private SnipSettings _settings = new SnipSettings();
+    private GlobalHotkeyService _hotkeyService;
     private bool _disposed;
 
     public string Name => Properties.Resources.plugin_name;
@@ -87,10 +89,20 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             NumberBoxSmallChange = 10,
             NumberBoxLargeChange = 100,
         },
+        new PluginAdditionalOption()
+        {
+            Key = OptionGlobalHotkey,
+            DisplayLabel = Properties.Resources.opt_hotkey_label,
+            DisplayDescription = Properties.Resources.opt_hotkey_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.GlobalHotkey,
+            PlaceholderText = Properties.Resources.opt_hotkey_placeholder,
+        },
 
         // PowerToys Run AdditionalOptions has no IsVisible / conditional-fold API
         // (settings UI shows every option). Engine-specific fields use «HTTP ·» /
         // «HyMT ·» label prefixes so Off / HTTP / HyMT groups stay scannable.
+        // Prefer the dedicated settings window (Run → Settings) which folds fields.
         new PluginAdditionalOption()
         {
             Key = OptionTranslatorProvider,
@@ -191,9 +203,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
         var commands = new List<Result>
         {
-            CreateCommand(
+            CreateRegionCommand(
                 Properties.Resources.cmd_region_title,
                 Properties.Resources.cmd_region_subtitle),
+            CreateSettingsCommand(
+                Properties.Resources.cmd_settings_title,
+                Properties.Resources.cmd_settings_subtitle),
         };
 
         var search = query.Search?.Trim() ?? string.Empty;
@@ -209,7 +224,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         return filtered;
     }
 
-    private Result CreateCommand(string title, string subtitle)
+    private Result CreateRegionCommand(string title, string subtitle)
     {
         return new Result
         {
@@ -225,12 +240,29 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         };
     }
 
+    private Result CreateSettingsCommand(string title, string subtitle)
+    {
+        return new Result
+        {
+            Title = title,
+            SubTitle = subtitle,
+            IcoPath = _iconPath,
+            QueryTextDisplay = title,
+            Action = _ =>
+            {
+                OpenSettingsWindow();
+                return true;
+            },
+        };
+    }
+
     public void Init(PluginInitContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         _context = context;
         _context.API.ThemeChanged += OnThemeChanged;
         UpdateIconPath(_context.API.GetCurrentTheme());
+        ApplyHotkeyRegistration();
     }
 
     public string GetTranslatedPluginTitle() => Properties.Resources.plugin_name;
@@ -239,6 +271,8 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
     public Control CreateSettingPanel()
     {
+        // Prefer Run → Settings command + AdditionalOptions on the PowerToys page.
+        // Returning a custom panel is optional and easy to break across PT versions.
         throw new NotImplementedException();
     }
 
@@ -259,6 +293,9 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         {
             _settings.CaptureDelayMs = (int)Math.Min(2000, delay.Value);
         }
+
+        var hotkey = options.FirstOrDefault(x => x.Key == OptionGlobalHotkey)?.TextValue;
+        _settings.GlobalHotkey = hotkey != null ? HotkeyParser.Normalize(hotkey) : string.Empty;
 
         var providerOpt = options.FirstOrDefault(x => x.Key == OptionTranslatorProvider);
         if (providerOpt != null
@@ -304,6 +341,40 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         {
             ApplyGgufPath(options, HyMtModelDownloader.DefaultCachePath);
         }
+
+        ApplyHotkeyRegistration();
+    }
+
+    private void OpenSettingsWindow()
+    {
+        SnipController.ShowSettingsWindow(_settings, onSaved: () =>
+        {
+            ApplyHotkeyRegistration();
+        });
+    }
+
+    private void ApplyHotkeyRegistration()
+    {
+        // Register on the dedicated STA UI thread so the message-only HWND has a pump.
+        SnipController.InvokeOnUiThread(() =>
+        {
+            try
+            {
+                _hotkeyService ??= new GlobalHotkeyService();
+                if (!_hotkeyService.TryRegister(
+                        _settings.GlobalHotkey,
+                        () => SnipController.Start(_settings, Notify),
+                        out var error))
+                {
+                    Notify(Properties.Resources.hotkey_register_failed, error ?? string.Empty);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Exception($"Snip hotkey register failed: {ex.Message}", ex, GetType());
+                Notify(Properties.Resources.hotkey_register_failed, ex.Message);
+            }
+        });
     }
 
     private void TryDownloadRecommendedModel(IEnumerable<PluginAdditionalOption> options)
@@ -379,6 +450,28 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             if (_context != null && _context.API != null)
             {
                 _context.API.ThemeChanged -= OnThemeChanged;
+            }
+
+            if (_hotkeyService != null)
+            {
+                var hotkey = _hotkeyService;
+                _hotkeyService = null;
+                try
+                {
+                    SnipController.InvokeOnUiThreadSync(() => hotkey.Dispose());
+                }
+                catch (Exception ex)
+                {
+                    Log.Exception($"Snip hotkey dispose failed: {ex.Message}", ex, GetType());
+                    try
+                    {
+                        hotkey.Dispose();
+                    }
+                    catch (Exception inner)
+                    {
+                        Log.Exception($"Snip hotkey dispose fallback failed: {inner.Message}", inner, GetType());
+                    }
+                }
             }
 
             // Release process-wide HyMT weights if loaded; otherwise process exit cleans up.

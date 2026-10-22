@@ -8,7 +8,7 @@ PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选�
 
 ## 功能
 
-在 PowerToys Run 中输入关键词 `snip`，挂载**区域截屏**一条命令（遮罩框选 + 标注 / OCR / 译图 / 钉住；需要整屏时框选整块显示器即可，不再单独提供全屏到剪贴板 / 全屏保存入口）。仓库与插件描述以区域为主。
+在 PowerToys Run 中输入关键词 `snip`，挂载**区域截屏**与**设置**两条命令（遮罩框选 + 标注 / OCR / 译图 / 钉住；需要整屏时框选整块显示器即可，不再单独提供全屏到剪贴板 / 全屏保存入口）。也可在设置中配置全局快捷键直接截屏。仓库与插件描述以区域为主。
 
 区域截屏编辑器能力：
 
@@ -26,17 +26,20 @@ PowerToys Run（PowerToys 启动器/搜索）的**区域截屏**插件：框选�
 - **会话保持（OCR / 翻译 / 钉住）**：点文字提取或图片翻译时先隐藏全屏遮罩，结果窗关闭后自动恢复同一选区与标注（仿微信截图可再试）；钉住不关遮罩。Enter / 复制 / 保存 / Esc 取消仍结束本次截屏；Esc 取消会顺带关掉未关的 OCR/翻译结果窗，避免残留
 - 多显示器 + 高 DPI 正确适配（取光标所在屏幕，按物理像素捕获；GDI 用 CreateDIBSection 直写 top-down BGRA，**跨线程保留 DIB 所有权**，UI STA 上用 `Span<T>` 拷入 `WriteableBitmap.BackBuffer` 后再 `DeleteObject`，无全帧 `CapturedFrame.Pixels` 中间 `byte[]`；BitBlt 仍在线程池；大图叠层预览降采样后物化并 Freeze，避免首次合成懒计算）
 
-插件设置（PowerToys 设置 → PowerToys Run → Snip）：
+插件设置：
 
+- **专用设置窗口**（推荐）：PowerToys Run 输入 `snip` → 选择「设置」；含常规 / 快捷键 / 翻译 / 关于。翻译页可按引擎折叠字段；可配置**全局快捷键**（默认空=禁用，避免抢键）直接开始区域截屏。保存时写回 PowerToys Run `settings.json`，与系统设置页同步。
+- PowerToys 设置 → PowerToys Run → Snip 的 AdditionalOptions 仍可用（保存目录、复制、自动保存、延迟、全局快捷键、翻译相关项）。
 - 保存目录（留空则用 `图片\Snip`）
 - 截屏后复制到剪贴板（默认开）
 - 区域截屏后自动保存
 - 截屏延迟（毫秒，默认 150，给 PowerToys Run 隐藏窗口的时间）
+- **全局快捷键**（如 `Ctrl+Shift+S`；留空禁用）
 - **图片翻译引擎**：`关闭` / `HTTP（OpenAI 兼容）` / `HyMT2Sharp（本地 GGUF）`（默认关闭）
 - 目标语言（标签前缀 `翻译 ·`）
 - HTTP 相关项标签前缀 `HTTP ·`：Base URL、可选 API Key、模型名
 - HyMT 相关项标签前缀 `HyMT ·`：GGUF 路径、**下载推荐的 2Bit 模型**（勾选后保存触发）、自定义下载 URL、后端（自动 / CPU / Vulkan）
-- **设置折叠限制**：PowerToys Run 的 `AdditionalOptions` **不能**按引擎动态隐藏字段（无 `IsVisible` / 条件折叠 API；改引擎后设置页也不会即时重刷选项列表）。因此采用前缀分组降低噪音；引擎说明里也有同一提示
+- **设置折叠限制**：PowerToys Run 的 `AdditionalOptions` **不能**按引擎动态隐藏字段；请用专用设置窗口按引擎折叠。系统设置页仍用前缀分组降低噪音
 
 界面语言跟随 PowerToys（内置英文 + 简体中文）。
 
