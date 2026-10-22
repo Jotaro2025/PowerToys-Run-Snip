@@ -649,7 +649,7 @@ public sealed class SnipWindow : Window
         var error = TranslatorFactory.Validate(_settings);
         if (error != null)
         {
-            MessageBox.Show(
+            ShowOverlayMessageBox(
                 error,
                 Properties.Resources.tip_translate,
                 MessageBoxButton.OK,
@@ -686,14 +686,14 @@ public sealed class SnipWindow : Window
             return true;
         }
 
-        var answer = MessageBox.Show(
+        var answer = ShowOverlayMessageBox(
             Properties.Resources.ocr_download_prompt,
             Properties.Resources.tip_ocr,
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes)
         {
-            MessageBox.Show(
+            ShowOverlayMessageBox(
                 Properties.Resources.ocr_err_need_install,
                 Properties.Resources.tip_ocr,
                 MessageBoxButton.OK,
@@ -701,10 +701,11 @@ public sealed class SnipWindow : Window
             return false;
         }
 
-        var (ok, path, downloadError) = OcrAssetsDownloadDialog.ShowDialogAndDownload(owner: this);
+        var (ok, path, downloadError) = RunWithOverlayNotTopmost(
+            () => OcrAssetsDownloadDialog.ShowDialogAndDownload(owner: this));
         if (!ok || string.IsNullOrWhiteSpace(path))
         {
-            MessageBox.Show(
+            ShowOverlayMessageBox(
                 downloadError ?? Properties.Resources.ocr_err_download_network,
                 Properties.Resources.ocr_download_title,
                 MessageBoxButton.OK,
@@ -733,14 +734,14 @@ public sealed class SnipWindow : Window
             return true;
         }
 
-        var answer = MessageBox.Show(
+        var answer = ShowOverlayMessageBox(
             Properties.Resources.tr_download_prompt,
             Properties.Resources.tip_translate,
             MessageBoxButton.YesNo,
             MessageBoxImage.Question);
         if (answer != MessageBoxResult.Yes)
         {
-            MessageBox.Show(
+            ShowOverlayMessageBox(
                 Properties.Resources.tr_err_gguf_path,
                 Properties.Resources.tip_translate,
                 MessageBoxButton.OK,
@@ -748,12 +749,13 @@ public sealed class SnipWindow : Window
             return false;
         }
 
-        var (ok, path, downloadError) = HyMtModelDownloadDialog.ShowDialogAndDownload(
-            owner: this,
-            customDownloadUrl: _settings.HyMtCustomDownloadUrl);
+        var (ok, path, downloadError) = RunWithOverlayNotTopmost(
+            () => HyMtModelDownloadDialog.ShowDialogAndDownload(
+                owner: this,
+                customDownloadUrl: _settings.HyMtCustomDownloadUrl));
         if (!ok || string.IsNullOrWhiteSpace(path))
         {
-            MessageBox.Show(
+            ShowOverlayMessageBox(
                 downloadError ?? Properties.Resources.tr_err_download_network,
                 Properties.Resources.tr_download_title,
                 MessageBoxButton.OK,
@@ -764,6 +766,48 @@ public sealed class SnipWindow : Window
         _settings.HyMtGgufPath = path;
         HyMtGgufPathPersister.Persist(path);
         return true;
+    }
+
+    /// <summary>
+    /// Shows a MessageBox owned by this overlay while briefly clearing
+    /// <see cref="Window.Topmost"/> so the dialog is not hidden behind the
+    /// fullscreen snip window (slim OCR / HyMT download prompts).
+    /// </summary>
+    private MessageBoxResult ShowOverlayMessageBox(
+        string message,
+        string caption,
+        MessageBoxButton button,
+        MessageBoxImage icon)
+    {
+        var wasTopmost = Topmost;
+        try
+        {
+            Topmost = false;
+            return MessageBox.Show(this, message, caption, button, icon);
+        }
+        finally
+        {
+            Topmost = wasTopmost;
+        }
+    }
+
+    /// <summary>
+    /// Runs <paramref name="action"/> with overlay Topmost cleared so owned
+    /// modal download dialogs stay visible above the snip chrome.
+    /// </summary>
+    private T RunWithOverlayNotTopmost<T>(Func<T> action)
+    {
+        ArgumentNullException.ThrowIfNull(action);
+        var wasTopmost = Topmost;
+        try
+        {
+            Topmost = false;
+            return action();
+        }
+        finally
+        {
+            Topmost = wasTopmost;
+        }
     }
 
     /// <summary>
