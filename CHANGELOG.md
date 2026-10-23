@@ -6,9 +6,8 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 The single source of the version is `Version` in `plugin.json`; pushing a `v<Version>` tag attaches the installers and zips to a GitHub Release.
 
-## [1.4.0] - 未发布 / Unreleased
+## [1.4.0] - 2026-10-23
 
-> 打 `v1.4.0` 标签发布时填写日期。 / Fill in the date when tagging `v1.4.0`.
 
 ### 新增 / Added
 
