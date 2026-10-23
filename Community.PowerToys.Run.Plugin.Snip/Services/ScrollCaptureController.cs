@@ -527,16 +527,41 @@ public sealed class ScrollCaptureController
             BeginPointerHoldAtCenter();
         }
 
-        if (!Win32CaptureService.TrySendWheelAt(cx, cy, delta, _overlayHwnd))
+        if (Win32CaptureService.TrySendWheelAt(cx, cy, delta, _overlayHwnd))
         {
-            Log.Warn(
-                $"Snip scroll SimulateWheel failed at ({cx},{cy}) — no underlay HWND",
-                typeof(ScrollCaptureController));
-            SnipVerbose.Scroll($"[scroll] SimulateWheel failed at ({cx},{cy})");
-            return false;
+            return true;
         }
 
-        return true;
+        // SendInput / message path failed — try UIA ScrollPattern on the UI STA.
+        if (TryUiaScrollAt(cx, cy, delta))
+        {
+            SnipVerbose.Scroll($"[scroll] SimulateWheel via UIA ScrollPattern at ({cx},{cy})");
+            return true;
+        }
+
+        Log.Warn(
+            $"Snip scroll SimulateWheel failed at ({cx},{cy}) — SendInput/UIA unavailable",
+            typeof(ScrollCaptureController));
+        SnipVerbose.Scroll($"[scroll] SimulateWheel failed at ({cx},{cy})");
+        return false;
+    }
+
+    private bool TryUiaScrollAt(int physicalX, int physicalY, int delta)
+    {
+        try
+        {
+            if (_dispatcher.CheckAccess())
+            {
+                return UiaScrollFallback.TryScrollAt(physicalX, physicalY, delta);
+            }
+
+            return _dispatcher.Invoke(() => UiaScrollFallback.TryScrollAt(physicalX, physicalY, delta));
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll UIA invoke failed: {ex.Message}", typeof(ScrollCaptureController));
+            return false;
+        }
     }
 
     /// <summary>

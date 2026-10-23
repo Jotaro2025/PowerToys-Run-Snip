@@ -471,6 +471,17 @@ public sealed class Win32CaptureService : ICaptureService
             }
 
             int sendInputErr = Marshal.GetLastWin32Error();
+
+            // UIA ScrollPattern before synthetic WM_MOUSEWHEEL — works when the host
+            // ignores injected messages but exposes a scrollable automation peer.
+            if (UiaScrollFallback.TryScrollAt(physicalX, physicalY, delta))
+            {
+                Log.Info(
+                    $"Snip scroll wheel via UIA after SendInput fail (err={sendInputErr}) at ({physicalX},{physicalY}) delta={delta} target={targetClass}",
+                    typeof(Win32CaptureService));
+                return true;
+            }
+
             if (target == IntPtr.Zero)
             {
                 Log.Warn(
