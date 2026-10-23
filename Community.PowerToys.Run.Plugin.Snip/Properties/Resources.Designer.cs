@@ -1976,5 +1976,13 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
 
+
+        internal static string toolbar_scan_qr => ResourceManager.GetString("toolbar_scan_qr", resourceCulture);
+
+        internal static string qr_detected_prefix => ResourceManager.GetString("qr_detected_prefix", resourceCulture);
+
+        internal static string qr_copy => ResourceManager.GetString("qr_copy", resourceCulture);
+
+        internal static string qr_open_url => ResourceManager.GetString("qr_open_url", resourceCulture);
     }
 }

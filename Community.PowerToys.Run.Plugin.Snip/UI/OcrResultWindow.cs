@@ -27,7 +27,12 @@ public sealed class OcrResultWindow : Window, IDisposable
     private static readonly Color Accent = Color.FromRgb(72, 210, 110);
     private static readonly Color ErrorColor = Color.FromRgb(214, 48, 49);
 
+    private readonly BitmapSource _image;
     private readonly byte[] _png;
+    private readonly Border _qrBanner;
+    private readonly TextBlock _qrPayloadText;
+    private readonly Button _qrCopyButton;
+    private readonly Button _qrOpenUrlButton;
     private readonly TextBox _textBox;
     private readonly Border _overlay;
     private readonly ProgressBar _progress;
@@ -38,6 +43,8 @@ public sealed class OcrResultWindow : Window, IDisposable
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private readonly SnipSettings _settings;
     private readonly int _sourceHeight;
+    private Uri _detectedHttpUri;
+    private string _detectedCodeText;
     private bool _closed;
     private bool _disposed;
 
@@ -46,6 +53,7 @@ public sealed class OcrResultWindow : Window, IDisposable
         ArgumentNullException.ThrowIfNull(image);
         ArgumentNullException.ThrowIfNull(png);
 
+        _image = image;
         _png = png;
         _settings = settings ?? new SnipSettings();
         _sourceHeight = image.PixelHeight;
@@ -88,10 +96,52 @@ public sealed class OcrResultWindow : Window, IDisposable
         Grid.SetColumn(imageHost, 0);
         root.Children.Add(imageHost);
 
-        // Right: recognized text, with a busy / error overlay on top.
+        // Right: recognized QR/barcode banner (when detected) + recognized text, with a busy / error overlay on top.
         var textHost = new Grid();
+        textHost.RowDefinitions.Add(new RowDefinition { Height = GridLength.Auto });
+        textHost.RowDefinitions.Add(new RowDefinition { Height = new GridLength(1, GridUnitType.Star) });
         Grid.SetColumn(textHost, 2);
         root.Children.Add(textHost);
+
+        _qrPayloadText = new TextBlock
+        {
+            VerticalAlignment = VerticalAlignment.Center,
+            TextTrimming = TextTrimming.CharacterEllipsis,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(28, 110, 62)),
+        };
+        _qrCopyButton = CreateButton(Properties.Resources.qr_copy, isDefault: false);
+        _qrCopyButton.MinWidth = 72;
+        _qrCopyButton.Height = 26;
+        _qrCopyButton.Click += (sender, e) => CopyText(_detectedCodeText);
+
+        _qrOpenUrlButton = CreateButton(Properties.Resources.qr_open_url, isDefault: false);
+        _qrOpenUrlButton.MinWidth = 72;
+        _qrOpenUrlButton.Height = 26;
+        _qrOpenUrlButton.Visibility = Visibility.Collapsed;
+        _qrOpenUrlButton.Click += (sender, e) => OpenDetectedUrl();
+
+        var qrDock = new DockPanel { LastChildFill = true };
+        var qrButtons = new StackPanel { Orientation = Orientation.Horizontal };
+        DockPanel.SetDock(qrButtons, Dock.Right);
+        qrButtons.Children.Add(_qrCopyButton);
+        qrButtons.Children.Add(_qrOpenUrlButton);
+        qrDock.Children.Add(qrButtons);
+        qrDock.Children.Add(_qrPayloadText);
+
+        _qrBanner = new Border
+        {
+            Background = new SolidColorBrush(Color.FromRgb(232, 248, 238)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(160, 224, 182)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(8, 6, 8, 6),
+            Margin = new Thickness(0, 0, 0, 8),
+            Visibility = Visibility.Collapsed,
+            Child = qrDock,
+        };
+        Grid.SetRow(_qrBanner, 0);
+        textHost.Children.Add(_qrBanner);
 
         _textBox = new TextBox
         {
@@ -106,6 +156,7 @@ public sealed class OcrResultWindow : Window, IDisposable
         };
         _textBox.SelectionChanged += (sender, e) => UpdateCopyButtons();
         _textBox.TextChanged += (sender, e) => UpdateCopyButtons();
+        Grid.SetRow(_textBox, 1);
         textHost.Children.Add(_textBox);
 
         _progress = new ProgressBar
@@ -136,6 +187,7 @@ public sealed class OcrResultWindow : Window, IDisposable
             Background = new SolidColorBrush(Color.FromArgb(235, 255, 255, 255)),
             Child = overlayContent,
         };
+        Grid.SetRow(_overlay, 1);
         textHost.Children.Add(_overlay);
 
         // Bottom: status on the left, actions on the right.
@@ -194,12 +246,20 @@ public sealed class OcrResultWindow : Window, IDisposable
         SetBusy(OcrService.IsBusy(_settings)
             ? Properties.Resources.ocr_busy_waiting
             : Properties.Resources.ocr_busy);
+        var scannedCodes = QrAndBarcodeScanner.Scan(_image);
+        ApplyDetectedCodes(scannedCodes);
+
         try
         {
             var text = await OcrService.RecognizeAsync(_png, _settings, _cts.Token);
             if (_closed)
             {
                 return;
+            }
+
+            if (string.IsNullOrWhiteSpace(text) && !string.IsNullOrEmpty(_detectedCodeText))
+            {
+                text = _detectedCodeText;
             }
 
             if (string.IsNullOrWhiteSpace(text))
@@ -296,6 +356,43 @@ public sealed class OcrResultWindow : Window, IDisposable
         var hasText = _textBox.IsEnabled && !string.IsNullOrEmpty(_textBox.Text);
         _copyButton.IsEnabled = hasText;
         _copyAllButton.IsEnabled = hasText;
+    }
+
+    private void ApplyDetectedCodes(System.Collections.Generic.IReadOnlyList<QrAndBarcodeScanner.ScanResult> codes)
+    {
+        if (codes == null || codes.Count == 0)
+        {
+            _qrBanner.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        var first = codes[0];
+        _detectedCodeText = first.Text;
+        _detectedHttpUri = first.HttpUri;
+        _qrPayloadText.Text = $"{Properties.Resources.qr_detected_prefix}[{first.Format}] {first.Text}";
+        _qrPayloadText.ToolTip = first.Text;
+        _qrOpenUrlButton.Visibility = _detectedHttpUri != null ? Visibility.Visible : Visibility.Collapsed;
+        _qrBanner.Visibility = Visibility.Visible;
+    }
+
+    private void OpenDetectedUrl()
+    {
+        if (_detectedHttpUri == null)
+        {
+            return;
+        }
+
+        try
+        {
+            System.Diagnostics.Process.Start(new System.Diagnostics.ProcessStartInfo(_detectedHttpUri.AbsoluteUri)
+            {
+                UseShellExecute = true,
+            });
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip QR open URL failed: {ex.Message}", ex, GetType());
+        }
     }
 
     private void CopyText(string text)

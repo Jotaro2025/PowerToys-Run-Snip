@@ -741,4 +741,16 @@
   <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
     <value>Elevated target — Esc/Space/Stop still work; wheel may be blocked by UIPI</value>
   </data>
+  <data name="toolbar_scan_qr" xml:space="preserve">
+    <value>Scan QR / Barcode</value>
+  </data>
+  <data name="qr_detected_prefix" xml:space="preserve">
+    <value>QR / Barcode: </value>
+  </data>
+  <data name="qr_copy" xml:space="preserve">
+    <value>Copy Code</value>
+  </data>
+  <data name="qr_open_url" xml:space="preserve">
+    <value>Open Link</value>
+  </data>
 </root>

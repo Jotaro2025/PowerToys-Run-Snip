@@ -741,4 +741,16 @@
   <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
     <value>目标已提升 — Esc/空格/停止仍可用；滚轮可能被 UIPI 拦截</value>
   </data>
+  <data name="toolbar_scan_qr" xml:space="preserve">
+    <value>识别二维码 / 条形码</value>
+  </data>
+  <data name="qr_detected_prefix" xml:space="preserve">
+    <value>识别到二维码/条码：</value>
+  </data>
+  <data name="qr_copy" xml:space="preserve">
+    <value>复制码内容</value>
+  </data>
+  <data name="qr_open_url" xml:space="preserve">
+    <value>打开链接</value>
+  </data>
 </root>
