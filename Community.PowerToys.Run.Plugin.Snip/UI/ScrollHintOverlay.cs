@@ -111,6 +111,14 @@ public sealed class ScrollHintOverlay : Border
         Subtitle = Properties.Resources.scroll_hint_paused_sub;
     }
 
+    /// <summary>Warn that the underlay is higher integrity (UIPI may block wheel).</summary>
+    public void ShowUipiWarning()
+    {
+        BorderBrush = new SolidColorBrush(Color.FromArgb(220, 240, 160, 40));
+        Title = Properties.Resources.scroll_hint_uipi;
+        Subtitle = Properties.Resources.scroll_hint_uipi_sub;
+    }
+
     public void ShowStitchingInProgress()
     {
         BorderBrush = new SolidColorBrush(Color.FromArgb(200, 120, 200, 255));

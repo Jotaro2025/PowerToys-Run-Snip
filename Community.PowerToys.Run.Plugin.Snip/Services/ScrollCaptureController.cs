@@ -174,6 +174,7 @@ public sealed class ScrollCaptureController
 
             // Focus underlay + hold cursor while overlay is hidden so the click hits Edge.
             BeginPointerHoldAtCenter();
+            MaybeWarnElevatedTarget();
 
             // Mouse guard arms once the cursor has been inside the selection, so starting
             // from the toolbar (outside the selection) does not pause immediately.
@@ -329,8 +330,9 @@ public sealed class ScrollCaptureController
         }
         finally
         {
-            EndSessionOverlayHide();
-            DisposeStopGuard();
+            // Strip first, then unhide overlay — avoids z-order race (strip over restored
+            // snip / toolbar flash) when mid-stop and loop exit interleave.
+            RestoreAfterScrollSession();
         }
 
         _active = false;
@@ -404,6 +406,17 @@ public sealed class ScrollCaptureController
         {
             Log.Warn($"Snip scroll stop guard dispose failed: {ex.Message}", typeof(ScrollCaptureController));
         }
+    }
+
+    /// <summary>
+    /// Ordered teardown after scroll: close stop strip → restore snip HWND → release pointer hold.
+    /// Call from loop finally, Stop, and Cancel so mid-stop and auto-stop share one path.
+    /// </summary>
+    private void RestoreAfterScrollSession()
+    {
+        DisposeStopGuard();
+        EndSessionOverlayHide();
+        EndPointerHold();
     }
 
     private void BeginSessionOverlayHide()
@@ -526,6 +539,33 @@ public sealed class ScrollCaptureController
         return true;
     }
 
+    /// <summary>
+    /// Tip when the underlay HWND is higher integrity than this process (UIPI blocks SendInput).
+    /// Overlay is usually session-hidden; the stop strip carries the lasting tip.
+    /// </summary>
+    private void MaybeWarnElevatedTarget()
+    {
+        try
+        {
+            int cx = _captureRect.X + (_captureRect.Width / 2);
+            int cy = _captureRect.Y + (_captureRect.Height / 2);
+            var pt = new Win32.POINT { X = cx, Y = cy };
+            IntPtr target = Win32CaptureService.ResolveScrollTargetAt(pt, _overlayHwnd);
+            if (target == IntPtr.Zero || !ProcessIntegrity.IsHigherThanCurrent(target))
+            {
+                return;
+            }
+
+            PostToOverlay(() => _overlay.ShowUipiWarning());
+            _stopGuard?.SetUipiWarning(true);
+            SnipVerbose.Scroll("[scroll] UIPI: underlay higher integrity than host - tip shown");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll UIPI check failed: {ex.Message}", typeof(ScrollCaptureController));
+        }
+    }
+
     private void BeginPointerHoldAtCenter()
     {
         int cx = _captureRect.X + (_captureRect.Width / 2);
@@ -569,9 +609,7 @@ public sealed class ScrollCaptureController
             _cts?.Dispose();
             _cts = null;
             _active = false;
-            DisposeStopGuard();
-            EndSessionOverlayHide();
-            EndPointerHold();
+            RestoreAfterScrollSession();
             SnipVerbose.Scroll($"[scroll] stopped — {_tiles.Count} raw tile(s) kept");
             await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
@@ -579,6 +617,15 @@ public sealed class ScrollCaptureController
         {
             Log.Exception($"Snip scroll stop failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             _active = false;
+            try
+            {
+                RestoreAfterScrollSession();
+            }
+            catch (Exception restoreEx)
+            {
+                Log.Warn($"Snip scroll stop restore failed: {restoreEx.Message}", typeof(ScrollCaptureController));
+            }
+
             await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
     }
@@ -586,7 +633,8 @@ public sealed class ScrollCaptureController
     /// <summary>Show stopped hint (keep overlay) and raise CapturingStopped once.</summary>
     private async Task FinishCapturingUiAsync(bool autoStopped)
     {
-        EndPointerHold();
+        // Idempotent: loop finally / Stop may have already restored.
+        RestoreAfterScrollSession();
         if (_tiles.Count > 0)
         {
             _stoppedPending = true;
@@ -710,9 +758,7 @@ public sealed class ScrollCaptureController
             _cts = null;
             _active = false;
             _stoppedPending = false;
-            DisposeStopGuard();
-            EndSessionOverlayHide();
-            EndPointerHold();
+            RestoreAfterScrollSession();
             HideOverlay();
             DisposeTiles();
             await InvokeCancelledAsync().ConfigureAwait(false);
@@ -724,6 +770,7 @@ public sealed class ScrollCaptureController
             _stoppedPending = false;
             try
             {
+                RestoreAfterScrollSession();
                 HideOverlay();
                 DisposeTiles();
             }

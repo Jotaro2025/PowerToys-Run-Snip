@@ -23,6 +23,7 @@ public sealed class ScrollStopStripWindow : Window
     private bool _closing;
     private bool _paused;
     private bool _hotkeyConflict;
+    private bool _uipi;
     private int _tileCount;
 
     public event Action StopClicked;
@@ -149,11 +150,25 @@ public sealed class ScrollStopStripWindow : Window
             _tip.Text = Properties.Resources.scroll_stop_strip_conflict_tip;
             _tip.Foreground = new SolidColorBrush(Color.FromRgb(255, 196, 96));
         }
+        else if (_uipi)
+        {
+            _tip.Text = Properties.Resources.scroll_stop_strip_uipi_tip;
+            _tip.Foreground = new SolidColorBrush(Color.FromRgb(255, 196, 96));
+        }
         else
         {
             _tip.Text = Properties.Resources.scroll_stop_strip_tip;
             _tip.Foreground = new SolidColorBrush(Color.FromArgb(200, 220, 220, 230));
         }
+    }
+
+    /// <summary>
+    /// Switch tip copy when the underlay is higher integrity than the plugin host (UIPI).
+    /// </summary>
+    public void SetUipiWarning(bool elevated)
+    {
+        _uipi = elevated;
+        RefreshTitleAndTip();
     }
 
     /// <summary>

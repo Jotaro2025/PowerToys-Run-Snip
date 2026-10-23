@@ -121,6 +121,33 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
         }
     }
 
+    public void SetUipiWarning(bool elevated)
+    {
+        if (_disposed || _strip == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _dispatcher.BeginInvoke(() =>
+            {
+                try
+                {
+                    _strip?.SetUipiWarning(elevated);
+                }
+                catch (Exception ex)
+                {
+                    SnipVerbose.Scroll($"[scroll] stop strip UIPI tip skipped: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            SnipVerbose.Scroll($"[scroll] stop strip UIPI dispatch failed: {ex.Message}");
+        }
+    }
+
     public void SetHotkeyConflictHint(bool conflict)
     {
         if (_disposed || _strip == null)
@@ -292,18 +319,36 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
 
     private void CloseStrip()
     {
+        var strip = _strip;
+        _strip = null;
+        if (strip == null)
+        {
+            return;
+        }
+
         try
         {
-            _dispatcher.Invoke(() =>
+            // Prefer sync close so EndSessionOverlayHide runs only after the strip HWND is gone.
+            if (_dispatcher.CheckAccess())
             {
-                _strip?.SafeClose();
-                _strip = null;
-            });
+                strip.SafeClose();
+            }
+            else
+            {
+                _dispatcher.Invoke(strip.SafeClose);
+            }
         }
         catch (Exception ex)
         {
             Log.Warn($"Snip scroll stop strip close failed: {ex.Message}", typeof(ScrollCaptureStopGuard));
-            _strip = null;
+            try
+            {
+                strip.SafeClose();
+            }
+            catch (Exception)
+            {
+                // Best-effort if dispatcher is shutting down.
+            }
         }
     }
 

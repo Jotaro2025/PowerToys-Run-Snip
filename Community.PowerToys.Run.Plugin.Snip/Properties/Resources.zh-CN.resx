@@ -726,4 +726,13 @@
   <data name="scroll_stop_strip_paused_tip" xml:space="preserve">
     <value>已暂停 — 将鼠标移回选区即可继续</value>
   </data>
+  <data name="scroll_hint_uipi" xml:space="preserve">
+    <value>目标窗口完整性更高（UIPI）</value>
+  </data>
+  <data name="scroll_hint_uipi_sub" xml:space="preserve">
+    <value>滚轮输入可能无效。请以管理员运行 PowerToys，或换非提升权限的窗口。</value>
+  </data>
+  <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
+    <value>目标已提升 — Esc/空格/停止仍可用；滚轮可能被 UIPI 拦截</value>
+  </data>
 </root>
