@@ -123,6 +123,117 @@ public class ScrollStitcherTests
         Assert.IsTrue(result.TotalHeight >= Height + 10);
     }
 
+    [TestMethod]
+    public void Stitch_WithPrecomputedAlignments_ReusesCachedAlignment()
+    {
+        const int dh = 14;
+        using var a = GradientVerticalTile();
+        using var b = ShiftedDown(a, dh);
+        var alignment = ScrollStitcher.AlignTiles(a, b, dh);
+        Assert.AreEqual(ScrollStitcher.TileRelation.PartialOverlap, alignment.Relation);
+        Assert.AreEqual(dh, alignment.ContributedRows(Height));
+
+        var tiles = new List<ScrollTilePixels> { a, b };
+        var precomputed = new List<ScrollStitcher.TileAlignment> { alignment };
+        using var result = ScrollStitcher.Stitch(tiles, precomputed);
+        Assert.AreEqual(Height + dh, result.TotalHeight);
+        Assert.AreEqual(dh, result.Offsets[1].RowsContributed);
+    }
+
+    [TestMethod]
+    public void AlignTiles_WithStaticLeftSidebar_IgnoresSidebarAndFindsContentShift()
+    {
+        const int dh = 12;
+        const int sidebarWidth = 20;
+        using var a = TexturedTileWithSidebar(sidebarWidth, scrollOffset: 0);
+        using var b = TexturedTileWithSidebar(sidebarWidth, scrollOffset: dh);
+
+        var alignment = ScrollStitcher.AlignTiles(a, b, scrollHintPx: 0);
+        Assert.AreEqual(ScrollStitcher.TileRelation.PartialOverlap, alignment.Relation);
+        Assert.AreEqual(dh, alignment.ContributedRows(Height));
+    }
+
+    [TestMethod]
+    public void Stitch_WithStickyBottomFooter_TrimsMiddleFooterAndKeepsBottomOnce()
+    {
+        const int dh = 10;
+        const int footerRows = 6;
+        using var t0 = TexturedTileWithStickyFooter(footerRows, scrollOffset: 0);
+        using var t1 = TexturedTileWithStickyFooter(footerRows, scrollOffset: dh);
+        using var t2 = TexturedTileWithStickyFooter(footerRows, scrollOffset: dh * 2);
+
+        var tiles = new List<ScrollTilePixels> { t0, t1, t2 };
+        using var result = ScrollStitcher.Stitch(tiles);
+
+        Assert.AreEqual(Height + (dh * 2), result.TotalHeight);
+        Assert.AreEqual(Height - footerRows, result.Offsets[0].RowsContributed);
+        Assert.AreEqual(dh, result.Offsets[1].RowsContributed);
+        Assert.AreEqual(dh + footerRows, result.Offsets[2].RowsContributed);
+    }
+
+    private static ScrollTilePixels TexturedTileWithSidebar(int sidebarWidth, int scrollOffset)
+    {
+        var buf = new byte[Stride * Height];
+        for (int y = 0; y < Height; y++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                int o = (y * Stride) + (x * 4);
+                if (x < sidebarWidth)
+                {
+                    // Static sidebar: depends only on (x, y), identical across frames at dh=0.
+                    buf[o] = (byte)((x * 17 + y * 13) & 0xFF);
+                    buf[o + 1] = (byte)((x * 31 + y * 7) & 0xFF);
+                    buf[o + 2] = (byte)((x * 23 ^ y * 19) & 0xFF);
+                }
+                else
+                {
+                    // Scrollable main content: moves up by scrollOffset (row y shows document row y + scrollOffset).
+                    int docY = y + scrollOffset;
+                    buf[o] = (byte)((docY * 29 + x * 11) & 0xFF);
+                    buf[o + 1] = (byte)((docY * 43 ^ (x * 17)) & 0xFF);
+                    buf[o + 2] = (byte)(((docY * 19) + (x * 37)) & 0xFF);
+                }
+
+                buf[o + 3] = 255;
+            }
+        }
+
+        return new ScrollTilePixels(buf, Width, Height, Stride);
+    }
+
+    private static ScrollTilePixels TexturedTileWithStickyFooter(int footerRows, int scrollOffset)
+    {
+        var buf = new byte[Stride * Height];
+        int bodyH = Height - footerRows;
+        for (int y = 0; y < Height; y++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                int o = (y * Stride) + (x * 4);
+                if (y >= bodyH)
+                {
+                    // Sticky bottom bar: distinct fixed pattern across all frames.
+                    int fy = y - bodyH;
+                    buf[o] = (byte)(210 + ((fy * 7 + x * 3) % 40));
+                    buf[o + 1] = (byte)(30 + ((fy * 11 + x * 5) % 40));
+                    buf[o + 2] = (byte)(90 + ((fy * 13 ^ x * 9) % 50));
+                }
+                else
+                {
+                    int docY = y + scrollOffset;
+                    buf[o] = (byte)((docY * 29 + x * 11) & 0xFF);
+                    buf[o + 1] = (byte)((docY * 43 ^ (x * 17)) & 0xFF);
+                    buf[o + 2] = (byte)(((docY * 19) + (x * 37)) & 0xFF);
+                }
+
+                buf[o + 3] = 255;
+            }
+        }
+
+        return new ScrollTilePixels(buf, Width, Height, Stride);
+    }
+
     private static ScrollTilePixels SolidTile(byte b, byte g, byte r)
     {
         var buf = new byte[Stride * Height];
