@@ -739,6 +739,17 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
                 }
             }
 
+            // After hotkey HwndSource is gone: shut down snip STA Application (if we
+            // created one) + dispatcher. Does not call host Application.Shutdown.
+            try
+            {
+                SnipController.ShutdownUiThread();
+            }
+            catch (Exception ex)
+            {
+                Log.Exception($"Snip STA shutdown failed: {ex.Message}", ex, GetType());
+            }
+
             // Release process-wide HyMT weights if loaded; otherwise process exit cleans up.
             HyMT2SharpTranslatorCache.Unload();
 

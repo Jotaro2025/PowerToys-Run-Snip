@@ -6,6 +6,12 @@
 Format follows [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versions follow [SemVer](https://semver.org/).
 The single source of the version is `Version` in `plugin.json`; pushing a `v<Version>` tag attaches the installers and zips to a GitHub Release.
 
+## [Unreleased]
+
+### 修复 / Fixed
+
+- 截屏专用 STA 未创建 WPF Application 时，系统主题切换经 ThemeManager → Application.Windows 跨线程 VerifyAccess，导致 PowerToys.PowerLauncher FATAL；STA 在 Dispatcher.Run 前创建 OnExplicitShutdown Application（若宿主尚无），否则安装 Dispatcher 异常过滤，插件 Dispose 时显式关闭自有 Application 而不关闭宿主 — Theme-change FATAL on snip STA (@Jotaro2025)
+
 ## [1.4.0] - 2026-10-23
 
 

@@ -32,6 +32,16 @@ public static class SnipController
     private static Dispatcher _uiDispatcher;
 
     /// <summary>
+    /// WPF <see cref="System.Windows.Application"/> owned by the snip STA when we created it
+    /// (only when <see cref="System.Windows.Application.Current"/> was null at STA start).
+    /// Shutdown with <see cref="System.Windows.ShutdownMode.OnExplicitShutdown"/> so we do not
+    /// tear down the PowerToys Run host Application.
+    /// </summary>
+    private static System.Windows.Application _snipApplication;
+
+    private static bool _ownsApplication;
+
+    /// <summary>
     /// Kicks off a screenshot. Returns immediately; <paramref name="notify"/> is
     /// invoked when the action finishes (success or failure).
     /// </summary>
@@ -140,15 +150,189 @@ public static class SnipController
             {
                 // Dispatcher.CurrentDispatcher creates this thread's dispatcher.
                 _uiDispatcher = Dispatcher.CurrentDispatcher;
+
+                // ThemeManager.OnSystemThemeChanged (PowerToys host) calls
+                // Application.Current.Windows. System theme broadcasts also hit WPF
+                // windows / message-only HwndSource on this dedicated STA. Without an
+                // Application created on this thread, Application.Current stays the
+                // host instance (other thread) → VerifyAccess → unhandled
+                // InvalidOperationException kills PowerToys.PowerLauncher.
+                // Create a dedicated Application with OnExplicitShutdown when none
+                // exists yet (tests / headless). WPF allows only one Application per
+                // AppDomain, so when the host already owns Current we cannot create a
+                // second — install a Dispatcher unhandled-exception filter for that
+                // known ThemeManager affinity failure instead. GlobalHotkeyService /
+                // SnipWindow are created later via BeginInvoke after ready.Set().
+                TryCreateSnipApplicationOrFilter(_uiDispatcher);
+
                 ready.Set();
                 Dispatcher.Run();
+
+                // Dispatcher.Run returned (explicit shutdown). Drop our Application
+                // reference; do not touch the host Application.
+                _snipApplication = null;
+                _ownsApplication = false;
             });
             thread.SetApartmentState(ApartmentState.STA);
             thread.IsBackground = true;
+            thread.Name = "Snip-UI";
             thread.Start();
             ready.Wait();
             return _uiDispatcher;
         }
+    }
+
+    /// <summary>
+    /// Shuts down the dedicated snip STA (owned Application if any, then dispatcher)
+    /// without calling <see cref="System.Windows.Application.Shutdown"/> on the host.
+    /// Call after disposing <c>GlobalHotkeyService</c> on this same STA.
+    /// </summary>
+    public static void ShutdownUiThread()
+    {
+        Dispatcher dispatcher;
+        lock (Gate)
+        {
+            dispatcher = _uiDispatcher;
+        }
+
+        if (dispatcher == null)
+        {
+            return;
+        }
+
+        try
+        {
+            if (dispatcher.HasShutdownStarted || dispatcher.HasShutdownFinished)
+            {
+                return;
+            }
+
+            // Tear down on the STA itself so Application/Dispatcher affinity holds.
+            dispatcher.Invoke(
+                () =>
+                {
+                    if (_ownsApplication && _snipApplication != null)
+                    {
+                        try
+                        {
+                            // OnExplicitShutdown: only this call ends our Application;
+                            // host Application.Current (if any) is untouched.
+                            _snipApplication.Shutdown();
+                        }
+                        catch (Exception ex)
+                        {
+                            Log.Exception($"Snip Application.Shutdown failed: {ex.Message}", ex, typeof(SnipController));
+                            Dispatcher.CurrentDispatcher.BeginInvokeShutdown(DispatcherPriority.Normal);
+                        }
+                        finally
+                        {
+                            _snipApplication = null;
+                            _ownsApplication = false;
+                        }
+                    }
+                    else
+                    {
+                        Dispatcher.CurrentDispatcher.BeginInvokeShutdown(DispatcherPriority.Normal);
+                    }
+                },
+                DispatcherPriority.Send);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip STA shutdown failed: {ex.Message}", ex, typeof(SnipController));
+        }
+        finally
+        {
+            lock (Gate)
+            {
+                if (ReferenceEquals(_uiDispatcher, dispatcher))
+                {
+                    _uiDispatcher = null;
+                }
+            }
+        }
+    }
+
+    private static void TryCreateSnipApplicationOrFilter(Dispatcher dispatcher)
+    {
+        try
+        {
+            if (System.Windows.Application.Current == null)
+            {
+                _snipApplication = new System.Windows.Application
+                {
+                    ShutdownMode = System.Windows.ShutdownMode.OnExplicitShutdown,
+                };
+                _ownsApplication = true;
+                Log.Info("Snip STA created dedicated WPF Application (OnExplicitShutdown).", typeof(SnipController));
+            }
+            else
+            {
+                // Host (PowerToys Run) already owns Application.Current — a second
+                // Application per AppDomain is forbidden. Filter the ThemeManager
+                // cross-thread FATAL so the dedicated-STA editor can stay as-is.
+                Log.Info(
+                    "Snip STA: host Application.Current present; installing ThemeManager affinity exception filter.",
+                    typeof(SnipController));
+            }
+        }
+        catch (InvalidOperationException ex)
+        {
+            // new Application() when one already exists.
+            _snipApplication = null;
+            _ownsApplication = false;
+            Log.Warn($"Snip STA could not create Application: {ex.Message}", typeof(SnipController));
+        }
+
+        // Production path: host owns Application — keep editor on this STA and swallow
+        // the known ThemeManager → Application.Windows VerifyAccess FATAL only.
+        if (!_ownsApplication)
+        {
+            InstallThemeAffinityExceptionFilter(dispatcher);
+        }
+    }
+
+    private static void InstallThemeAffinityExceptionFilter(Dispatcher dispatcher)
+    {
+        dispatcher.UnhandledException -= OnSnipDispatcherUnhandledException;
+        dispatcher.UnhandledException += OnSnipDispatcherUnhandledException;
+    }
+
+    private static void OnSnipDispatcherUnhandledException(object sender, DispatcherUnhandledExceptionEventArgs e)
+    {
+        if (!IsThemeManagerCrossThreadAccess(e.Exception))
+        {
+            return;
+        }
+
+        Log.Warn(
+            $"Snip STA handled ThemeManager/Application.Windows cross-thread access (process kept alive): {e.Exception.Message}",
+            typeof(SnipController));
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Matches InvalidOperationException from ThemeManager.OnSystemThemeChanged →
+    /// Application.get_Windows → VerifyAccess when the callback runs on this STA.
+    /// </summary>
+    private static bool IsThemeManagerCrossThreadAccess(Exception ex)
+    {
+        for (Exception cur = ex; cur != null; cur = cur.InnerException)
+        {
+            if (cur is not InvalidOperationException)
+            {
+                continue;
+            }
+
+            string st = cur.StackTrace ?? string.Empty;
+            if (st.Contains("ThemeManager", StringComparison.Ordinal)
+                || st.Contains("get_Windows", StringComparison.Ordinal))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     private static async Task RunAsync(SnipSettings settings, Action<string, string> notify, CaptureKind kind)
