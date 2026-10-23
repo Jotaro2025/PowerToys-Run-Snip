@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -19,8 +20,13 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 public sealed class ScrollStopStripWindow : Window
 {
     private readonly TextBlock _title;
+    private readonly TextBlock _tip;
     private readonly Button _stopButton;
     private bool _closing;
+    private bool _paused;
+    private bool _hotkeyConflict;
+    private bool _uipi;
+    private int _tileCount;
 
     public event Action StopClicked;
 
@@ -71,17 +77,19 @@ public sealed class ScrollStopStripWindow : Window
         row.Children.Add(_title);
         row.Children.Add(_stopButton);
 
-        var tip = new TextBlock
+        _tip = new TextBlock
         {
             Text = Properties.Resources.scroll_stop_strip_tip,
             Foreground = new SolidColorBrush(Color.FromArgb(200, 220, 220, 230)),
             FontSize = 11,
             Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 380,
         };
 
         var stack = new StackPanel { Orientation = Orientation.Vertical };
         stack.Children.Add(row);
-        stack.Children.Add(tip);
+        stack.Children.Add(_tip);
 
         Content = new Border
         {
@@ -105,14 +113,70 @@ public sealed class ScrollStopStripWindow : Window
 
     public void SetTileCount(int tileCount)
     {
-        _title.Text = tileCount <= 0
+        _tileCount = Math.Max(0, tileCount);
+        RefreshTitleAndTip();
+    }
+
+    public void SetPaused(bool paused)
+    {
+        _paused = paused;
+        RefreshTitleAndTip();
+    }
+
+    public void SetHotkeyConflictHint(bool conflict)
+    {
+        _hotkeyConflict = conflict;
+        RefreshTitleAndTip();
+    }
+
+    private void RefreshTitleAndTip()
+    {
+        string count = _tileCount > 0
+            ? "  " + _tileCount.ToString(CultureInfo.CurrentCulture)
+            : string.Empty;
+
+        if (_paused)
+        {
+            _title.Text = Properties.Resources.scroll_hint_paused + count;
+            _tip.Text = Properties.Resources.scroll_stop_strip_paused_tip;
+            _tip.Foreground = new SolidColorBrush(Color.FromRgb(255, 196, 96));
+            return;
+        }
+
+        _title.Text = _tileCount <= 0
             ? Properties.Resources.scroll_hint_title
-            : Properties.Resources.scroll_hint_title + "  " + tileCount;
+            : Properties.Resources.scroll_hint_title + "  " + _tileCount.ToString(CultureInfo.CurrentCulture);
+
+        if (_hotkeyConflict)
+        {
+            _tip.Text = Properties.Resources.scroll_stop_strip_conflict_tip;
+            _tip.Foreground = new SolidColorBrush(Color.FromRgb(255, 196, 96));
+        }
+        else if (_uipi)
+        {
+            _tip.Text = Properties.Resources.scroll_stop_strip_uipi_tip;
+            _tip.Foreground = new SolidColorBrush(Color.FromRgb(255, 196, 96));
+        }
+        else
+        {
+            _tip.Text = Properties.Resources.scroll_stop_strip_tip;
+            _tip.Foreground = new SolidColorBrush(Color.FromArgb(200, 220, 220, 230));
+        }
+    }
+
+    /// <summary>
+    /// Switch tip copy when the underlay is higher integrity than the plugin host (UIPI).
+    /// </summary>
+    public void SetUipiWarning(bool elevated)
+    {
+        _uipi = elevated;
+        RefreshTitleAndTip();
     }
 
     /// <summary>
     /// Position near the top-center of the capture area (physical pixels → DIP).
     /// Uses the monitor under the capture center so mixed-DPI secondary screens stay aligned.
+    /// Prefer this window's DPI after Show when available.
     /// </summary>
     public void PlaceNearCapture(Int32Rect capturePhysicalPx, double dpiScale)
     {

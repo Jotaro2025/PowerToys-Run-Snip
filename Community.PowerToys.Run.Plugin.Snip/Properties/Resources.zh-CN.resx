@@ -720,4 +720,25 @@
   <data name="scroll_stop_strip_tip" xml:space="preserve">
     <value>Esc 或空格也可中途停止并保留已截帧</value>
   </data>
+  <data name="ocr_hint_tall_truncated" xml:space="preserve">
+    <value>图片高度超过 Windows OCR 单次处理能力（{0}px）。已按条带识别顶部 {1}px；其余请裁剪或分段截取。</value>
+  </data>
+  <data name="ocr_hint_tall_prefer_windows" xml:space="preserve">
+    <value>图片很高（{0}px）。Windows OCR 会按条带识别；微信 OCR 可能失败 — 若结果异常请在设置中将 OCR 引擎改为 Windows。</value>
+  </data>
+  <data name="scroll_stop_strip_conflict_tip" xml:space="preserve">
+    <value>Esc/空格热键被其他程序占用 — 请点「停止」，或仍可试 Esc/空格（轮询兜底）</value>
+  </data>
+  <data name="scroll_stop_strip_paused_tip" xml:space="preserve">
+    <value>已暂停 — 将鼠标移回选区即可继续</value>
+  </data>
+  <data name="scroll_hint_uipi" xml:space="preserve">
+    <value>目标窗口完整性更高（UIPI）</value>
+  </data>
+  <data name="scroll_hint_uipi_sub" xml:space="preserve">
+    <value>滚轮输入可能无效。请以管理员运行 PowerToys，或换非提升权限的窗口。</value>
+  </data>
+  <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
+    <value>目标已提升 — Esc/空格/停止仍可用；滚轮可能被 UIPI 拦截</value>
+  </data>
 </root>

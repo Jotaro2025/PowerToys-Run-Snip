@@ -51,4 +51,10 @@ public sealed class WinRtGraphicsCaptureTests
         var svc = new PreferWinRtCaptureService();
         Assert.IsNotNull(svc.Gdi);
     }
+
+    [TestMethod]
+    public void CaptureGate_IsAvailableWhenIdle()
+    {
+        Assert.IsTrue(WinRtGraphicsCapture.CaptureGateAvailableForTests);
+    }
 }

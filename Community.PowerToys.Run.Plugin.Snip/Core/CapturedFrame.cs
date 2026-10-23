@@ -18,6 +18,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Core;
 /// </summary>
 public sealed class CapturedFrame : IDisposable
 {
+    private readonly bool _pixelsRentedFromPool;
     private IntPtr _dib;
     private IntPtr _bits;
     private byte[] _pixels;
@@ -51,6 +52,15 @@ public sealed class CapturedFrame : IDisposable
 
     /// <summary>Managed BGRA32 buffer (tests / no GDI). Does not allocate extra copies.</summary>
     public CapturedFrame(byte[] pixels, int width, int height, int stride)
+        : this(pixels, width, height, stride, rentedFromPool: false)
+    {
+    }
+
+    /// <summary>
+    /// Managed BGRA32 buffer. When <paramref name="rentedFromPool"/> is true,
+    /// <see cref="Dispose"/> returns the array to <c>ArrayPool&lt;byte&gt;.Shared</c>.
+    /// </summary>
+    public CapturedFrame(byte[] pixels, int width, int height, int stride, bool rentedFromPool)
     {
         ArgumentNullException.ThrowIfNull(pixels);
         ValidateSize(width, height, stride);
@@ -61,6 +71,7 @@ public sealed class CapturedFrame : IDisposable
         }
 
         _pixels = pixels;
+        _pixelsRentedFromPool = rentedFromPool;
         Width = width;
         Height = height;
         Stride = stride;
@@ -192,7 +203,16 @@ public sealed class CapturedFrame : IDisposable
             _dib = IntPtr.Zero;
         }
 
-        _pixels = null;
+        if (_pixels != null)
+        {
+            if (_pixelsRentedFromPool)
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(_pixels);
+            }
+
+            _pixels = null;
+        }
+
         GC.SuppressFinalize(this);
     }
 

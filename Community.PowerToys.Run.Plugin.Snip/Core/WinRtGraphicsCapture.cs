@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
@@ -37,8 +38,17 @@ namespace Community.PowerToys.Run.Plugin.Snip.Core;
 internal static class WinRtGraphicsCapture
 {
     private static readonly Guid GraphicsCaptureItemIid = new("79C3F95B-31F7-4EC2-A464-632EF5D30760");
+
+    /// <summary>
+    /// Serializes all WinRT capture work. Concurrent CreateFreeThreaded / activation races
+    /// surface as CsWinRT "Attempt to update previously set global instance".
+    /// </summary>
+    private static readonly SemaphoreSlim CaptureGate = new SemaphoreSlim(1, 1);
+
     private static readonly object DeviceGate = new object();
     private static IDirect3DDevice _device;
+    private static Direct3D11CaptureFramePool _reusableFramePool;
+    private static SizeInt32 _reusablePoolSize;
     private static bool? _supported;
 
     /// <summary>True when the OS reports Graphics Capture is available.</summary>
@@ -78,6 +88,25 @@ internal static class WinRtGraphicsCapture
             return false;
         }
 
+        if (!CaptureGate.Wait(TimeSpan.FromSeconds(5)))
+        {
+            Log.Warn("Snip WinRT monitor capture timed out waiting for capture gate", typeof(WinRtGraphicsCapture));
+            return false;
+        }
+
+        try
+        {
+            return TryCaptureMonitorUnlocked(hMonitor, captureCursor, out frame);
+        }
+        finally
+        {
+            CaptureGate.Release();
+        }
+    }
+
+    private static bool TryCaptureMonitorUnlocked(IntPtr hMonitor, bool captureCursor, out CapturedFrame frame)
+    {
+        frame = null;
         try
         {
             var item = CreateItemForMonitor(hMonitor);
@@ -86,12 +115,13 @@ internal static class WinRtGraphicsCapture
                 return false;
             }
 
-            frame = CaptureItem(item, captureCursor);
+            frame = CaptureItemWithDeviceRetry(item, captureCursor);
             return frame != null;
         }
         catch (Exception ex)
         {
             Log.Warn($"Snip WinRT monitor capture failed: {ex.Message}", typeof(WinRtGraphicsCapture));
+            InvalidateDevice();
             frame = null;
             return false;
         }
@@ -109,6 +139,25 @@ internal static class WinRtGraphicsCapture
             return false;
         }
 
+        if (!CaptureGate.Wait(TimeSpan.FromSeconds(5)))
+        {
+            Log.Warn("Snip WinRT window capture timed out waiting for capture gate", typeof(WinRtGraphicsCapture));
+            return false;
+        }
+
+        try
+        {
+            return TryCaptureWindowUnlocked(hwnd, captureCursor, out frame);
+        }
+        finally
+        {
+            CaptureGate.Release();
+        }
+    }
+
+    private static bool TryCaptureWindowUnlocked(IntPtr hwnd, bool captureCursor, out CapturedFrame frame)
+    {
+        frame = null;
         try
         {
             var item = CreateItemForWindow(hwnd);
@@ -117,12 +166,13 @@ internal static class WinRtGraphicsCapture
                 return false;
             }
 
-            frame = CaptureItem(item, captureCursor);
+            frame = CaptureItemWithDeviceRetry(item, captureCursor);
             return frame != null;
         }
         catch (Exception ex)
         {
             Log.Warn($"Snip WinRT window capture failed: {ex.Message}", typeof(WinRtGraphicsCapture));
+            InvalidateDevice();
             frame = null;
             return false;
         }
@@ -154,6 +204,31 @@ internal static class WinRtGraphicsCapture
         return MarshalInspectable<GraphicsCaptureItem>.FromAbi(abi);
     }
 
+    /// <summary>
+    /// One attempt, then invalidate+recreate device and retry once on failure
+    /// (device loss / CsWinRT global-instance races after a bad session).
+    /// Caller must hold <see cref="CaptureGate"/>.
+    /// </summary>
+    private static CapturedFrame CaptureItemWithDeviceRetry(GraphicsCaptureItem item, bool captureCursor)
+    {
+        try
+        {
+            return CaptureItem(item, captureCursor);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn(
+                $"Snip WinRT capture attempt failed ({ex.GetType().Name}): {ex.Message}; recreating D3D device",
+                typeof(WinRtGraphicsCapture));
+            InvalidateDevice();
+            return CaptureItem(item, captureCursor);
+        }
+    }
+
+    /// <summary>
+    /// Creates a free-threaded pool+session for a single shot. Must run under <see cref="CaptureGate"/>
+    /// so only one free-threaded pool is live at a time (avoids CsWinRT global-instance races).
+    /// </summary>
     private static CapturedFrame CaptureItem(GraphicsCaptureItem item, bool captureCursor)
     {
         IDirect3DDevice device = GetOrCreateDevice();
@@ -168,42 +243,51 @@ internal static class WinRtGraphicsCapture
             return null;
         }
 
-        using var framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
-            device,
-            DirectXPixelFormat.B8G8R8A8UIntNormalized,
-            1,
-            size);
-        using var session = framePool.CreateCaptureSession(item);
-        session.IsCursorCaptureEnabled = captureCursor;
-
-        using var arrived = new ManualResetEventSlim(false);
+        Direct3D11CaptureFramePool framePool = GetOrRecreateFramePool(device, size);
+        GraphicsCaptureSession session = null;
         Direct3D11CaptureFrame captured = null;
-        framePool.FrameArrived += (_, _) =>
-        {
-            try
-            {
-                captured ??= framePool.TryGetNextFrame();
-            }
-            finally
-            {
-                arrived.Set();
-            }
-        };
-
-        session.StartCapture();
-        if (!arrived.Wait(TimeSpan.FromSeconds(2)) || captured == null)
-        {
-            captured?.Dispose();
-            return null;
-        }
-
         try
         {
+            session = framePool.CreateCaptureSession(item);
+            session.IsCursorCaptureEnabled = captureCursor;
+
+            using var arrived = new ManualResetEventSlim(false);
+            framePool.FrameArrived += (_, _) =>
+            {
+                try
+                {
+                    captured ??= framePool.TryGetNextFrame();
+                }
+                finally
+                {
+                    arrived.Set();
+                }
+            };
+
+            session.StartCapture();
+            if (!arrived.Wait(TimeSpan.FromSeconds(2)) || captured == null)
+            {
+                return null;
+            }
+
             return CopySurfaceToFrame(captured.Surface, size.Width, size.Height);
         }
         finally
         {
-            captured.Dispose();
+            captured?.Dispose();
+
+            // Session is per-item; pool is reused under CaptureGate until size/device changes.
+            if (session != null)
+            {
+                try
+                {
+                    session.Dispose();
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"Snip WinRT capture session dispose: {ex.Message}", typeof(WinRtGraphicsCapture));
+                }
+            }
         }
     }
 
@@ -229,9 +313,23 @@ internal static class WinRtGraphicsCapture
 
             int stride = CaptureBuffers.BgraStride(width);
             int byteCount = CaptureBuffers.BgraByteCount(width, height);
-            var pixels = new byte[byteCount];
-            soft.CopyToBuffer(pixels.AsBuffer());
-            return new CapturedFrame(pixels, width, height, stride);
+
+            // Rent from ArrayPool instead of new byte[] — CapturedFrame returns on Dispose.
+            byte[] pixels = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                soft.CopyToBuffer(pixels.AsBuffer());
+                var frame = new CapturedFrame(pixels, width, height, stride, rentedFromPool: true);
+                pixels = null; // ownership transferred
+                return frame;
+            }
+            finally
+            {
+                if (pixels != null)
+                {
+                    ArrayPool<byte>.Shared.Return(pixels);
+                }
+            }
         }
         finally
         {
@@ -252,6 +350,78 @@ internal static class WinRtGraphicsCapture
             return _device;
         }
     }
+
+    /// <summary>
+    /// Reuse one free-threaded pool while size matches (caller holds CaptureGate).
+    /// Recreate when monitor/window size changes.
+    /// </summary>
+    private static Direct3D11CaptureFramePool GetOrRecreateFramePool(IDirect3DDevice device, SizeInt32 size)
+    {
+        if (_reusableFramePool != null
+            && _reusablePoolSize.Width == size.Width
+            && _reusablePoolSize.Height == size.Height)
+        {
+            return _reusableFramePool;
+        }
+
+        DisposeReusableFramePool();
+        _reusableFramePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
+            device,
+            DirectXPixelFormat.B8G8R8A8UIntNormalized,
+            1,
+            size);
+        _reusablePoolSize = size;
+        return _reusableFramePool;
+    }
+
+    private static void DisposeReusableFramePool()
+    {
+        if (_reusableFramePool == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _reusableFramePool.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip WinRT reusable frame pool dispose: {ex.Message}", typeof(WinRtGraphicsCapture));
+        }
+
+        _reusableFramePool = null;
+        _reusablePoolSize = default;
+    }
+
+    /// <summary>Drop the cached D3D device so the next capture recreates it.</summary>
+    private static void InvalidateDevice()
+    {
+        // Pool is tied to the device; must drop under CaptureGate (caller) + DeviceGate.
+        DisposeReusableFramePool();
+
+        lock (DeviceGate)
+        {
+            if (_device == null)
+            {
+                return;
+            }
+
+            try
+            {
+                _device.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Snip WinRT D3D device dispose: {ex.Message}", typeof(WinRtGraphicsCapture));
+            }
+
+            _device = null;
+        }
+    }
+
+    /// <summary>Test hook: ensure capture gate can be entered (not held).</summary>
+    internal static bool CaptureGateAvailableForTests => CaptureGate.CurrentCount > 0;
 
     private static IDirect3DDevice CreateD3DDevice()
     {
