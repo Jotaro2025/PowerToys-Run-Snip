@@ -194,6 +194,9 @@
   <data name="tip_pin" xml:space="preserve">
     <value>Pin image</value>
   </data>
+  <data name="capture_countdown_text" xml:space="preserve">
+    <value>Capturing in {0}…</value>
+  </data>
   <data name="pin_window_title" xml:space="preserve">
     <value>Pinned image</value>
   </data>

@@ -194,6 +194,9 @@
   <data name="tip_pin" xml:space="preserve">
     <value>钉住图片</value>
   </data>
+  <data name="capture_countdown_text" xml:space="preserve">
+    <value>将在 {0} 后截屏…</value>
+  </data>
   <data name="pin_window_title" xml:space="preserve">
     <value>钉住的图片</value>
   </data>

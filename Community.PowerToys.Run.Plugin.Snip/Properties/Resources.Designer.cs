@@ -586,6 +586,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Capturing in {0}….
+        /// </summary>
+        public static string capture_countdown_text {
+            get {
+                return ResourceManager.GetString("capture_countdown_text", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Pinned image.
         /// </summary>
         public static string pin_window_title {

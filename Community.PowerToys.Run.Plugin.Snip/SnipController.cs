@@ -157,9 +157,10 @@ public static class SnipController
         try
         {
             // Give PowerToys Run time to hide its window before the capture.
+            // Visible topmost countdown when delay > 0 (same STA as the editor).
             if (settings.CaptureDelayMs > 0)
             {
-                await Task.Delay(settings.CaptureDelayMs).ConfigureAwait(true);
+                await CaptureCountdownWindow.RunAsync(settings.CaptureDelayMs).ConfigureAwait(true);
             }
 
             var capture = CaptureFactory.Create();
