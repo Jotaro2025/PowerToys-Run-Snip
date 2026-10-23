@@ -36,6 +36,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
     private readonly byte[] _png;
     private readonly BitmapSource _originalImage;
     private readonly SnipSettings _settings;
+    private readonly int _sourceHeight;
     private readonly Image _imageView;
     private readonly Border _imageHost;
     private readonly Grid _imageStage;
@@ -87,6 +88,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
 
         _png = png;
         _settings = settings;
+        _sourceHeight = _originalImage.PixelHeight;
 
         Title = Properties.Resources.tr_window_title;
         Width = 760;
@@ -389,10 +391,20 @@ public sealed class TranslateResultWindow : Window, IDisposable
             BuildTranslationEditors(_lines, _translations);
             await ShowFinishedImageAsync(rendered);
             UpdateActionButtons(enabled: true);
-            _status.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108));
-            _status.Text = Properties.Resources.tr_status_done
-                .Replace("{0}", _lines.Count.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)
-                .Replace("{1}", _settings.TargetLanguage ?? string.Empty, StringComparison.Ordinal);
+            string tallTip = WindowsOcrService.ConsumeTallImageHint();
+            if (tallTip == null
+                && OcrService.ResolveEngine(_settings) == Models.OcrEngineKind.WeChat)
+            {
+                tallTip = WindowsOcrService.TryBuildTallPreferWindowsHint(_sourceHeight);
+            }
+
+            _status.Foreground = new SolidColorBrush(
+                string.IsNullOrEmpty(tallTip) ? Color.FromRgb(100, 100, 108) : Color.FromRgb(180, 120, 40));
+            _status.Text = string.IsNullOrEmpty(tallTip)
+                ? Properties.Resources.tr_status_done
+                    .Replace("{0}", _lines.Count.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)
+                    .Replace("{1}", _settings.TargetLanguage ?? string.Empty, StringComparison.Ordinal)
+                : tallTip;
         }
         catch (OperationCanceledException)
         {

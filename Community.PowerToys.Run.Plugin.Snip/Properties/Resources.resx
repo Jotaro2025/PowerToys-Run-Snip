@@ -720,6 +720,12 @@
   <data name="scroll_stop_strip_tip" xml:space="preserve">
     <value>Esc or Space also stops and keeps frames already captured</value>
   </data>
+  <data name="ocr_hint_tall_truncated" xml:space="preserve">
+    <value>Image taller than Windows OCR can process in one pass ({0}px). Recognized the top {1}px in strips; crop or split the capture for the rest.</value>
+  </data>
+  <data name="ocr_hint_tall_prefer_windows" xml:space="preserve">
+    <value>Very tall image ({0}px). Windows OCR tiles in strips; WeChat OCR may fail — switch OCR engine to Windows in settings if recognition looks wrong.</value>
+  </data>
   <data name="scroll_stop_strip_conflict_tip" xml:space="preserve">
     <value>Esc/Space hotkey taken by another app — click Stop, or try Esc/Space (poll fallback)</value>
   </data>

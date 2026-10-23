@@ -648,6 +648,26 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("ocr_hint_switch_wechat", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to prefer Windows OCR for tall images.
+        /// </summary>
+        public static string ocr_hint_tall_prefer_windows {
+            get {
+                return ResourceManager.GetString("ocr_hint_tall_prefer_windows", resourceCulture);
+            }
+        }
+
+
+        /// <summary>
+        ///   Looks up a localized string similar to tall OCR truncate hint.
+        /// </summary>
+        public static string ocr_hint_tall_truncated {
+            get {
+                return ResourceManager.GetString("ocr_hint_tall_truncated", resourceCulture);
+            }
+        }
+
         /// <summary>
         ///   Looks up a localized string similar to Image translate.
         /// </summary>
