@@ -710,11 +710,15 @@ public sealed class SnipWindow : Window
             return;
         }
 
-        var physicalRect = new Int32Rect(
-            _physicalBounds.X + (int)(_selection.X * _dpiScale),
-            _physicalBounds.Y + (int)(_selection.Y * _dpiScale),
-            Math.Max(1, (int)(_selection.Width * _dpiScale)),
-            Math.Max(1, (int)(_selection.Height * _dpiScale)));
+        var physicalBounds = new Int32Rect(
+            _physicalBounds.X,
+            _physicalBounds.Y,
+            Math.Max(1, _physicalBounds.Width),
+            Math.Max(1, _physicalBounds.Height));
+        var physicalRect = DpiCoordinateMapping.DipSelectionToPhysical(
+            _selection,
+            _logicalSize,
+            physicalBounds);
 
         _scrollController = new ScrollCaptureController(
             _captureService,
@@ -788,12 +792,14 @@ public sealed class SnipWindow : Window
             clientH = ch;
         }
 
-        int holeX = (int)Math.Round(_selection.X * _dpiScale);
-        int holeY = (int)Math.Round(_selection.Y * _dpiScale);
-        int holeW = Math.Max(1, (int)Math.Round(_selection.Width * _dpiScale));
-        int holeH = Math.Max(1, (int)Math.Round(_selection.Height * _dpiScale));
+        var hole = DpiCoordinateMapping.DipSelectionToClientHole(
+            _selection,
+            _logicalSize,
+            clientW,
+            clientH);
 
-        return Win32WindowRegion.ApplySelectionHole(hwnd, clientW, clientH, holeX, holeY, holeW, holeH);
+        return Win32WindowRegion.ApplySelectionHole(
+            hwnd, clientW, clientH, hole.X, hole.Y, hole.Width, hole.Height);
     }
 
     private void ClearScrollCaptureHole()

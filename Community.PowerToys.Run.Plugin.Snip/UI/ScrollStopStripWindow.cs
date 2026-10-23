@@ -8,6 +8,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
+using Community.PowerToys.Run.Plugin.Snip.Core;
+
 namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
 /// <summary>
@@ -110,10 +112,27 @@ public sealed class ScrollStopStripWindow : Window
 
     /// <summary>
     /// Position near the top-center of the capture area (physical pixels → DIP).
+    /// Uses the monitor under the capture center so mixed-DPI secondary screens stay aligned.
     /// </summary>
     public void PlaceNearCapture(Int32Rect capturePhysicalPx, double dpiScale)
     {
-        double scale = dpiScale > 0.01 ? dpiScale : 1.0;
+        int cx = capturePhysicalPx.X + (capturePhysicalPx.Width / 2);
+        int cy = capturePhysicalPx.Y + (capturePhysicalPx.Height / 2);
+        double scale = DpiCoordinateMapping.EffectiveDpiScaleAtPhysical(cx, cy, dpiScale);
+        try
+        {
+            var dpi = VisualTreeHelper.GetDpi(this);
+            if (dpi.DpiScaleX > 0.01)
+            {
+                // After Show, prefer this HWND's DPI (matches WPF layout on that monitor).
+                scale = dpi.DpiScaleX;
+            }
+        }
+        catch (Exception)
+        {
+            // Pre-Show / no composition target — keep monitor/caller scale.
+        }
+
         double leftDip = capturePhysicalPx.X / scale;
         double topDip = capturePhysicalPx.Y / scale;
         double widthDip = capturePhysicalPx.Width / scale;
@@ -122,8 +141,18 @@ public sealed class ScrollStopStripWindow : Window
         double w = Math.Max(DesiredSize.Width, 220);
         double h = Math.Max(DesiredSize.Height, 56);
 
-        Left = leftDip + Math.Max(0, (widthDip - w) / 2);
-        Top = Math.Max(8, topDip + 16);
+        double vx = SystemParameters.VirtualScreenLeft;
+        double vy = SystemParameters.VirtualScreenTop;
+        double vw = SystemParameters.VirtualScreenWidth;
+        double vh = SystemParameters.VirtualScreenHeight;
+
+        double left = leftDip + Math.Max(0, (widthDip - w) / 2);
+        double top = topDip + 16;
+        left = Math.Min(Math.Max(left, vx + 8), vx + vw - w - 8);
+        top = Math.Min(Math.Max(top, vy + 8), vy + vh - h - 8);
+
+        Left = left;
+        Top = top;
         Width = w;
         Height = h;
     }
