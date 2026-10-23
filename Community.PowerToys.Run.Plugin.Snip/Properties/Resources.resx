@@ -188,9 +188,6 @@
   <data name="ocr_err_failed" xml:space="preserve">
     <value>Text extraction failed:</value>
   </data>
-  <data name="ocr_err_component_missing" xml:space="preserve">
-    <value>OCR component incomplete. Use the full package, or download OCR assets on first use. Missing file:</value>
-  </data>
   <data name="tip_translate" xml:space="preserve">
     <value>Image translate</value>
   </data>
@@ -584,9 +581,6 @@
   </data>
   <data name="scroll_hint_title" xml:space="preserve">
     <value>Scroll capturing…</value>
-  </data>
-  <data name="scroll_hint_title_count" xml:space="preserve">
-    <value>Scroll capturing…  {0} frames</value>
   </data>
   <data name="scroll_hint_subtitle" xml:space="preserve">
     <value>Auto-scroll in selection · click button to stop</value>
