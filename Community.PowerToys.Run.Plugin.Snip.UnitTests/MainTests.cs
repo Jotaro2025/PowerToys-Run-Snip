@@ -51,17 +51,19 @@ public class MainTests
     }
 
     [TestMethod]
-    public void QueryWithoutSearchReturnsRegionAndSettingsCommands()
+    public void QueryWithoutSearchReturnsRegionWindowFullscreenAndSettingsCommands()
     {
         var main = CreateMain();
 
         var results = main.Query(new Query(string.Empty));
 
-        Assert.HasCount(2, results);
+        Assert.HasCount(4, results);
         Assert.AreEqual(Properties.Resources.cmd_region_title, results[0].Title);
-        Assert.AreEqual(Properties.Resources.cmd_settings_title, results[1].Title);
+        Assert.AreEqual(Properties.Resources.cmd_window_title, results[1].Title);
+        Assert.AreEqual(Properties.Resources.cmd_fullscreen_title, results[2].Title);
+        Assert.AreEqual(Properties.Resources.cmd_settings_title, results[3].Title);
         Assert.IsNotNull(results[0].Action);
-        Assert.IsNotNull(results[1].Action);
+        Assert.IsNotNull(results[3].Action);
     }
 
     [TestMethod]

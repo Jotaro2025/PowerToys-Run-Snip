@@ -80,6 +80,18 @@
   <data name="cmd_region_subtitle" xml:space="preserve">
     <value>Drag to select an area, annotate it, then copy or save</value>
   </data>
+  <data name="cmd_window_title" xml:space="preserve">
+    <value>Capture active window</value>
+  </data>
+  <data name="cmd_window_subtitle" xml:space="preserve">
+    <value>Screenshot the foreground window, then annotate</value>
+  </data>
+  <data name="cmd_fullscreen_title" xml:space="preserve">
+    <value>Capture full screen</value>
+  </data>
+  <data name="cmd_fullscreen_subtitle" xml:space="preserve">
+    <value>Screenshot the display, selection already filled</value>
+  </data>
   <data name="opt_save_dir_label" xml:space="preserve">
     <value>Save directory</value>
   </data>
@@ -106,6 +118,9 @@
   </data>
   <data name="msg_failed" xml:space="preserve">
     <value>Screenshot failed</value>
+  </data>
+  <data name="msg_no_active_window" xml:space="preserve">
+    <value>No suitable active window to capture.</value>
   </data>
   <data name="tip_select" xml:space="preserve">
     <value>Select / move / edit</value>

@@ -231,7 +231,13 @@ public sealed class SnipWindow : Window
         Loaded += OnLoaded;
         Closed += OnClosed;
 
-        // Initial state: light full-screen dim until the user drags a real selection.
+        // Pre-fill selection for full-screen / active-window; otherwise idle dim until drag.
+        if (request.InitialSelection is { } sel && sel.Width >= 5 && sel.Height >= 5)
+        {
+            _selection = sel;
+            _hasSelection = true;
+        }
+
         UpdateSelectionVisuals();
     }
 

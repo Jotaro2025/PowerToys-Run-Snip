@@ -127,6 +127,50 @@ public sealed class Win32CaptureService : ICaptureService
         return physical.FirstOrDefault(s => s.IsPrimary) ?? physical[0];
     }
 
+    /// <summary>
+    /// Physical-pixel bounds of the foreground top-level window, or <c>false</c> when
+    /// there is no visible non-minimized target (e.g. desktop / empty).
+    /// </summary>
+    public static bool TryGetForegroundWindowBounds(out Int32Rect bounds)
+    {
+        bounds = default;
+        IntPtr hwnd = Win32.GetForegroundWindow();
+        if (hwnd == IntPtr.Zero || Win32.IsIconic(hwnd) || !Win32.IsWindowVisible(hwnd))
+        {
+            return false;
+        }
+
+        if (!Win32.GetWindowRect(hwnd, out Win32.RECT rc))
+        {
+            return false;
+        }
+
+        int w = rc.Width;
+        int h = rc.Height;
+        if (w < 5 || h < 5)
+        {
+            return false;
+        }
+
+        bounds = new Int32Rect(rc.Left, rc.Top, w, h);
+        return true;
+    }
+
+    /// <summary>Monitor whose bounds contain <paramref name="physicalPoint"/>, else cursor/primary.</summary>
+    public static ScreenInfo GetScreenAtPhysicalPoint(IReadOnlyList<ScreenInfo> screens, Point physicalPoint)
+    {
+        var physical = PhysicalScreens(screens);
+        foreach (var s in physical)
+        {
+            if (s.Bounds.Contains(physicalPoint))
+            {
+                return s;
+            }
+        }
+
+        return GetScreenAtCursor(screens);
+    }
+
     public WriteableBitmap CaptureScreen(ScreenInfo screen)
     {
         using var frame = CaptureScreenPixels(screen);
