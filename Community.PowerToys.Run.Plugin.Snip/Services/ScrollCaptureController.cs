@@ -601,12 +601,11 @@ public sealed class ScrollCaptureController
     {
         try
         {
-            if (_dispatcher.CheckAccess())
-            {
-                return UiaScrollFallback.TryScrollAt(physicalX, physicalY, delta);
-            }
-
-            return _dispatcher.Invoke(() => UiaScrollFallback.TryScrollAt(physicalX, physicalY, delta));
+            // UiaScrollFallback owns a dedicated MTA worker: UIA provider calls no
+            // longer round-trip through the UI STA (they used to freeze the UI when
+            // a slow provider took hundreds of ms), so the capture loop (already on
+            // the thread pool) can call straight in and just wait for the result.
+            return UiaScrollFallback.TryScrollAt(physicalX, physicalY, delta);
         }
         catch (Exception ex)
         {
