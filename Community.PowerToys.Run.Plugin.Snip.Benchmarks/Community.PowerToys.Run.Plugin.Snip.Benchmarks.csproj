@@ -1,0 +1,45 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <!--
+    BenchmarkDotNet benchmarks for the image-processing hot paths touched by the
+    perf work (stitch alignment, inpaint, magnifier, QR binarize, phase correlation).
+    Not part of CI (long-running); the unit-test project remains the CI gate.
+    Run instructions: docs/benchmarks.md
+  -->
+  <PropertyGroup>
+    <TargetFramework>net10.0-windows10.0.26100.0</TargetFramework>
+    <UseWPF>true</UseWPF>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <OutputType>Exe</OutputType>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>Community.PowerToys.Run.Plugin.Snip.Benchmarks</RootNamespace>
+    <NeutralLanguage>en-US</NeutralLanguage>
+    <WarningLevel>4</WarningLevel>
+    <TreatWarningsAsErrors>true</TreatWarningsAsErrors>
+
+    <!-- Install of the PowerToys build this plugin targets. -->
+    <PowerToysInstallDir Condition="'$(PowerToysInstallDir)' == ''">C:\Program Files\PowerToys</PowerToysInstallDir>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <PackageReference Include="BenchmarkDotNet" Version="0.15.2" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Reference Include="Wox.Plugin">
+      <HintPath>$(PowerToysInstallDir)\Wox.Plugin.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PowerToys.ManagedCommon">
+      <HintPath>$(PowerToysInstallDir)\PowerToys.ManagedCommon.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+    <Reference Include="PowerToys.Settings.UI.Lib">
+      <HintPath>$(PowerToysInstallDir)\PowerToys.Settings.UI.Lib.dll</HintPath>
+      <Private>false</Private>
+    </Reference>
+  </ItemGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\Community.PowerToys.Run.Plugin.Snip\Community.PowerToys.Run.Plugin.Snip.csproj" />
+  </ItemGroup>
+</Project>

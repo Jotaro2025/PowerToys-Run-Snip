@@ -103,6 +103,7 @@
 
   <ItemGroup>
     <InternalsVisibleTo Include="Community.PowerToys.Run.Plugin.Snip.UnitTests" />
+    <InternalsVisibleTo Include="Community.PowerToys.Run.Plugin.Snip.Benchmarks" />
   </ItemGroup>
 
   <ItemGroup>

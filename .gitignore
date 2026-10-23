@@ -26,3 +26,4 @@ arm64/
 ## OS
 Thumbs.db
 Desktop.ini
+BenchmarkDotNet.Artifacts/
