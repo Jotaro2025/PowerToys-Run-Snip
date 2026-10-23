@@ -146,20 +146,30 @@ public sealed class ScrollCaptureController
         int maxHeight = int.MaxValue;
         int scrollHint = 0;
         string autoStopReason = null;
-        var first = await CaptureOnceSafeAsync().ConfigureAwait(false);
-        if (first != null && _active && !ct.IsCancellationRequested)
-        {
-            _tiles.Add(first);
-            projectedHeight = first.Height;
-            maxHeight = ScrollStitcher.ResolveMaxStitchedHeight(first.Width);
-        }
-        else if (first == null)
-        {
-            Log.Warn("Snip scroll: first tile capture failed", typeof(ScrollCaptureController));
-        }
 
-        // Focus underlay + hold cursor at center (off UI thread after first await).
-        BeginPointerHoldAtCenter();
+        // Hide the Topmost snip window for first capture + focus click. #88 left the
+        // overlay visible (hole + WS_EX_TRANSPARENT); logs still had overlayCovers=False
+        // with 8× SendInput and 1 tile — Chromium needs the overlay gone, not punched.
+        using (Win32CaptureService.TemporaryHideOverlayWindow(_overlayHwnd))
+        {
+            Log.Info(
+                "Snip scroll: overlay SW_HIDE for first capture + focus",
+                typeof(ScrollCaptureController));
+            var first = await CaptureOnceSafeAsync().ConfigureAwait(false);
+            if (first != null && _active && !ct.IsCancellationRequested)
+            {
+                _tiles.Add(first);
+                projectedHeight = first.Height;
+                maxHeight = ScrollStitcher.ResolveMaxStitchedHeight(first.Width);
+            }
+            else if (first == null)
+            {
+                Log.Warn("Snip scroll: first tile capture failed", typeof(ScrollCaptureController));
+            }
+
+            // Focus underlay + hold cursor while overlay is hidden so the click hits Edge.
+            BeginPointerHoldAtCenter();
+        }
 
         // Mouse guard arms once the cursor has been inside the selection, so starting
         // from the toolbar (outside the selection) does not pause immediately.
@@ -198,41 +208,48 @@ public sealed class ScrollCaptureController
 
             PostToOverlay(() => _overlay.ShowCapturing(_tiles.Count + 1));
 
-            bool wheeled = SimulateWheelAtCenter();
-            if (wheeled)
+            bool wheeled;
+            ScrollTilePixels bmp = null;
+            using (Win32CaptureService.TemporaryHideOverlayWindow(_overlayHwnd))
             {
-                consecutiveWheelFails = 0;
-                successfulWheels++;
-            }
-            else
-            {
-                consecutiveWheelFails++;
-                if (consecutiveWheelFails >= ConsecutiveWheelFailStopThreshold)
+                wheeled = SimulateWheelAtCenter();
+                if (wheeled)
                 {
-                    autoStopReason = $"wheel target unresolved after {consecutiveWheelFails} failures";
-                    Log.Warn(
-                        $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
-                        typeof(ScrollCaptureController));
+                    consecutiveWheelFails = 0;
+                    successfulWheels++;
+                }
+                else
+                {
+                    consecutiveWheelFails++;
+                    if (consecutiveWheelFails >= ConsecutiveWheelFailStopThreshold)
+                    {
+                        autoStopReason = $"wheel target unresolved after {consecutiveWheelFails} failures";
+                        Log.Warn(
+                            $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
+                            typeof(ScrollCaptureController));
+                        break;
+                    }
+                }
+
+                try
+                {
+                    int settleMs = _scrollIntervalMs;
+                    if (successfulWheels > 0 && successfulWheels <= MinSuccessfulWheelsBeforeDuplicateStop)
+                    {
+                        settleMs += EarlyTileExtraSettleMs;
+                    }
+
+                    await Task.Delay(settleMs, ct).ConfigureAwait(false);
+                }
+                catch (TaskCanceledException)
+                {
                     break;
                 }
+
+                // Capture while still hidden so BitBlt reads live Edge pixels (no hole/white).
+                bmp = await CaptureOnceSafeAsync().ConfigureAwait(false);
             }
 
-            try
-            {
-                int settleMs = _scrollIntervalMs;
-                if (successfulWheels > 0 && successfulWheels <= MinSuccessfulWheelsBeforeDuplicateStop)
-                {
-                    settleMs += EarlyTileExtraSettleMs;
-                }
-
-                await Task.Delay(settleMs, ct).ConfigureAwait(false);
-            }
-            catch (TaskCanceledException)
-            {
-                break;
-            }
-
-            var bmp = await CaptureOnceSafeAsync().ConfigureAwait(false);
             if (bmp == null || ct.IsCancellationRequested || !_active)
             {
                 break;

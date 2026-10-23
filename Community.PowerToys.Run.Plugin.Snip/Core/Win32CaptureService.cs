@@ -457,16 +457,14 @@ public sealed class Win32CaptureService : ICaptureService
 
                 if (TrySendInputWheel(delta))
                 {
-                    // Real input first; PostMessage is a secondary nudge after focus.
-                    if (target != IntPtr.Zero)
-                    {
-                        IntPtr wParam = PackWheelWParam(delta);
-                        IntPtr lParam = PackWheelLParam(physicalX, physicalY);
-                        _ = Win32.PostMessage(target, Win32.WmMouseWheel, wParam, lParam);
-                    }
+                    // Real input first; PostMessage nudges render host + parent + root
+                    // (Chromium sometimes only handles wheel on Intermediate/WidgetWin).
+                    PostWheelNudge(target, physicalX, physicalY, delta);
 
+                    bool overlayHidden = skipOverlayHwnd != IntPtr.Zero
+                        && !Win32.IsWindowVisible(skipOverlayHwnd);
                     Log.Info(
-                        $"Snip scroll wheel via SendInput at ({physicalX},{physicalY}) delta={delta} target={targetClass} pid={targetPid} overlayCovers={overlayCovers}",
+                        $"Snip scroll wheel via SendInput at ({physicalX},{physicalY}) delta={delta} target={targetClass} pid={targetPid} overlayCovers={overlayCovers} overlayHidden={overlayHidden}",
                         typeof(Win32CaptureService));
                     return true;
                 }
@@ -578,6 +576,97 @@ public sealed class Win32CaptureService : ICaptureService
 
         IntPtr hit = Win32.WindowFromPoint(pt);
         return IsOwnedByOverlay(hit, skipOverlayHwnd);
+    }
+
+    /// <summary>
+    /// Fully hide the snip overlay HWND for a wheel+capture cycle so Edge/Chromium
+    /// is the real topmost surface under the cursor. #88 logs showed
+    /// <c>overlayCovers=False</c> with 8× SendInput yet still 1 tile — hole /
+    /// WS_EX_TRANSPARENT hit-test was not the blocking factor; a Topmost WPF
+    /// window can still prevent Chromium from accepting scroll input.
+    /// Restores with <c>SW_SHOWNOACTIVATE</c> so Edge keeps focus.
+    /// </summary>
+    public static IDisposable TemporaryHideOverlayWindow(IntPtr overlayHwnd)
+    {
+        if (overlayHwnd == IntPtr.Zero || !Win32.IsWindowVisible(overlayHwnd))
+        {
+            return TemporaryHideScope.None;
+        }
+
+        _ = Win32.ShowWindow(overlayHwnd, Win32.SwHide);
+
+        // Let DWM drop the topmost surface before SendInput / BitBlt.
+        Thread.Sleep(16);
+        try
+        {
+            _ = Win32.DwmFlush();
+        }
+        catch (Exception)
+        {
+            // DwmFlush is best-effort on some sessions.
+        }
+
+        return new TemporaryHideScope(overlayHwnd);
+    }
+
+    /// <summary>
+    /// Post <c>WM_MOUSEWHEEL</c> to the hit target, its parent, and the root
+    /// top-level window (screen coords in LPARAM). Chromium may ignore some.
+    /// </summary>
+    internal static void PostWheelNudge(IntPtr target, int physicalX, int physicalY, int delta)
+    {
+        if (target == IntPtr.Zero || delta == 0)
+        {
+            return;
+        }
+
+        IntPtr wParam = PackWheelWParam(delta);
+        IntPtr lParam = PackWheelLParam(physicalX, physicalY);
+        _ = Win32.PostMessage(target, Win32.WmMouseWheel, wParam, lParam);
+
+        IntPtr parent = Win32.GetAncestor(target, Win32.GaParent);
+        if (parent != IntPtr.Zero && parent != target)
+        {
+            _ = Win32.PostMessage(parent, Win32.WmMouseWheel, wParam, lParam);
+        }
+
+        IntPtr root = Win32.GetAncestor(target, Win32.GaRoot);
+        if (root != IntPtr.Zero && root != target && root != parent)
+        {
+            _ = Win32.PostMessage(root, Win32.WmMouseWheel, wParam, lParam);
+        }
+    }
+
+    private readonly struct TemporaryHideScope : IDisposable
+    {
+        private readonly IntPtr _hwnd;
+        private readonly bool _active;
+
+        public static TemporaryHideScope None => default;
+
+        public TemporaryHideScope(IntPtr hwnd)
+        {
+            _hwnd = hwnd;
+            _active = hwnd != IntPtr.Zero;
+        }
+
+        public void Dispose()
+        {
+            if (!_active)
+            {
+                return;
+            }
+
+            _ = Win32.ShowWindow(_hwnd, Win32.SwShowNoActivate);
+            _ = Win32.SetWindowPos(
+                _hwnd,
+                Win32.HwndTopmost,
+                0,
+                0,
+                0,
+                0,
+                Win32.SwpNoMove | Win32.SwpNoSize | Win32.SwpNoActivate);
+        }
     }
 
     /// <summary>

@@ -14,6 +14,8 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 修复 / Fixed
 
+- 滚动截屏：每轮滚轮+截帧前 SW_HIDE 整个截屏窗（#88 日志 overlayCovers=False 仍 1 tile，洞/透明命中理论不足）；SW_SHOWNOACTIVATE 恢复以保持 Edge 前台；PostMessage 辅投 parent/root — Hide snip window for each wheel+capture cycle; restore without activating; PostMessage parent/root nudge (@Jotaro2025)
+
 - 滚动截屏：SendInput 期间临时 WS_EX_TRANSPARENT 让滚轮命中 Edge；AttachThreadInput/SetForegroundWindow 激活目标；PostMessage 辅投；延长 settle；打孔前 Opacity+Render flush 并在 Begin 后复打孔 — Make SendInput hit Edge via temporary WS_EX_TRANSPARENT; activate underlay; PostMessage nudge; longer settle; anti-flash Opacity/Render + re-hole (@Jotaro2025)
 
 - 滚动截屏：首轮左键聚焦 + 会话内光标保持选区中心（避免立刻还原导致 Edge 不滚）；放宽 duplicate auto-stop（阈值 4、至少 3 次成功滚轮）；StartScrollCapture 隐藏冻结截图再打孔，消除白闪 — Edge focus click + hold cursor; soften duplicate stop; hide frozen screenshot before hole to avoid white flash (@Jotaro2025)
