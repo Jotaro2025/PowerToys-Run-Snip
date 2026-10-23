@@ -413,6 +413,7 @@ internal static class Win32
     public const int GwHwndNext = 2;
     public const int GwlExStyle = -20;
     public const int WsExTransparent = 0x00000020;
+    public const int WsExLayered = 0x00080000;
 
     [DllImport(User32)]
     public static extern IntPtr GetWindow(IntPtr hWnd, int uCmd);

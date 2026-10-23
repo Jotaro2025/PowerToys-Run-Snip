@@ -11,7 +11,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
 /// Builds a lighter overlay/preview bitmap for large (near-fullscreen) captures.
-/// Full-resolution source stays used for save / copy / OCR / translate / mosaic.
+/// Full-resolution source stays used for save / copy / OCR / translate / mosaic / pin.
 /// </summary>
 public static class BitmapPreview
 {
@@ -22,7 +22,7 @@ public static class BitmapPreview
     public const int MaxPreviewEdge = 1920;
 
     /// <summary>
-    /// Fraction of the monitor work area a pin window may occupy (DIP), matching
+    /// Fraction of the monitor work area a pin window may occupy initially (DIP), matching
     /// <c>PinImageWindow</c> layout caps.
     /// </summary>
     public const double PinWorkAreaFraction = 0.9;
@@ -54,46 +54,51 @@ public static class BitmapPreview
     }
 
     /// <summary>
-    /// Display copy for the pin window: downsamples to fit ~90% of the work area
-    /// when needed, then materializes + freezes so the pin UI does not retain the
-    /// caller's full-resolution <see cref="BitmapSource"/>.
+    /// Materializes and freezes a full-resolution independent copy for the pin window
+    /// so zooming in, copying, and saving retain full original clarity (especially for
+    /// scrolled long screenshots) without aliasing the caller's bitmap instance.
     /// </summary>
     public static BitmapSource ForPin(BitmapSource fullRes)
     {
         ArgumentNullException.ThrowIfNull(fullRes);
+        return MaterializeFrozen(fullRes);
+    }
 
-        int w = fullRes.PixelWidth;
-        int h = fullRes.PixelHeight;
-        if (w <= 0 || h <= 0)
+    /// <summary>
+    /// Computes the initial zoom factor (<c>&lt;= 1.0</c>) so a pinned image of size
+    /// <paramref name="pixelWidth"/>×<paramref name="pixelHeight"/> fits within
+    /// <see cref="PinWorkAreaFraction"/> of the monitor work area while keeping its
+    /// full-resolution backing <see cref="BitmapSource"/>.
+    /// </summary>
+    public static double ComputeInitialPinZoom(
+        int pixelWidth,
+        int pixelHeight,
+        double dpiX,
+        double dpiY,
+        double workAreaDipWidth,
+        double workAreaDipHeight,
+        double minZoom = 0.1)
+    {
+        if (pixelWidth <= 0 || pixelHeight <= 0)
         {
-            return MaterializeFrozen(fullRes);
+            return 1.0;
         }
 
-        double dpiX = fullRes.DpiX > 0 ? fullRes.DpiX : 96;
-        double dpiY = fullRes.DpiY > 0 ? fullRes.DpiY : 96;
-        double dipW = w * 96.0 / dpiX;
-        double dipH = h * 96.0 / dpiY;
+        double effDpiX = dpiX > 0 ? dpiX : 96.0;
+        double effDpiY = dpiY > 0 ? dpiY : 96.0;
+        double dipW = pixelWidth * 96.0 / effDpiX;
+        double dipH = pixelHeight * 96.0 / effDpiY;
 
-        double maxDipW = SystemParameters.WorkArea.Width * PinWorkAreaFraction;
-        double maxDipH = SystemParameters.WorkArea.Height * PinWorkAreaFraction;
-        if (maxDipW < 1)
-        {
-            maxDipW = 1;
-        }
-
-        if (maxDipH < 1)
-        {
-            maxDipH = 1;
-        }
+        double maxDipW = Math.Max(1.0, workAreaDipWidth * PinWorkAreaFraction);
+        double maxDipH = Math.Max(1.0, workAreaDipHeight * PinWorkAreaFraction);
 
         double scale = Math.Min(1.0, Math.Min(maxDipW / dipW, maxDipH / dipH));
         if (scale >= 0.999)
         {
-            // Fits on screen 1:1 — still hand the pin a frozen copy, not the export bitmap.
-            return MaterializeFrozen(fullRes);
+            return 1.0;
         }
 
-        return MaterializeScaled(fullRes, scale);
+        return Math.Clamp(scale, minZoom, 1.0);
     }
 
     /// <summary>True when <see cref="ForOverlay"/> would return a downsampled image.</summary>

@@ -1976,5 +1976,34 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
 
+        public static string pin_menu_copy {
+            get {
+                return ResourceManager.GetString("pin_menu_copy", resourceCulture);
+            }
+        }
+
+        public static string pin_menu_save {
+            get {
+                return ResourceManager.GetString("pin_menu_save", resourceCulture);
+            }
+        }
+
+        public static string pin_menu_reset_zoom {
+            get {
+                return ResourceManager.GetString("pin_menu_reset_zoom", resourceCulture);
+            }
+        }
+
+        public static string pin_menu_click_through {
+            get {
+                return ResourceManager.GetString("pin_menu_click_through", resourceCulture);
+            }
+        }
+
+        public static string pin_badge_exit_click_through {
+            get {
+                return ResourceManager.GetString("pin_badge_exit_click_through", resourceCulture);
+            }
+        }
     }
 }

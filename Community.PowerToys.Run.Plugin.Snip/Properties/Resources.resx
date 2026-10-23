@@ -741,4 +741,19 @@
   <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
     <value>Elevated target — Esc/Space/Stop still work; wheel may be blocked by UIPI</value>
   </data>
+  <data name="pin_menu_copy" xml:space="preserve">
+    <value>Copy image (Ctrl+C)</value>
+  </data>
+  <data name="pin_menu_save" xml:space="preserve">
+    <value>Save image… (Ctrl+S)</value>
+  </data>
+  <data name="pin_menu_reset_zoom" xml:space="preserve">
+    <value>Actual size 1:1 (Ctrl+0)</value>
+  </data>
+  <data name="pin_menu_click_through" xml:space="preserve">
+    <value>Mouse click-through (Ctrl+T)</value>
+  </data>
+  <data name="pin_badge_exit_click_through" xml:space="preserve">
+    <value>Exit click-through</value>
+  </data>
 </root>

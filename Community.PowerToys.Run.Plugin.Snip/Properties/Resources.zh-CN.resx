@@ -741,4 +741,19 @@
   <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
     <value>目标已提升 — Esc/空格/停止仍可用；滚轮可能被 UIPI 拦截</value>
   </data>
+  <data name="pin_menu_copy" xml:space="preserve">
+    <value>复制图片 (Ctrl+C)</value>
+  </data>
+  <data name="pin_menu_save" xml:space="preserve">
+    <value>另存为… (Ctrl+S)</value>
+  </data>
+  <data name="pin_menu_reset_zoom" xml:space="preserve">
+    <value>实际大小 1:1 (Ctrl+0)</value>
+  </data>
+  <data name="pin_menu_click_through" xml:space="preserve">
+    <value>鼠标穿透 (Ctrl+T)</value>
+  </data>
+  <data name="pin_badge_exit_click_through" xml:space="preserve">
+    <value>退出穿透</value>
+  </data>
 </root>
