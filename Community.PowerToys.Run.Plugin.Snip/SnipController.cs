@@ -35,12 +35,12 @@ public static class SnipController
     /// Kicks off a screenshot. Returns immediately; <paramref name="notify"/> is
     /// invoked when the action finishes (success or failure).
     /// </summary>
-    public static void Start(SnipSettings settings, Action<string, string> notify)
+    public static void Start(SnipSettings settings, Action<string, string> notify, CaptureKind kind = CaptureKind.Region)
     {
         ArgumentNullException.ThrowIfNull(settings);
 
         Dispatcher dispatcher = EnsureUiDispatcher();
-        dispatcher.BeginInvoke(new Action(() => _ = RunAsync(settings, notify)), DispatcherPriority.Normal);
+        dispatcher.BeginInvoke(new Action(() => _ = RunAsync(settings, notify, kind)), DispatcherPriority.Normal);
     }
 
     /// <summary>
@@ -151,7 +151,7 @@ public static class SnipController
         }
     }
 
-    private static async Task RunAsync(SnipSettings settings, Action<string, string> notify)
+    private static async Task RunAsync(SnipSettings settings, Action<string, string> notify, CaptureKind kind)
     {
         System.Windows.Media.Imaging.WriteableBitmap bitmap = null;
         try
@@ -165,18 +165,58 @@ public static class SnipController
 
             var capture = CaptureFactory.Create();
             var screens = capture.GetScreens();
+            System.Windows.Rect? initialSelection = null;
+            Core.ScreenInfo screen;
+            System.Collections.Generic.IReadOnlyList<Core.ScreenInfo> monitors = Win32CaptureService.PhysicalScreens(screens);
 
-            // One monitor: that monitor (unchanged). Several: whole virtual desktop so the
-            // selection may span monitors (physical pixels; overlay maps DIP via its window DPI).
-            var screen = Win32CaptureService.ChooseCaptureTarget(screens);
-
-            // GDI BitBlt off the UI STA (owned DIB, no mid-frame byte[]); Span-copy to WB on STA.
-            using (var frame = await Task.Run(() => capture.CaptureScreenPixels(screen)).ConfigureAwait(true))
+            if (kind == CaptureKind.ActiveWindow)
             {
-                bitmap = frame.ToWriteableBitmap();
+                if (!Win32CaptureService.TryGetForegroundWindowBounds(out var phys))
+                {
+                    notify(Properties.Resources.msg_failed, Properties.Resources.msg_no_active_window);
+                    return;
+                }
+
+                var host = Win32CaptureService.GetScreenAtPhysicalPoint(
+                    screens,
+                    new System.Windows.Point(phys.X + (phys.Width / 2.0), phys.Y + (phys.Height / 2.0)));
+                double dpi = host.DpiScale > 0 ? host.DpiScale : 1.0;
+                screen = new Core.ScreenInfo(
+                    IntPtr.Zero,
+                    "ActiveWindow",
+                    new System.Windows.Rect(phys.X, phys.Y, phys.Width, phys.Height),
+                    new System.Windows.Rect(phys.X, phys.Y, phys.Width, phys.Height),
+                    dpi,
+                    false);
+
+                using (var frame = await Task.Run(() => capture.CaptureScreenRectPixels(phys.X, phys.Y, phys.Width, phys.Height)).ConfigureAwait(true))
+                {
+                    bitmap = frame.ToWriteableBitmap();
+                }
+
+                initialSelection = new System.Windows.Rect(0, 0, phys.Width / dpi, phys.Height / dpi);
+                monitors = [];
+            }
+            else
+            {
+                // One monitor: that monitor (unchanged). Several: whole virtual desktop so the
+                // selection may span monitors (physical pixels; overlay maps DIP via its window DPI).
+                screen = Win32CaptureService.ChooseCaptureTarget(screens);
+
+                // GDI BitBlt off the UI STA (owned DIB, no mid-frame byte[]); Span-copy to WB on STA.
+                using (var frame = await Task.Run(() => capture.CaptureScreenPixels(screen)).ConfigureAwait(true))
+                {
+                    bitmap = frame.ToWriteableBitmap();
+                }
+
+                if (kind == CaptureKind.FullScreen)
+                {
+                    double dpi = screen.DpiScale > 0 ? screen.DpiScale : 1.0;
+                    initialSelection = new System.Windows.Rect(0, 0, screen.Bounds.Width / dpi, screen.Bounds.Height / dpi);
+                }
             }
 
-            await RunEditorAsync(bitmap, screen, Win32CaptureService.PhysicalScreens(screens), settings, notify).ConfigureAwait(true);
+            await RunEditorAsync(bitmap, screen, monitors, settings, notify, initialSelection).ConfigureAwait(true);
         }
         catch (Exception ex)
         {
@@ -190,9 +230,11 @@ public static class SnipController
         Core.ScreenInfo screen,
         System.Collections.Generic.IReadOnlyList<Core.ScreenInfo> monitors,
         SnipSettings settings,
-        Action<string, string> notify)
+        Action<string, string> notify,
+        System.Windows.Rect? initialSelection = null)
     {
-        var window = new SnipWindow(bitmap, screen, new EditRequest(), settings, monitors);
+        var request = new EditRequest { InitialSelection = initialSelection };
+        var window = new SnipWindow(bitmap, screen, request, settings, monitors);
         window.ShowDialog();
 
         // OCR / translate / pin are opened as session children inside SnipWindow

@@ -77,6 +77,42 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        /// <summary>
+        ///   Looks up a localized string similar to Capture active window.
+        /// </summary>
+        public static string cmd_window_title {
+            get {
+                return ResourceManager.GetString("cmd_window_title", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Screenshot the foreground window, then annotate.
+        /// </summary>
+        public static string cmd_window_subtitle {
+            get {
+                return ResourceManager.GetString("cmd_window_subtitle", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Capture full screen.
+        /// </summary>
+        public static string cmd_fullscreen_title {
+            get {
+                return ResourceManager.GetString("cmd_fullscreen_title", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Screenshot the display, selection already filled.
+        /// </summary>
+        public static string cmd_fullscreen_subtitle {
+            get {
+                return ResourceManager.GetString("cmd_fullscreen_subtitle", resourceCulture);
+            }
+        }
+
 
 
 
@@ -161,6 +197,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string msg_failed {
             get {
                 return ResourceManager.GetString("msg_failed", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to No suitable active window to capture..
+        /// </summary>
+        public static string msg_no_active_window {
+            get {
+                return ResourceManager.GetString("msg_no_active_window", resourceCulture);
             }
         }
 

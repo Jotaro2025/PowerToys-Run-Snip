@@ -80,6 +80,18 @@
   <data name="cmd_region_subtitle" xml:space="preserve">
     <value>拖拽框选区域,标注后复制或保存</value>
   </data>
+  <data name="cmd_window_title" xml:space="preserve">
+    <value>截取当前窗口</value>
+  </data>
+  <data name="cmd_window_subtitle" xml:space="preserve">
+    <value>截取前台窗口后进入标注</value>
+  </data>
+  <data name="cmd_fullscreen_title" xml:space="preserve">
+    <value>截取全屏</value>
+  </data>
+  <data name="cmd_fullscreen_subtitle" xml:space="preserve">
+    <value>截取显示器画面（已预选全屏）</value>
+  </data>
   <data name="opt_save_dir_label" xml:space="preserve">
     <value>保存目录</value>
   </data>
@@ -106,6 +118,9 @@
   </data>
   <data name="msg_failed" xml:space="preserve">
     <value>截屏失败</value>
+  </data>
+  <data name="msg_no_active_window" xml:space="preserve">
+    <value>没有可截取的活动窗口。</value>
   </data>
   <data name="tip_select" xml:space="preserve">
     <value>选择 / 移动 / 编辑</value>

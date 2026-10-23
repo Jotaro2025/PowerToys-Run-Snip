@@ -293,6 +293,14 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             CreateRegionCommand(
                 Properties.Resources.cmd_region_title,
                 Properties.Resources.cmd_region_subtitle),
+            CreateCaptureCommand(
+                Properties.Resources.cmd_window_title,
+                Properties.Resources.cmd_window_subtitle,
+                CaptureKind.ActiveWindow),
+            CreateCaptureCommand(
+                Properties.Resources.cmd_fullscreen_title,
+                Properties.Resources.cmd_fullscreen_subtitle,
+                CaptureKind.FullScreen),
             CreateSettingsCommand(
                 Properties.Resources.cmd_settings_title,
                 Properties.Resources.cmd_settings_subtitle),
@@ -362,6 +370,11 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
     private Result CreateRegionCommand(string title, string subtitle)
     {
+        return CreateCaptureCommand(title, subtitle, CaptureKind.Region);
+    }
+
+    private Result CreateCaptureCommand(string title, string subtitle, CaptureKind kind)
+    {
         return new Result
         {
             Title = title,
@@ -370,7 +383,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             QueryTextDisplay = title,
             Action = _ =>
             {
-                SnipController.Start(_settings, Notify);
+                SnipController.Start(_settings, Notify, kind);
                 return true;
             },
         };

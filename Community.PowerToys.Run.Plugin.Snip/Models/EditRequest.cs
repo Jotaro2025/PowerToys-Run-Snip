@@ -2,6 +2,7 @@
 // The Microsoft Corporation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
+using System.Windows;
 using System.Windows.Media;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Models;
@@ -25,4 +26,10 @@ public sealed class EditRequest
 
     /// <summary>When true, toolbar shows the scroll-capture button (TDS-style).</summary>
     public bool EnableScrollCapture { get; init; } = true;
+
+    /// <summary>
+    /// Optional DIP selection applied when the overlay opens (full-screen / active-window).
+    /// <c>null</c> = idle dim until the user drags a region.
+    /// </summary>
+    public Rect? InitialSelection { get; init; }
 }
