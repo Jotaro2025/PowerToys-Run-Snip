@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -17,8 +18,12 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 public sealed class ScrollStopStripWindow : Window
 {
     private readonly TextBlock _title;
+    private readonly TextBlock _tip;
     private readonly Button _stopButton;
     private bool _closing;
+    private bool _paused;
+    private bool _hotkeyConflict;
+    private int _tileCount;
 
     public event Action StopClicked;
 
@@ -69,17 +74,19 @@ public sealed class ScrollStopStripWindow : Window
         row.Children.Add(_title);
         row.Children.Add(_stopButton);
 
-        var tip = new TextBlock
+        _tip = new TextBlock
         {
             Text = Properties.Resources.scroll_stop_strip_tip,
             Foreground = new SolidColorBrush(Color.FromArgb(200, 220, 220, 230)),
             FontSize = 11,
             Margin = new Thickness(0, 4, 0, 0),
+            TextWrapping = TextWrapping.Wrap,
+            MaxWidth = 380,
         };
 
         var stack = new StackPanel { Orientation = Orientation.Vertical };
         stack.Children.Add(row);
-        stack.Children.Add(tip);
+        stack.Children.Add(_tip);
 
         Content = new Border
         {
@@ -103,17 +110,72 @@ public sealed class ScrollStopStripWindow : Window
 
     public void SetTileCount(int tileCount)
     {
-        _title.Text = tileCount <= 0
+        _tileCount = Math.Max(0, tileCount);
+        RefreshTitleAndTip();
+    }
+
+    public void SetPaused(bool paused)
+    {
+        _paused = paused;
+        RefreshTitleAndTip();
+    }
+
+    public void SetHotkeyConflictHint(bool conflict)
+    {
+        _hotkeyConflict = conflict;
+        RefreshTitleAndTip();
+    }
+
+    private void RefreshTitleAndTip()
+    {
+        string count = _tileCount > 0
+            ? "  " + _tileCount.ToString(CultureInfo.CurrentCulture)
+            : string.Empty;
+
+        if (_paused)
+        {
+            _title.Text = Properties.Resources.scroll_hint_paused + count;
+            _tip.Text = Properties.Resources.scroll_stop_strip_paused_tip;
+            _tip.Foreground = new SolidColorBrush(Color.FromRgb(255, 196, 96));
+            return;
+        }
+
+        _title.Text = _tileCount <= 0
             ? Properties.Resources.scroll_hint_title
-            : Properties.Resources.scroll_hint_title + "  " + tileCount;
+            : Properties.Resources.scroll_hint_title + "  " + _tileCount.ToString(CultureInfo.CurrentCulture);
+
+        if (_hotkeyConflict)
+        {
+            _tip.Text = Properties.Resources.scroll_stop_strip_conflict_tip;
+            _tip.Foreground = new SolidColorBrush(Color.FromRgb(255, 196, 96));
+        }
+        else
+        {
+            _tip.Text = Properties.Resources.scroll_stop_strip_tip;
+            _tip.Foreground = new SolidColorBrush(Color.FromArgb(200, 220, 220, 230));
+        }
     }
 
     /// <summary>
     /// Position near the top-center of the capture area (physical pixels → DIP).
+    /// Prefer this window's DPI after Show so mixed-DPI secondary monitors stay aligned.
     /// </summary>
     public void PlaceNearCapture(Int32Rect capturePhysicalPx, double dpiScale)
     {
         double scale = dpiScale > 0.01 ? dpiScale : 1.0;
+        try
+        {
+            var dpi = VisualTreeHelper.GetDpi(this);
+            if (dpi.DpiScaleX > 0.01)
+            {
+                scale = dpi.DpiScaleX;
+            }
+        }
+        catch (Exception)
+        {
+            // Pre-Show / no composition target — keep caller scale.
+        }
+
         double leftDip = capturePhysicalPx.X / scale;
         double topDip = capturePhysicalPx.Y / scale;
         double widthDip = capturePhysicalPx.Width / scale;
@@ -122,8 +184,18 @@ public sealed class ScrollStopStripWindow : Window
         double w = Math.Max(DesiredSize.Width, 220);
         double h = Math.Max(DesiredSize.Height, 56);
 
-        Left = leftDip + Math.Max(0, (widthDip - w) / 2);
-        Top = Math.Max(8, topDip + 16);
+        double vx = SystemParameters.VirtualScreenLeft;
+        double vy = SystemParameters.VirtualScreenTop;
+        double vw = SystemParameters.VirtualScreenWidth;
+        double vh = SystemParameters.VirtualScreenHeight;
+
+        double left = leftDip + Math.Max(0, (widthDip - w) / 2);
+        double top = topDip + 16;
+        left = Math.Min(Math.Max(left, vx + 8), vx + vw - w - 8);
+        top = Math.Min(Math.Max(top, vy + 8), vy + vh - h - 8);
+
+        Left = left;
+        Top = top;
         Width = w;
         Height = h;
     }

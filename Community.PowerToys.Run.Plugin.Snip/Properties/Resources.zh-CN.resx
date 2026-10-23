@@ -720,4 +720,10 @@
   <data name="scroll_stop_strip_tip" xml:space="preserve">
     <value>Esc 或空格也可中途停止并保留已截帧</value>
   </data>
+  <data name="scroll_stop_strip_conflict_tip" xml:space="preserve">
+    <value>Esc/空格热键被其他程序占用 — 请点「停止」，或仍可试 Esc/空格（轮询兜底）</value>
+  </data>
+  <data name="scroll_stop_strip_paused_tip" xml:space="preserve">
+    <value>已暂停 — 将鼠标移回选区即可继续</value>
+  </data>
 </root>

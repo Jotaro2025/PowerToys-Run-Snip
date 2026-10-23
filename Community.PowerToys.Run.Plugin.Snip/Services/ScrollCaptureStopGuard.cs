@@ -41,6 +41,7 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
     private bool _spaceWasDown;
     private int _stopFired;
     private bool _disposed;
+    private bool _pendingHotkeyConflict;
 
     public ScrollCaptureStopGuard(
         Action onStop,
@@ -90,6 +91,60 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
         catch (Exception ex)
         {
             SnipVerbose.Scroll($"[scroll] stop strip dispatch failed: {ex.Message}");
+        }
+    }
+
+    public void SetPaused(bool paused)
+    {
+        if (_disposed || _strip == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _dispatcher.BeginInvoke(() =>
+            {
+                try
+                {
+                    _strip?.SetPaused(paused);
+                }
+                catch (Exception ex)
+                {
+                    SnipVerbose.Scroll($"[scroll] stop strip pause update skipped: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            SnipVerbose.Scroll($"[scroll] stop strip pause dispatch failed: {ex.Message}");
+        }
+    }
+
+    public void SetHotkeyConflictHint(bool conflict)
+    {
+        if (_disposed || _strip == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _dispatcher.BeginInvoke(() =>
+            {
+                try
+                {
+                    _strip?.SetHotkeyConflictHint(conflict);
+                }
+                catch (Exception ex)
+                {
+                    SnipVerbose.Scroll($"[scroll] stop strip conflict tip skipped: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            SnipVerbose.Scroll($"[scroll] stop strip conflict dispatch failed: {ex.Message}");
         }
     }
 
@@ -184,6 +239,12 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
                 $"Snip scroll Space hotkey register failed (Win32 {Marshal.GetLastWin32Error()}); poll fallback active",
                 typeof(ScrollCaptureStopGuard));
         }
+
+        if (!_escRegistered || !_spaceRegistered)
+        {
+            // Defer until strip exists (Start calls Ensure then ShowStrip).
+            _pendingHotkeyConflict = true;
+        }
     }
 
     private void UnregisterHotkeys()
@@ -219,6 +280,13 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
             _strip.StopClicked += () => FireStop("stop-strip");
             _strip.PlaceNearCapture(_capturePhysicalPx, _dpiScale);
             _strip.Show();
+
+            // Re-place after Show so VisualTreeHelper.GetDpi reflects the monitor DPI.
+            _strip.PlaceNearCapture(_capturePhysicalPx, _dpiScale);
+            if (_pendingHotkeyConflict)
+            {
+                _strip.SetHotkeyConflictHint(true);
+            }
         });
     }
 

@@ -194,6 +194,7 @@ public sealed class ScrollCaptureController
                     {
                         _paused = true;
                         PostToOverlay(() => _overlay.ShowPaused());
+                        _stopGuard?.SetPaused(true);
                         SnipVerbose.Scroll("[scroll] paused — cursor left selection");
                     }
 
@@ -208,6 +209,7 @@ public sealed class ScrollCaptureController
                 if (_paused)
                 {
                     _paused = false;
+                    _stopGuard?.SetPaused(false);
                     SnipVerbose.Scroll("[scroll] resumed — cursor back in selection");
                 }
 
