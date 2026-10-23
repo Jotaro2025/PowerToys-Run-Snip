@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Buffers;
 using Community.PowerToys.Run.Plugin.Snip.Core;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 
@@ -31,6 +32,39 @@ public sealed class ScrollWindowCaptureTests
         Assert.AreEqual(10, crop[4]);
         Assert.AreEqual(20, crop[5]);
         Assert.AreEqual(30, crop[6]);
+    }
+
+    [TestMethod]
+    public void RentCropBgraBuffer_And_ToOwnedPixels_TransfersPooledBufferWithoutExtraCopy()
+    {
+        const int srcW = 4;
+        const int srcH = 3;
+        int stride = CaptureBuffers.BgraStride(srcW);
+        var src = new byte[stride * srcH];
+        int i = (1 * stride) + (2 * 4);
+        src[i] = 11;
+        src[i + 1] = 22;
+        src[i + 2] = 33;
+        src[i + 3] = 255;
+
+        byte[] rented = ScrollWindowCapture.RentCropBgraBuffer(
+            src,
+            srcW,
+            srcH,
+            stride,
+            1,
+            1,
+            2,
+            1,
+            out int dstBytes);
+        Assert.AreEqual(CaptureBuffers.BgraByteCount(2, 1), dstBytes);
+        Assert.IsTrue(rented.Length >= dstBytes);
+
+        using var frame = new CapturedFrame(rented, 2, 1, CaptureBuffers.BgraStride(2), rentedFromPool: true);
+        using ScrollTilePixels owned = frame.ToOwnedPixels();
+        Assert.AreEqual(11, owned.Pixels[4]);
+        Assert.AreEqual(22, owned.Pixels[5]);
+        Assert.AreEqual(33, owned.Pixels[6]);
     }
 
     [TestMethod]

@@ -91,14 +91,32 @@ public static class ClipboardService
             () => BuildClipboardPayload(frozen, pngBytes),
             cancellationToken).ConfigureAwait(true);
 
-        ApplyClipboardPayload(payload);
+        try
+        {
+            ApplyClipboardPayload(payload);
+        }
+        finally
+        {
+            payload.Dispose();
+        }
     }
 
-    private sealed class ClipboardPayload
+    private sealed class ClipboardPayload : IDisposable
     {
-        public byte[] Dib { get; init; }
+        public byte[] RentedDib { get; set; }
+
+        public int DibLength { get; init; }
 
         public byte[] Png { get; init; }
+
+        public void Dispose()
+        {
+            if (RentedDib != null)
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(RentedDib);
+                RentedDib = null;
+            }
+        }
     }
 
     private static ClipboardPayload BuildClipboardPayload(BitmapSource bitmap, byte[] existingPng)
@@ -108,40 +126,58 @@ public static class ClipboardService
         int stride = width * 4;
         int headerBytes = Marshal.SizeOf<BITMAPINFOHEADER>();
         int imageBytes = stride * height;
-        var dib = new byte[headerBytes + imageBytes];
+        int dibLength = headerBytes + imageBytes;
+        byte[] dib = System.Buffers.ArrayPool<byte>.Shared.Rent(dibLength);
 
-        var bmi = new BITMAPINFOHEADER
+        try
         {
-            BiSize = (uint)headerBytes,
-            BiWidth = width,
-            BiHeight = height,
-            BiPlanes = 1,
-            BiBitCount = 32,
-            BiCompression = 0,
-            BiSizeImage = (uint)imageBytes,
-        };
-        MemoryMarshal.Write(dib.AsSpan(0, headerBytes), in bmi);
+            var bmi = new BITMAPINFOHEADER
+            {
+                BiSize = (uint)headerBytes,
+                BiWidth = width,
+                BiHeight = height,
+                BiPlanes = 1,
+                BiBitCount = 32,
+                BiCompression = 0,
+                BiSizeImage = (uint)imageBytes,
+            };
+            MemoryMarshal.Write(dib.AsSpan(0, headerBytes), in bmi);
 
-        // Bottom-up DIB: CopyPixels one source row at a time (frozen → any thread).
-        for (int y = 0; y < height; y++)
-        {
-            int srcY = height - 1 - y;
-            int destOffset = headerBytes + (y * stride);
-            bitmap.CopyPixels(new Int32Rect(0, srcY, width, 1), dib, stride, destOffset);
-            ClearBgraAlpha(dib.AsSpan(destOffset, stride));
+            // Bottom-up DIB: CopyPixels one source row at a time (frozen → any thread).
+            for (int y = 0; y < height; y++)
+            {
+                int srcY = height - 1 - y;
+                int destOffset = headerBytes + (y * stride);
+                bitmap.CopyPixels(new Int32Rect(0, srcY, width, 1), dib, stride, destOffset);
+                ClearBgraAlpha(dib.AsSpan(destOffset, stride));
+            }
+
+            byte[] png;
+            if (existingPng != null && existingPng.Length > 0)
+            {
+                png = existingPng;
+            }
+            else
+            {
+                png = PngEncoder.Encode(bitmap);
+            }
+
+            var payload = new ClipboardPayload
+            {
+                RentedDib = dib,
+                DibLength = dibLength,
+                Png = png,
+            };
+            dib = null; // ownership transferred to ClipboardPayload
+            return payload;
         }
-
-        byte[] png;
-        if (existingPng != null && existingPng.Length > 0)
+        finally
         {
-            png = existingPng;
+            if (dib != null)
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(dib);
+            }
         }
-        else
-        {
-            png = PngEncoder.Encode(bitmap);
-        }
-
-        return new ClipboardPayload { Dib = dib, Png = png };
     }
 
     private static void ApplyClipboardPayload(ClipboardPayload payload)
@@ -154,8 +190,15 @@ public static class ClipboardService
         try
         {
             EmptyClipboard();
-            SetHGlobalFormat(CfDib, payload.Dib);
-            SetHGlobalFormat(RegisterClipboardFormat("PNG"), payload.Png);
+            if (payload.RentedDib != null && payload.DibLength > 0)
+            {
+                SetHGlobalFormat(CfDib, payload.RentedDib.AsSpan(0, payload.DibLength));
+            }
+
+            if (payload.Png != null && payload.Png.Length > 0)
+            {
+                SetHGlobalFormat(RegisterClipboardFormat("PNG"), payload.Png.AsSpan());
+            }
         }
         finally
         {
@@ -163,9 +206,9 @@ public static class ClipboardService
         }
     }
 
-    private static void SetHGlobalFormat(uint format, byte[] bytes)
+    private static void SetHGlobalFormat(uint format, ReadOnlySpan<byte> bytes)
     {
-        if (bytes == null || bytes.Length == 0)
+        if (bytes.IsEmpty)
         {
             return;
         }
@@ -187,7 +230,7 @@ public static class ClipboardService
         {
             unsafe
             {
-                bytes.AsSpan().CopyTo(new Span<byte>((void*)p, bytes.Length));
+                bytes.CopyTo(new Span<byte>((void*)p, bytes.Length));
             }
         }
         finally

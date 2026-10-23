@@ -14,15 +14,27 @@ namespace Community.PowerToys.Run.Plugin.Snip.Core;
 internal static class Radix2Fft
 {
     /// <summary>In-place forward DFT without 1/N scaling.</summary>
-    public static void Forward(ComplexF[] data) => Transform(data, inverse: false);
-
-    /// <summary>In-place inverse DFT without 1/N scaling (forward then inverse yields N·x).</summary>
-    public static void Inverse(ComplexF[] data) => Transform(data, inverse: true);
-
-    private static void Transform(ComplexF[] data, bool inverse)
+    public static void Forward(ComplexF[] data)
     {
         ArgumentNullException.ThrowIfNull(data);
+        Transform(data.AsSpan(), inverse: false);
+    }
 
+    /// <summary>In-place forward DFT on a span without 1/N scaling.</summary>
+    public static void Forward(Span<ComplexF> data) => Transform(data, inverse: false);
+
+    /// <summary>In-place inverse DFT without 1/N scaling (forward then inverse yields N·x).</summary>
+    public static void Inverse(ComplexF[] data)
+    {
+        ArgumentNullException.ThrowIfNull(data);
+        Transform(data.AsSpan(), inverse: true);
+    }
+
+    /// <summary>In-place inverse DFT on a span without 1/N scaling.</summary>
+    public static void Inverse(Span<ComplexF> data) => Transform(data, inverse: true);
+
+    private static void Transform(Span<ComplexF> data, bool inverse)
+    {
         int n = data.Length;
         if (n == 0)
         {
