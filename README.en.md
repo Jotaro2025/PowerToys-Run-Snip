@@ -41,6 +41,7 @@ You can also configure a **global hotkey** in settings to start a region capture
 - **Image translation**: OCR boxes → translate → erase original and redraw translated text; “re-render” / “save image”
 - **Session keep-alive**: OCR / translate hide the overlay first, then restore the same selection and annotations; pin leaves the overlay open
 - Multi-monitor + high-DPI: with one monitor only that monitor is captured (unchanged); with several, the overlay covers the whole virtual desktop so **a selection can span monitors**, captured in physical pixels and converted with the overlay window's actual DPI under mixed scaling (e.g. 100% + 150%); the toolbar and scroll hint stay on the monitor holding the selection. Areas of the virtual desktop not covered by any monitor (different monitor sizes) capture as black
+- **WinRT Graphics Capture** (preferred, GDI BitBlt fallback): full-screen / active-window captures keep the cursor and composited content more reliably; multi-monitor virtual desktop, scroll tiles, and arbitrary rects stay on GDI. Export remains SDR BGRA32 (HDR is tone-mapped on copy). Needs Windows 10 1903+. Protected content may be black and automatically falls back to GDI. See “Capture backends” below.
 
 UI language follows PowerToys (built-in English + Simplified Chinese).
 
@@ -49,6 +50,16 @@ UI language follows PowerToys (built-in English + Simplified Chinese).
 - [PowerToys](https://github.com/microsoft/PowerToys) **≥ 0.100** (.NET 10 host)
 - **x64** or **ARM64** PowerToys: the WeChat OCR component is x64-only; ARM64 (or when chosen) uses the built-in **Windows OCR**, which needs an installed OCR language (see Text extraction)
 - Windows (WPF plugin)
+
+
+## Capture backends
+
+| Path | Used for | Limits |
+|------|----------|--------|
+| **WinRT Graphics Capture** | Single-monitor full screen, active window (`CreateForMonitor` / `CreateForWindow`) | Win10 1903+; optional cursor; HDR→SDR BGRA32 export; DRM/protected content may be black |
+| **GDI BitBlt** (fallback) | Virtual-desktop spanning, scroll tiles, rect crops, any WinRT failure | No hardware cursor composition; HDR usually flattened to SDR |
+
+On Windows, `CaptureFactory` returns `PreferWinRtCaptureService`: WinRT when possible, otherwise silent GDI fallback.
 
 ## Install
 

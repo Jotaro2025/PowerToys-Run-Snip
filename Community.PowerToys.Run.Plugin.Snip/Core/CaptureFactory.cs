@@ -8,6 +8,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Core;
 
 /// <summary>
 /// Factory returning the best available <see cref="ICaptureService"/> for the current OS.
+/// Prefers WinRT Graphics Capture (with GDI fallback) on Windows.
 /// </summary>
 public static class CaptureFactory
 {
@@ -15,7 +16,7 @@ public static class CaptureFactory
     {
         if (OperatingSystem.IsWindows())
         {
-            return new Win32CaptureService();
+            return new PreferWinRtCaptureService();
         }
 
         throw new PlatformNotSupportedException(

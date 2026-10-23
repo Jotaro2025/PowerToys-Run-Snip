@@ -189,7 +189,18 @@ public static class SnipController
                     dpi,
                     false);
 
-                using (var frame = await Task.Run(() => capture.CaptureScreenRectPixels(phys.X, phys.Y, phys.Width, phys.Height)).ConfigureAwait(true))
+                // Prefer WinRT CreateForWindow (HDR / cursor); GDI BitBlt of the window rect otherwise.
+                IntPtr hwnd = Core.Win32.GetForegroundWindow();
+                using (var frame = await Task.Run(() =>
+                {
+                    if (Core.WinRtGraphicsCapture.TryCaptureWindow(hwnd, captureCursor: true, out var winrt)
+                        && winrt != null)
+                    {
+                        return winrt;
+                    }
+
+                    return capture.CaptureScreenRectPixels(phys.X, phys.Y, phys.Width, phys.Height);
+                }).ConfigureAwait(true))
                 {
                     bitmap = frame.ToWriteableBitmap();
                 }
