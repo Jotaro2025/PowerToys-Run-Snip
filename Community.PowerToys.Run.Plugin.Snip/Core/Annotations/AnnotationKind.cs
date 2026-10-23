@@ -12,4 +12,7 @@ public enum AnnotationKind
     Ellipse,
     Text,
     Mosaic,
+    Line,
+    Highlight,
+    Step,
 }

@@ -55,12 +55,33 @@ public static class AnnotationEditor
                 };
                 return Pad(shapeRect, a.StrokeWidth);
             case ArrowAnnotation arr:
-                Rect arrowRect = new Rect(
-                    Math.Min(arr.Start.X, arr.End.X),
-                    Math.Min(arr.Start.Y, arr.End.Y),
-                    Math.Max(1, Math.Abs(arr.End.X - arr.Start.X)),
-                    Math.Max(1, Math.Abs(arr.End.Y - arr.Start.Y)));
-                return Pad(arrowRect, a.StrokeWidth + 10);
+                {
+                    Rect arrowRect = new Rect(
+                        Math.Min(arr.Start.X, arr.End.X),
+                        Math.Min(arr.Start.Y, arr.End.Y),
+                        Math.Max(1, Math.Abs(arr.End.X - arr.Start.X)),
+                        Math.Max(1, Math.Abs(arr.End.Y - arr.Start.Y)));
+                    return Pad(arrowRect, a.StrokeWidth + 10);
+                }
+
+            case LineAnnotation line:
+                {
+                    Rect lineRect = new Rect(
+                        Math.Min(line.Start.X, line.End.X),
+                        Math.Min(line.Start.Y, line.End.Y),
+                        Math.Max(1, Math.Abs(line.End.X - line.Start.X)),
+                        Math.Max(1, Math.Abs(line.End.Y - line.Start.Y)));
+                    return Pad(lineRect, a.StrokeWidth + 4);
+                }
+
+            case HighlightAnnotation hi:
+                return Pad(hi.Rect, a.StrokeWidth);
+            case StepAnnotation step:
+                return new Rect(
+                    step.Center.X - step.Radius - 2,
+                    step.Center.Y - step.Radius - 2,
+                    (step.Radius * 2) + 4,
+                    (step.Radius * 2) + 4);
             case PenAnnotation pen:
                 if (pen.Points.Count == 0)
                 {
@@ -111,6 +132,12 @@ public static class AnnotationEditor
                 return Inflate(m.Rect, HitTolerance).Contains(p);
             case ArrowAnnotation arr:
                 return DistanceToSegment(p, arr.Start, arr.End) <= HitTolerance + arr.StrokeWidth;
+            case LineAnnotation line:
+                return DistanceToSegment(p, line.Start, line.End) <= HitTolerance + line.StrokeWidth;
+            case HighlightAnnotation hi:
+                return Inflate(hi.Rect, HitTolerance).Contains(p);
+            case StepAnnotation step:
+                return GetBounds(step).Contains(p);
             case PenAnnotation pen:
                 for (int i = 1; i < pen.Points.Count; i++)
                 {
@@ -214,6 +241,9 @@ public static class AnnotationEditor
             EllipseAnnotation e => e with { Rect = Offset(e.Rect, delta) },
             MosaicAnnotation m => m with { Rect = Offset(m.Rect, delta) },
             ArrowAnnotation arr => arr with { Start = arr.Start + delta, End = arr.End + delta },
+            LineAnnotation line => line with { Start = line.Start + delta, End = line.End + delta },
+            HighlightAnnotation hi => hi with { Rect = Offset(hi.Rect, delta) },
+            StepAnnotation step => step with { Center = step.Center + delta },
             PenAnnotation pen => pen with { Points = pen.Points.Select(pt => pt + delta).ToArray() },
             TextAnnotation t => t with { Origin = t.Origin + delta },
             _ => a,
@@ -232,6 +262,16 @@ public static class AnnotationEditor
             };
         }
 
+        if (a is LineAnnotation line)
+        {
+            return handle switch
+            {
+                HandleKind.StartPoint => line with { Start = current },
+                HandleKind.EndPoint => line with { End = current },
+                _ => line,
+            };
+        }
+
         if (a is PenAnnotation)
         {
             return a;
@@ -247,6 +287,7 @@ public static class AnnotationEditor
             RectAnnotation r => r.Rect,
             EllipseAnnotation e => e.Rect,
             MosaicAnnotation m => m.Rect,
+            HighlightAnnotation hi => hi.Rect,
             _ => startBounds,
         };
 
@@ -270,6 +311,7 @@ public static class AnnotationEditor
             RectAnnotation rr => rr with { Rect = next },
             EllipseAnnotation ee => ee with { Rect = next },
             MosaicAnnotation mm => mm with { Rect = next },
+            HighlightAnnotation hi => hi with { Rect = next },
             _ => a,
         };
     }
@@ -280,6 +322,18 @@ public static class AnnotationEditor
         {
             yield return (HandleKind.StartPoint, arr.Start);
             yield return (HandleKind.EndPoint, arr.End);
+            yield break;
+        }
+
+        if (a is LineAnnotation line)
+        {
+            yield return (HandleKind.StartPoint, line.Start);
+            yield return (HandleKind.EndPoint, line.End);
+            yield break;
+        }
+
+        if (a is StepAnnotation)
+        {
             yield break;
         }
 
@@ -304,9 +358,9 @@ public static class AnnotationEditor
     public static Point Center(Rect r) => new(r.X + (r.Width / 2), r.Y + (r.Height / 2));
 
     public static bool SupportsResize(Annotation a)
-        => a is RectAnnotation or EllipseAnnotation or MosaicAnnotation or TextAnnotation;
+        => a is RectAnnotation or EllipseAnnotation or MosaicAnnotation or HighlightAnnotation or TextAnnotation;
 
-    public static bool SupportsRotate(Annotation a) => a is ArrowAnnotation;
+    public static bool SupportsRotate(Annotation a) => a is ArrowAnnotation or LineAnnotation;
 
     private static Annotation ApplyTextHandle(TextAnnotation t, HandleKind handle, Point current, Rect startBounds)
     {

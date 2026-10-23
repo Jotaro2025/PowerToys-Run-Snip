@@ -128,6 +128,15 @@
   <data name="tip_mosaic" xml:space="preserve">
     <value>Mosaic</value>
   </data>
+  <data name="tip_line" xml:space="preserve">
+    <value>Straight line</value>
+  </data>
+  <data name="tip_highlight" xml:space="preserve">
+    <value>Highlight</value>
+  </data>
+  <data name="tip_step" xml:space="preserve">
+    <value>Numbered step</value>
+  </data>
   <data name="tip_undo" xml:space="preserve">
     <value>Undo (Ctrl+Z)</value>
   </data>

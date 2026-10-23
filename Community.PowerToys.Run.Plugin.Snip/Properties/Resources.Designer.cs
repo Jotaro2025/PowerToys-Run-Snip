@@ -228,6 +228,33 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Straight line.
+        /// </summary>
+        public static string tip_line {
+            get {
+                return ResourceManager.GetString("tip_line", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Highlight.
+        /// </summary>
+        public static string tip_highlight {
+            get {
+                return ResourceManager.GetString("tip_highlight", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Numbered step.
+        /// </summary>
+        public static string tip_step {
+            get {
+                return ResourceManager.GetString("tip_step", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Undo (Ctrl+Z).
         /// </summary>
         public static string tip_undo {
