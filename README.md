@@ -151,7 +151,7 @@ ARM64 版 PowerToys 中始终使用 Windows OCR（微信 OCR 只有 x64 原生�
 - **完整包（full）**：插件目录自带 `wco_data\`，可离线 OCR（约多 61 MB）
 
 - **下载源**：优先 [nuget.org](https://www.nuget.org/) flat container；失败时回退 [Azure CN 镜像](https://nuget.cdn.azure.cn/)（`nuget.cdn.azure.cn`）。**任意来源**的 nupkg 都必须通过代码内钉死的 SHA-256（`OcrAssetsDownloader.ExpectedSha256`）；镜像内容若与 nuget.org 该版本字节不一致会被拒绝。不要改镜像顺序为「优先 CN」，除非 nuget.org 长期不可达且你已确认哈希仍匹配。
-- 托管 DLL（`WeChatOcr.dll` 等约 1.3 MB）随两种包一起分发
+> **PowerToys 附加选项 · API Key**：框内始终为空并显示占位「留空则保留已保存的密钥」，**不**展示 `dpapi:v1:` 密文。留空保存=保留密钥；仅在 **Snip 设置窗口** 清空并保存才会删除。- 托管 DLL（`WeChatOcr.dll` 等约 1.3 MB）随两种包一起分发
 - 仅 **x64**；OCR 缺失 / 超时 / 失败时结果窗会提示
 - 关闭结果窗会取消进行中的识别；引擎忙碌时会显示等待提示
 

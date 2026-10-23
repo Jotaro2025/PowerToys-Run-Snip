@@ -215,7 +215,10 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayLabel = Properties.Resources.opt_tr_http_key_label,
             DisplayDescription = Properties.Resources.opt_tr_http_key_desc,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
-            TextValue = SecretProtector.Protect(_settings.HttpApiKey),
+
+            // Never dump DPAPI ciphertext into the PT textbox. Empty = keep existing key on save.
+            TextValue = string.Empty,
+            PlaceholderText = Properties.Resources.opt_tr_http_key_placeholder,
         },
         new PluginAdditionalOption()
         {
@@ -318,6 +321,31 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             catch (Exception ex)
             {
                 Log.Exception($"Snip: API key migration failed: {ex.Message}", ex, typeof(Main));
+            }
+        });
+    }
+
+    /// <summary>
+    /// Re-writes the protected form of an already-known plaintext key so PowerToys saving an
+    /// empty AdditionalOptions TextValue cannot clear settings.json.
+    /// </summary>
+    private static void EnsureProtectedApiKeyPersisted(string plainApiKey)
+    {
+        if (string.IsNullOrEmpty(plainApiKey))
+        {
+            return;
+        }
+
+        _ = System.Threading.Tasks.Task.Run(() =>
+        {
+            try
+            {
+                var patch = SnipSettingsPersister.OptionPatch.Text(OptionHttpApiKey, SecretProtector.Protect(plainApiKey));
+                SnipSettingsPersister.Persist([patch]);
+            }
+            catch (Exception ex)
+            {
+                Log.Exception($"Snip: re-persist protected HTTP API key failed: {ex.Message}", ex, typeof(Main));
             }
         });
     }
@@ -454,10 +482,28 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         _settings.HttpBaseUrl = options.FirstOrDefault(x => x.Key == OptionHttpBaseUrl)?.TextValue
             ?? _settings.HttpBaseUrl;
         var storedApiKey = options.FirstOrDefault(x => x.Key == OptionHttpApiKey)?.TextValue ?? string.Empty;
-        _settings.HttpApiKey = SecretProtector.Unprotect(storedApiKey);
-        if (SecretProtector.NeedsMigration(storedApiKey))
+        if (string.IsNullOrWhiteSpace(storedApiKey))
         {
-            MigrateApiKeyToProtected(_settings.HttpApiKey);
+            // PowerToys AdditionalOptions textbox is always shown empty (placeholder only).
+            // Empty on save means "keep the in-memory / previously loaded key", then re-Persist
+            // Protect() so PT cannot wipe settings.json with a blank TextValue.
+            if (!string.IsNullOrEmpty(_settings.HttpApiKey))
+            {
+                EnsureProtectedApiKeyPersisted(_settings.HttpApiKey);
+            }
+        }
+        else
+        {
+            _settings.HttpApiKey = SecretProtector.Unprotect(storedApiKey);
+            if (SecretProtector.NeedsMigration(storedApiKey))
+            {
+                MigrateApiKeyToProtected(_settings.HttpApiKey);
+            }
+            else if (!SecretProtector.IsProtected(storedApiKey))
+            {
+                // Fresh plaintext typed in AdditionalOptions → encrypt to disk.
+                MigrateApiKeyToProtected(_settings.HttpApiKey);
+            }
         }
 
         _settings.HttpModel = options.FirstOrDefault(x => x.Key == OptionHttpModel)?.TextValue

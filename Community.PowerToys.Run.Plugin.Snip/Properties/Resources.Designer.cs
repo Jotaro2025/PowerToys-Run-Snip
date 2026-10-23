@@ -1011,6 +1011,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("opt_tr_http_key_desc", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Leave empty to keep the saved key.
+        /// </summary>
+        public static string opt_tr_http_key_placeholder {
+            get {
+                return ResourceManager.GetString("opt_tr_http_key_placeholder", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to HTTP model name.
         /// </summary>
