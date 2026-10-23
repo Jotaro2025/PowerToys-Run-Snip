@@ -236,6 +236,27 @@ public sealed class AnnotationCanvas : FrameworkElement
             case ArrowAnnotation arr:
                 DrawArrow(drawingContext, arr);
                 break;
+            case LineAnnotation line:
+                {
+                    var pen = new Pen(new SolidColorBrush(line.Stroke), line.StrokeWidth)
+                    {
+                        StartLineCap = PenLineCap.Round,
+                        EndLineCap = PenLineCap.Round,
+                    };
+                    drawingContext.DrawGeometry(null, pen, CreatePolyline([line.Start, line.End], false));
+                    break;
+                }
+
+            case HighlightAnnotation hi:
+                {
+                    var fill = Color.FromArgb(hi.FillAlpha, hi.Stroke.R, hi.Stroke.G, hi.Stroke.B);
+                    drawingContext.DrawRectangle(new SolidColorBrush(fill), null, hi.Rect);
+                    break;
+                }
+
+            case StepAnnotation step:
+                DrawStep(drawingContext, step);
+                break;
             case RectAnnotation r:
                 drawingContext.DrawRectangle(
                     null,
@@ -321,6 +342,24 @@ public sealed class AnnotationCanvas : FrameworkElement
         var p2 = new Point(back.X - (perpX * headWidth), back.Y - (perpY * headWidth));
         var fill = new SolidColorBrush(a.Stroke);
         dc.DrawGeometry(fill, pen, CreatePolyline([p1, a.End, p2], true));
+    }
+
+    private void DrawStep(DrawingContext dc, StepAnnotation step)
+    {
+        var fill = new SolidColorBrush(step.Stroke);
+        dc.DrawEllipse(fill, null, step.Center, step.Radius, step.Radius);
+        var ft = new FormattedText(
+            step.Number.ToString(CultureInfo.InvariantCulture),
+            CultureInfo.CurrentCulture,
+            FlowDirection.LeftToRight,
+            TextTypeface,
+            Math.Max(10, step.Radius),
+            Brushes.White,
+            1.0);
+        var origin = new Point(
+            step.Center.X - (ft.Width / 2),
+            step.Center.Y - (ft.Height / 2));
+        dc.DrawText(ft, origin);
     }
 
     private bool ShouldPreviewMosaic(MosaicAnnotation m)
@@ -482,6 +521,22 @@ public sealed class AnnotationCanvas : FrameworkElement
         if (ActiveTool == ToolIds.Text)
         {
             BeginInlineText(p, null);
+            e.Handled = true;
+            return;
+        }
+
+        if (ActiveTool == ToolIds.Step)
+        {
+            int next = Items.Count(a => a is StepAnnotation) + 1;
+            Add(new StepAnnotation
+            {
+                Kind = AnnotationKind.Step,
+                Stroke = CurrentStroke,
+                StrokeWidth = CurrentStrokeWidth,
+                Center = p,
+                Number = next,
+                Radius = Math.Max(12, (CurrentStrokeWidth * 3) + 8),
+            });
             e.Handled = true;
             return;
         }
@@ -681,6 +736,21 @@ public sealed class AnnotationCanvas : FrameworkElement
                 StrokeWidth = CurrentStrokeWidth,
                 Start = s,
                 End = e,
+            },
+            ToolIds.Line => new LineAnnotation
+            {
+                Kind = AnnotationKind.Line,
+                Stroke = CurrentStroke,
+                StrokeWidth = CurrentStrokeWidth,
+                Start = s,
+                End = e,
+            },
+            ToolIds.Highlight => new HighlightAnnotation
+            {
+                Kind = AnnotationKind.Highlight,
+                Stroke = CurrentStroke,
+                StrokeWidth = CurrentStrokeWidth,
+                Rect = rect,
             },
             ToolIds.Mosaic => new MosaicAnnotation
             {

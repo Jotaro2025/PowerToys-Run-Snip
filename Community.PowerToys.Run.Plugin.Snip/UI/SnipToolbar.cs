@@ -71,8 +71,11 @@ public sealed class SnipToolbar : Border
         AddTool(tools, ToolIds.Rect, ToolIcons.Rect, Properties.Resources.tip_rect);
         AddTool(tools, ToolIds.Ellipse, ToolIcons.Ellipse, Properties.Resources.tip_ellipse);
         AddTool(tools, ToolIds.Arrow, ToolIcons.Arrow, Properties.Resources.tip_arrow);
+        AddTool(tools, ToolIds.Line, ToolIcons.Line, Properties.Resources.tip_line);
         AddTool(tools, ToolIds.Pen, ToolIcons.Pen, Properties.Resources.tip_pen);
         AddTool(tools, ToolIds.Text, ToolIcons.Text, Properties.Resources.tip_text);
+        AddTool(tools, ToolIds.Highlight, ToolIcons.Highlight, Properties.Resources.tip_highlight);
+        AddTool(tools, ToolIds.Step, ToolIcons.Step, Properties.Resources.tip_step);
         AddTool(tools, ToolIds.Mosaic, ToolIcons.Mosaic, Properties.Resources.tip_mosaic);
         root.Children.Add(toolGroup);
         _hiddenDuringScroll.Add(toolGroup);

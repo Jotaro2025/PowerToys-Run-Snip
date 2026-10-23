@@ -16,4 +16,7 @@ public static class ToolIds
     public const string Pen = "pen";
     public const string Text = "text";
     public const string Mosaic = "mosaic";
+    public const string Line = "line";
+    public const string Highlight = "highlight";
+    public const string Step = "step";
 }
