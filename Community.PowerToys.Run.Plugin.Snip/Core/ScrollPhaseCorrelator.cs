@@ -6,13 +6,11 @@
 #pragma warning disable SA1117, SA1214, SA1316, SA1407, SA1503, SA1508, SA1512, SA1513, SA1515, SA1516, SA1518, SA1519
 
 using System;
-using MathNet.Numerics;
-using MathNet.Numerics.IntegralTransforms;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Core;
 
 /// <summary>
-/// 2D 相位相关（FFT）估计纵向 dh。MathNet 托管 FFT + 可分离 2D 变换，不加载 MKL（AOT 已验证）。
+/// 2D 相位相关（FFT）估计纵向 dh。仓库内 radix-2 FFT（NoScaling）+ 可分离 2D 变换。
 /// 输入为水平边缘强度 + 零均值归一化，减弱纯渐变误峰。
 /// </summary>
 internal static class ScrollPhaseCorrelator
@@ -83,64 +81,64 @@ internal static class ScrollPhaseCorrelator
         return new PhaseEstimate { Dh = dh, Peak = peakVal, Success = true };
     }
 
-    private static Complex32[] PhaseCorrelateSurface(
+    private static ComplexF[] PhaseCorrelateSurface(
         double[] a, double[] b, int fftRows, int fftCols)
     {
         int n = fftRows * fftCols;
-        var fa = new Complex32[n];
-        var fb = new Complex32[n];
+        var fa = new ComplexF[n];
+        var fb = new ComplexF[n];
         for (int i = 0; i < n; i++)
         {
-            fa[i] = new Complex32((float)a[i], 0);
-            fb[i] = new Complex32((float)b[i], 0);
+            fa[i] = new ComplexF((float)a[i], 0);
+            fb[i] = new ComplexF((float)b[i], 0);
         }
 
         FourierTransform2D(fa, fftRows, fftCols, inverse: false);
         FourierTransform2D(fb, fftRows, fftCols, inverse: false);
 
-        var cross = new Complex32[n];
+        var cross = new ComplexF[n];
         for (int i = 0; i < n; i++)
         {
-            var c = fa[i] * fb[i].Conjugate();
+            var c = fa[i] * fb[i].Conjugate;
             float mag = c.Magnitude;
-            cross[i] = mag > 1e-6f ? c / mag : Complex32.Zero;
+            cross[i] = mag > 1e-6f ? c / mag : ComplexF.Zero;
         }
 
         FourierTransform2D(cross, fftRows, fftCols, inverse: true);
         return cross;
     }
 
-    private static void FourierTransform2D(Complex32[] data, int rows, int cols, bool inverse)
+    private static void FourierTransform2D(ComplexF[] data, int rows, int cols, bool inverse)
     {
-        var rowBuf = new Complex32[cols];
+        var rowBuf = new ComplexF[cols];
         for (int r = 0; r < rows; r++)
         {
             for (int c = 0; c < cols; c++)
                 rowBuf[c] = data[r * cols + c];
             if (inverse)
-                Fourier.Inverse(rowBuf, FourierOptions.NoScaling);
+                Radix2Fft.Inverse(rowBuf);
             else
-                Fourier.Forward(rowBuf, FourierOptions.NoScaling);
+                Radix2Fft.Forward(rowBuf);
             for (int c = 0; c < cols; c++)
                 data[r * cols + c] = rowBuf[c];
         }
 
-        var colBuf = new Complex32[rows];
+        var colBuf = new ComplexF[rows];
         for (int c = 0; c < cols; c++)
         {
             for (int r = 0; r < rows; r++)
                 colBuf[r] = data[r * cols + c];
             if (inverse)
-                Fourier.Inverse(colBuf, FourierOptions.NoScaling);
+                Radix2Fft.Inverse(colBuf);
             else
-                Fourier.Forward(colBuf, FourierOptions.NoScaling);
+                Radix2Fft.Forward(colBuf);
             for (int r = 0; r < rows; r++)
                 data[r * cols + c] = colBuf[r];
         }
     }
 
     private static void FindPeak(
-        Complex32[] surface, int fftRows, int fftCols,
+        ComplexF[] surface, int fftRows, int fftCols,
         int minRow, int maxRow,
         out int peakRow, out int peakCol, out double peakVal)
     {

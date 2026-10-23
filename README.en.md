@@ -35,7 +35,7 @@ You can also configure a **global hotkey** in settings to start a region capture
 - Annotations: rectangle, ellipse, arrow, pen, text, mosaic
 - 7-color palette + 4 stroke widths; undo / redo
 - Shortcuts: Enter finish, Esc cancel, right-click cancel, Ctrl+C copy, Ctrl+S save, Ctrl+Z undo, Ctrl+Y redo, Delete remove selected annotation
-- **Scroll capture** (UX from TDS): after selecting a region, use the toolbar **Scroll capture** button — hole-punch the overlay, auto-wheel, then Done/Save stitches once (MathNet.Numerics; apps that ignore `WM_MOUSEWHEEL` may not scroll)
+- **Scroll capture** (UX from TDS): after selecting a region, use the toolbar **Scroll capture** button — hole-punch the overlay, auto-wheel, then Done/Save stitches once (apps that ignore `WM_MOUSEWHEEL` may not scroll)
 - **Text extraction (OCR)**: recognize text in the selection; editable result window; closing returns to the overlay
 - **Pin image**: lightweight always-on-top window (drag to move; Esc / double-click / right-click to close); does not end the capture session
 - **Image translation**: OCR boxes → translate → erase original and redraw translated text; “re-render” / “save image”
