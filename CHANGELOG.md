@@ -8,6 +8,10 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ## [Unreleased]
 
+### 变更 / Changed
+
+- 滚动相位相关改用仓库内 radix-2 FFT，移除 MathNet.Numerics 依赖（~1.6 MB）— Replace MathNet with in-repo radix-2 FFT for scroll phase correlation (@Jotaro2025)
+
 ### 修复 / Fixed
 
 - 截屏专用 STA 未创建 WPF Application 时，系统主题切换经 ThemeManager → Application.Windows 跨线程 VerifyAccess，导致 PowerToys.PowerLauncher FATAL；STA 在 Dispatcher.Run 前创建 OnExplicitShutdown Application（若宿主尚无），否则安装 Dispatcher 异常过滤，插件 Dispose 时显式关闭自有 Application 而不关闭宿主 — Theme-change FATAL on snip STA (#83, @Jotaro2025)
