@@ -1724,6 +1724,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        /// <summary>
+        ///   Looks up a localized string similar to Stop.
+        /// </summary>
+        public static string scroll_stop_button {
+            get {
+                return ResourceManager.GetString("scroll_stop_button", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Esc or Space also stops and keeps frames already captured.
+        /// </summary>
+        public static string scroll_stop_strip_tip {
+            get {
+                return ResourceManager.GetString("scroll_stop_strip_tip", resourceCulture);
+            }
+        }
+
         public static string scroll_hint_capturing {
             get {
                 return ResourceManager.GetString("scroll_hint_capturing", resourceCulture);

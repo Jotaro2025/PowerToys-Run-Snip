@@ -649,7 +649,7 @@
     <value>选区内自动滚动 · 点按钮停止</value>
   </data>
   <data name="scroll_hint_subtitle_active" xml:space="preserve">
-    <value>截图 → 滚轮 → 等待 · √/保存时一次性拼接</value>
+    <value>Esc / 空格 /「停止」保留已截帧 · √/保存时拼接</value>
   </data>
   <data name="scroll_hint_capturing" xml:space="preserve">
     <value>截图中…  第 {0} 张</value>
@@ -713,5 +713,11 @@
   </data>
   <data name="tr_cancel_busy" xml:space="preserve">
     <value>取消</value>
+  </data>
+  <data name="scroll_stop_button" xml:space="preserve">
+    <value>停止</value>
+  </data>
+  <data name="scroll_stop_strip_tip" xml:space="preserve">
+    <value>Esc 或空格也可中途停止并保留已截帧</value>
   </data>
 </root>
