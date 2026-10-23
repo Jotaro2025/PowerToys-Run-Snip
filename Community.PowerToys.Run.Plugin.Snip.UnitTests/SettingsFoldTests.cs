@@ -34,6 +34,10 @@ public class SettingsFoldTests
     [TestMethod]
     public void TranslatorProviderDescription_MentionsNoDynamicHide()
     {
-        StringAssert.Contains(Resources.opt_tr_provider_desc, "cannot hide");
+        // The neutral resx says "cannot hide unused engine fields dynamically";
+        // zh-CN localizes the sentence, so assert the stable artifact instead:
+        // both engines' option-label prefixes the description points users to.
+        StringAssert.Contains(Resources.opt_tr_provider_desc, "HTTP ·");
+        StringAssert.Contains(Resources.opt_tr_provider_desc, "HyMT ·");
     }
 }

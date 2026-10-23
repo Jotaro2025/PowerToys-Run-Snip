@@ -52,7 +52,8 @@ public class ScrollStitcherTests
     [TestMethod]
     public unsafe void AlignVerticalTiles_PartialOverlapWithKnownShift()
     {
-        // Tile B is A scrolled down by 12px (top 12 rows of B are new; rest matches A[12..]).
+        // Tile B is the viewport after scrolling down 12px: content moved up, so B[r] == A[12+r]
+        // and the bottom 12 rows of B are new content.
         const int dh = 12;
         using var a = GradientVerticalTile();
         using var b = ShiftedDown(a, dh);
@@ -267,13 +268,24 @@ public class ScrollStitcherTests
         return new ScrollTilePixels(buf, Width, Height, Stride);
     }
 
+    /// <summary>
+    /// Tile after the viewport scrolled down by <paramref name="dh"/>: content moves up,
+    /// so next[r] == prev[dh + r] for r in [0, Height-dh) and the bottom dh rows are new.
+    /// This matches the aligner's convention (ScoreCandidates compares prev[dh+r] vs next[r]).
+    /// </summary>
     private static ScrollTilePixels ShiftedDown(ScrollTilePixels src, int dh)
     {
         var buf = new byte[Stride * Height];
         var srcArr = src.DangerousGetArray();
 
-        // Top dh rows: unique noise so they do not match src top.
-        for (int y = 0; y < dh; y++)
+        int copyRows = Height - dh;
+        for (int y = 0; y < copyRows; y++)
+        {
+            srcArr.AsSpan((y + dh) * Stride, Stride).CopyTo(buf.AsSpan(y * Stride, Stride));
+        }
+
+        // Bottom dh rows: unique noise so they do not match src bottom.
+        for (int y = copyRows; y < Height; y++)
         {
             for (int x = 0; x < Width; x++)
             {
@@ -283,15 +295,6 @@ public class ScrollStitcherTests
                 buf[o + 2] = (byte)(y * x);
                 buf[o + 3] = 255;
             }
-        }
-
-        // Remaining rows = src rows [dh .. Height) placed at [0..] of logical scroll:
-        // After scroll down by dh, new tile shows new content on top and old content below.
-        // So b[dh..] should equal a[0 .. Height-dh].
-        int copyRows = Height - dh;
-        for (int y = 0; y < copyRows; y++)
-        {
-            srcArr.AsSpan(y * Stride, Stride).CopyTo(buf.AsSpan((y + dh) * Stride, Stride));
         }
 
         return new ScrollTilePixels(buf, Width, Height, Stride);

@@ -41,15 +41,17 @@ public class WeChatOcrServiceTests
     [TestMethod]
     public void JoinLinesKeepsRecognizedLinesInOrder()
     {
+        // ExtractLines drops lines without a usable box (they cannot be overlay-rendered),
+        // so give each entry valid Left/Top/Right/Bottom.
         var result = new WeChatOcrResult
         {
             OcrResult = new OcrResult
             {
                 SingleResult = new List<SingleResult>
                 {
-                    new SingleResult { SingleStrUtf8 = "第一行" },
-                    new SingleResult { SingleStrUtf8 = string.Empty },
-                    new SingleResult { SingleStrUtf8 = "second line" },
+                    new SingleResult { SingleStrUtf8 = "第一行", Left = 4, Top = 6, Right = 40, Bottom = 20 },
+                    new SingleResult { SingleStrUtf8 = string.Empty, Left = 4, Top = 26, Right = 40, Bottom = 40 },
+                    new SingleResult { SingleStrUtf8 = "second line", Left = 4, Top = 46, Right = 60, Bottom = 60 },
                 },
             },
         };
