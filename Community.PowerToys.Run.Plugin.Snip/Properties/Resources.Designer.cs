@@ -423,14 +423,6 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
-        /// <summary>
-        ///   Looks up a localized string similar to OCR component incomplete. Use the full package, or download OCR assets on first use. Missing file:.
-        /// </summary>
-        public static string ocr_err_component_missing {
-            get {
-                return ResourceManager.GetString("ocr_err_component_missing", resourceCulture);
-            }
-        }
 
         /// <summary>
         ///   Looks up a localized string similar to OCR assets are not installed….
@@ -1530,11 +1522,6 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
-        public static string scroll_hint_title_count {
-            get {
-                return ResourceManager.GetString("scroll_hint_title_count", resourceCulture);
-            }
-        }
 
         public static string scroll_hint_subtitle {
             get {
