@@ -54,6 +54,7 @@ public sealed class SnipSettingsWindow : Window
     private ComboBox _hymtBackend;
     private ComboBox _uiLanguage;
     private ComboBox _ocrEngine;
+    private ComboBox _windowsOcrLang;
     private TabControl _tabs;
     private bool _suppressLanguageChanged;
 
@@ -228,6 +229,25 @@ public sealed class SnipSettingsWindow : Window
         _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_windows, Tag = OcrEngineKind.Windows });
         panel.Children.Add(_ocrEngine);
         panel.Children.Add(Hint(Properties.Resources.opt_ocr_engine_desc));
+
+        panel.Children.Add(Label(Properties.Resources.opt_windows_ocr_lang_label));
+        _windowsOcrLang = new ComboBox
+        {
+            Margin = new Thickness(0, 0, 0, 4),
+            MinHeight = 28,
+        };
+        _windowsOcrLang.Items.Add(new ComboBoxItem
+        {
+            Content = Properties.Resources.opt_windows_ocr_lang_auto,
+            Tag = "auto",
+        });
+        foreach (var tag in WindowsOcrService.GetInstalledLanguageTags())
+        {
+            _windowsOcrLang.Items.Add(new ComboBoxItem { Content = tag, Tag = tag });
+        }
+
+        panel.Children.Add(_windowsOcrLang);
+        panel.Children.Add(Hint(Properties.Resources.opt_windows_ocr_lang_desc));
 
         return new ScrollViewer
         {
@@ -479,6 +499,7 @@ public sealed class SnipSettingsWindow : Window
             : Properties.Resources.settings_hotkey_current.Replace("{0}", hotkey, StringComparison.Ordinal);
 
         SelectOcrEngine(_draft.OcrEngine);
+        SelectWindowsOcrLanguage(_draft.WindowsOcrLanguage);
         SelectProvider(_draft.TranslatorProvider);
         _targetLang.Text = _draft.TargetLanguage ?? string.Empty;
         _httpUrl.Text = _draft.HttpBaseUrl ?? string.Empty;
@@ -551,6 +572,7 @@ public sealed class SnipSettingsWindow : Window
         _draft.HyMtIdleUnloadMinutes = Math.Clamp(idleUnload, 0, HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes);
         _draft.GlobalHotkey = HotkeyParser.Normalize(hotkeyText);
         _draft.OcrEngine = SelectedOcrEngine();
+        _draft.WindowsOcrLanguage = SelectedWindowsOcrLanguage();
         _draft.TranslatorProvider = SelectedProvider();
         _draft.TargetLanguage = string.IsNullOrWhiteSpace(_targetLang.Text) ? "简体中文" : _targetLang.Text.Trim();
         var uiLang = SelectedUiLanguage();
@@ -709,6 +731,36 @@ public sealed class SnipSettingsWindow : Window
 
         return _httpKeyPassword?.Password?.Trim() ?? string.Empty;
     }
+
+private void SelectWindowsOcrLanguage(string tag)
+    {
+        var want = string.IsNullOrWhiteSpace(tag) ? "auto" : tag.Trim();
+        for (int i = 0; i < _windowsOcrLang.Items.Count; i++)
+        {
+            if (_windowsOcrLang.Items[i] is ComboBoxItem item
+                && item.Tag is string t
+                && t.Equals(want, StringComparison.OrdinalIgnoreCase))
+            {
+                _windowsOcrLang.SelectedIndex = i;
+                return;
+            }
+        }
+
+        // Saved tag not installed anymore — keep Auto, but surface the raw tag as an extra item.
+        if (!want.Equals("auto", StringComparison.OrdinalIgnoreCase))
+        {
+            _windowsOcrLang.Items.Add(new ComboBoxItem { Content = want + " (?)", Tag = want });
+            _windowsOcrLang.SelectedIndex = _windowsOcrLang.Items.Count - 1;
+            return;
+        }
+
+        _windowsOcrLang.SelectedIndex = 0;
+    }
+
+    private string SelectedWindowsOcrLanguage()
+        => _windowsOcrLang?.SelectedItem is ComboBoxItem item && item.Tag is string t && !string.IsNullOrWhiteSpace(t)
+            ? t
+            : "auto";
 
     private void SelectOcrEngine(OcrEngineKind engine)
     {

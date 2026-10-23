@@ -62,7 +62,10 @@ public static class OcrService
 
         try
         {
-            return await WindowsOcrService.RecognizeLinesAsync(png, cancellationToken).ConfigureAwait(false);
+            return await WindowsOcrService.RecognizeLinesAsync(
+                png,
+                settings?.WindowsOcrLanguage ?? "auto",
+                cancellationToken).ConfigureAwait(false);
         }
         catch (OcrException ex) when ((settings?.OcrEngine ?? OcrEngineKind.Auto) == OcrEngineKind.Auto
                                       && RuntimeInformation.ProcessArchitecture == Architecture.X64)

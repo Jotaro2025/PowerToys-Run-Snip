@@ -317,6 +317,15 @@
   <data name="opt_ocr_engine_desc" xml:space="preserve">
     <value>Auto: WeChat OCR on x64 when its component is installed (full package or already downloaded), otherwise Windows OCR. ARM64 always uses Windows OCR (WeChat OCR is x64-only).</value>
   </data>
+  <data name="opt_windows_ocr_lang_label" xml:space="preserve">
+    <value>Windows OCR language</value>
+  </data>
+  <data name="opt_windows_ocr_lang_desc" xml:space="preserve">
+    <value>Auto uses the Windows language order, then Simplified Chinese if installed. Pick a specific installed OCR language to force it.</value>
+  </data>
+  <data name="opt_windows_ocr_lang_auto" xml:space="preserve">
+    <value>Auto</value>
+  </data>
   <data name="opt_ocr_engine_auto" xml:space="preserve">
     <value>Auto</value>
   </data>
