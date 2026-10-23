@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
@@ -46,6 +47,8 @@ internal static class WinRtGraphicsCapture
 
     private static readonly object DeviceGate = new object();
     private static IDirect3DDevice _device;
+    private static Direct3D11CaptureFramePool _reusableFramePool;
+    private static SizeInt32 _reusablePoolSize;
     private static bool? _supported;
 
     /// <summary>True when the OS reports Graphics Capture is available.</summary>
@@ -240,16 +243,11 @@ internal static class WinRtGraphicsCapture
             return null;
         }
 
-        Direct3D11CaptureFramePool framePool = null;
+        Direct3D11CaptureFramePool framePool = GetOrRecreateFramePool(device, size);
         GraphicsCaptureSession session = null;
         Direct3D11CaptureFrame captured = null;
         try
         {
-            framePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
-                device,
-                DirectXPixelFormat.B8G8R8A8UIntNormalized,
-                1,
-                size);
             session = framePool.CreateCaptureSession(item);
             session.IsCursorCaptureEnabled = captureCursor;
 
@@ -278,8 +276,7 @@ internal static class WinRtGraphicsCapture
         {
             captured?.Dispose();
 
-            // Dispose session before pool; both under CaptureGate so the next caller
-            // never overlaps another free-threaded pool lifetime.
+            // Session is per-item; pool is reused under CaptureGate until size/device changes.
             if (session != null)
             {
                 try
@@ -289,18 +286,6 @@ internal static class WinRtGraphicsCapture
                 catch (Exception ex)
                 {
                     Log.Warn($"Snip WinRT capture session dispose: {ex.Message}", typeof(WinRtGraphicsCapture));
-                }
-            }
-
-            if (framePool != null)
-            {
-                try
-                {
-                    framePool.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn($"Snip WinRT frame pool dispose: {ex.Message}", typeof(WinRtGraphicsCapture));
                 }
             }
         }
@@ -328,9 +313,23 @@ internal static class WinRtGraphicsCapture
 
             int stride = CaptureBuffers.BgraStride(width);
             int byteCount = CaptureBuffers.BgraByteCount(width, height);
-            var pixels = new byte[byteCount];
-            soft.CopyToBuffer(pixels.AsBuffer());
-            return new CapturedFrame(pixels, width, height, stride);
+
+            // Rent from ArrayPool instead of new byte[] — CapturedFrame returns on Dispose.
+            byte[] pixels = ArrayPool<byte>.Shared.Rent(byteCount);
+            try
+            {
+                soft.CopyToBuffer(pixels.AsBuffer());
+                var frame = new CapturedFrame(pixels, width, height, stride, rentedFromPool: true);
+                pixels = null; // ownership transferred
+                return frame;
+            }
+            finally
+            {
+                if (pixels != null)
+                {
+                    ArrayPool<byte>.Shared.Return(pixels);
+                }
+            }
         }
         finally
         {
@@ -352,9 +351,55 @@ internal static class WinRtGraphicsCapture
         }
     }
 
+    /// <summary>
+    /// Reuse one free-threaded pool while size matches (caller holds CaptureGate).
+    /// Recreate when monitor/window size changes.
+    /// </summary>
+    private static Direct3D11CaptureFramePool GetOrRecreateFramePool(IDirect3DDevice device, SizeInt32 size)
+    {
+        if (_reusableFramePool != null
+            && _reusablePoolSize.Width == size.Width
+            && _reusablePoolSize.Height == size.Height)
+        {
+            return _reusableFramePool;
+        }
+
+        DisposeReusableFramePool();
+        _reusableFramePool = Direct3D11CaptureFramePool.CreateFreeThreaded(
+            device,
+            DirectXPixelFormat.B8G8R8A8UIntNormalized,
+            1,
+            size);
+        _reusablePoolSize = size;
+        return _reusableFramePool;
+    }
+
+    private static void DisposeReusableFramePool()
+    {
+        if (_reusableFramePool == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _reusableFramePool.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip WinRT reusable frame pool dispose: {ex.Message}", typeof(WinRtGraphicsCapture));
+        }
+
+        _reusableFramePool = null;
+        _reusablePoolSize = default;
+    }
+
     /// <summary>Drop the cached D3D device so the next capture recreates it.</summary>
     private static void InvalidateDevice()
     {
+        // Pool is tied to the device; must drop under CaptureGate (caller) + DeviceGate.
+        DisposeReusableFramePool();
+
         lock (DeviceGate)
         {
             if (_device == null)
