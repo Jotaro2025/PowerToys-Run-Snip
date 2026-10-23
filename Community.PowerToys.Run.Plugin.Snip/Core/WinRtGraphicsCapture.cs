@@ -9,6 +9,7 @@ using System.Runtime.InteropServices.WindowsRuntime;
 using System.Threading;
 using System.Threading.Tasks;
 
+using Windows.Foundation;
 using Windows.Graphics;
 using Windows.Graphics.Capture;
 using Windows.Graphics.DirectX;
@@ -50,6 +51,14 @@ internal static class WinRtGraphicsCapture
     private static Direct3D11CaptureFramePool _reusableFramePool;
     private static SizeInt32 _reusablePoolSize;
     private static bool? _supported;
+
+    // Reused capture item + started session (caller holds CaptureGate). Keeping the
+    // session alive across scroll tiles avoids the per-tile CreateCaptureSession /
+    // StartCapture latency (DWM re-arms the graph each time, 1-2 frames).
+    private static GraphicsCaptureItem _reusableItem;
+    private static GraphicsCaptureSession _reusableSession;
+    private static IntPtr _reusableItemKey;
+    private static bool _reusableSessionCaptureCursor;
 
     /// <summary>True when the OS reports Graphics Capture is available.</summary>
     public static bool IsSupported
@@ -109,7 +118,7 @@ internal static class WinRtGraphicsCapture
         frame = null;
         try
         {
-            var item = CreateItemForMonitor(hMonitor);
+            var item = GetOrReuseItem(hMonitor, captureCursor, () => CreateItemForMonitor(hMonitor));
             if (item == null)
             {
                 return false;
@@ -125,6 +134,62 @@ internal static class WinRtGraphicsCapture
             frame = null;
             return false;
         }
+    }
+
+    /// <summary>
+    /// Returns the cached item+session for <paramref name="itemKey"/> when the target,
+    /// size, and cursor flag all match; otherwise recreates the item and restarts the
+    /// session. Caller holds <see cref="CaptureGate"/>.
+    /// </summary>
+    private static GraphicsCaptureItem GetOrReuseItem(
+        IntPtr itemKey,
+        bool captureCursor,
+        Func<GraphicsCaptureItem> createItem)
+    {
+        if (_reusableItem != null
+            && _reusableSession != null
+            && _reusableItemKey == itemKey
+            && _reusableSessionCaptureCursor == captureCursor)
+        {
+            return _reusableItem;
+        }
+
+        DisposeReusableSession();
+        var item = createItem();
+        if (item != null)
+        {
+            _reusableItem = item;
+            _reusableItemKey = itemKey;
+            _reusableSessionCaptureCursor = captureCursor;
+        }
+
+        return item;
+    }
+
+    private static void DisposeReusableSession()
+    {
+        if (_reusableSession != null)
+        {
+            try
+            {
+                _reusableSession.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Snip WinRT reusable session dispose: {ex.Message}", typeof(WinRtGraphicsCapture));
+            }
+
+            _reusableSession = null;
+        }
+
+        if (_reusableItem != null)
+        {
+            // GraphicsCaptureItem has no Dispose — the CsWinRT projection releases
+            // its COM reference via the finalizer; dropping the reference suffices.
+            _reusableItem = null;
+        }
+
+        _reusableItemKey = IntPtr.Zero;
     }
 
     /// <summary>
@@ -160,7 +225,7 @@ internal static class WinRtGraphicsCapture
         frame = null;
         try
         {
-            var item = CreateItemForWindow(hwnd);
+            var item = GetOrReuseItem(hwnd, captureCursor, () => CreateItemForWindow(hwnd));
             if (item == null)
             {
                 return false;
@@ -226,7 +291,8 @@ internal static class WinRtGraphicsCapture
     }
 
     /// <summary>
-    /// Creates a free-threaded pool+session for a single shot. Must run under <see cref="CaptureGate"/>
+    /// Grabs one frame, starting the capture session on first use for this item and
+    /// keeping it alive across calls (scroll tiles). Must run under <see cref="CaptureGate"/>
     /// so only one free-threaded pool is live at a time (avoids CsWinRT global-instance races).
     /// </summary>
     private static CapturedFrame CaptureItem(GraphicsCaptureItem item, bool captureCursor)
@@ -244,27 +310,36 @@ internal static class WinRtGraphicsCapture
         }
 
         Direct3D11CaptureFramePool framePool = GetOrRecreateFramePool(device, size);
-        GraphicsCaptureSession session = null;
         Direct3D11CaptureFrame captured = null;
+        TypedEventHandler<Direct3D11CaptureFramePool, object> arrivedHandler = null;
         try
         {
-            session = framePool.CreateCaptureSession(item);
-            session.IsCursorCaptureEnabled = captureCursor;
+            // Session survives across captures of the same target; recreate only when
+            // the pool was rebuilt (device loss / size change) or the target changed.
+            if (_reusableSession == null)
+            {
+                _reusableSession = framePool.CreateCaptureSession(item);
+                _reusableSession.IsCursorCaptureEnabled = captureCursor;
+                _reusableSession.StartCapture();
+            }
 
             using var arrived = new ManualResetEventSlim(false);
-            framePool.FrameArrived += (_, _) =>
+
+            // Keep the delegate so a reused pool can be unsubscribed below; a leaked
+            // handler steals frames from the next capture (captured ??= race).
+            arrivedHandler = (pool, _) =>
             {
                 try
                 {
-                    captured ??= framePool.TryGetNextFrame();
+                    captured ??= pool.TryGetNextFrame();
                 }
                 finally
                 {
                     arrived.Set();
                 }
             };
+            framePool.FrameArrived += arrivedHandler;
 
-            session.StartCapture();
             if (!arrived.Wait(TimeSpan.FromSeconds(2)) || captured == null)
             {
                 return null;
@@ -276,17 +351,16 @@ internal static class WinRtGraphicsCapture
         {
             captured?.Dispose();
 
-            // Session is per-item; pool is reused under CaptureGate until size/device changes.
-            if (session != null)
+            // Drain frames queued by the lingering session before the next wait,
+            // so stale frames never satisfy it.
+            while (framePool.TryGetNextFrame() is { } leftover)
             {
-                try
-                {
-                    session.Dispose();
-                }
-                catch (Exception ex)
-                {
-                    Log.Warn($"Snip WinRT capture session dispose: {ex.Message}", typeof(WinRtGraphicsCapture));
-                }
+                leftover.Dispose();
+            }
+
+            if (arrivedHandler != null)
+            {
+                framePool.FrameArrived -= arrivedHandler;
             }
         }
     }
@@ -376,6 +450,9 @@ internal static class WinRtGraphicsCapture
 
     private static void DisposeReusableFramePool()
     {
+        // Session and item bind to the pool; drop them with it.
+        DisposeReusableSession();
+
         if (_reusableFramePool == null)
         {
             return;
