@@ -737,9 +737,13 @@ public sealed class SnipWindow : Window
         _scrollController.Cancelled += OnScrollCaptureCancelled;
         _toolbar.SetScrollCaptureActive(true, scrollUp);
 
-        // Hide the frozen screenshot so punching the hole does not flash white over the
-        // still-painted bitmap. Keep XOR dim around the selection (not a transparent root /
-        // full-client blank). Restore the screenshot if the hole cannot be applied.
+        // Probe before blanking UI: #100 window-capture keeps the overlay visible, so hiding
+        // the frozen preview + punching a hole leaves a persistent blank selection (白屏)
+        // while PrintWindow still stitches. Keep frozen preview on that path.
+        bool keepFrozenPreview = ScrollCaptureController.ShouldKeepFrozenScrollPreview(
+            _scrollController.ProbeWindowCapture());
+
+        // Keep XOR dim around the selection (not a transparent root / full-client blank).
         _dimPath.Fill = _selectionDimBrush;
         var outer = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
         var inner = new RectangleGeometry(_selection);
@@ -754,26 +758,45 @@ public sealed class SnipWindow : Window
         _adorner.IsVisible = false;
         _adorner.UpdateLayout();
 
-        // Opacity+Collapsed before hole: one layout/render pass so DWM never composites
-        // the frozen ImageSource into the punched region (white flash).
-        _screenshotImage.Opacity = 0;
-        _screenshotImage.Visibility = Visibility.Collapsed;
-        UpdateLayout();
-        Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
-
-        if (!ApplyScrollCaptureHole())
+        if (keepFrozenPreview)
         {
+            // Window-capture path: overlay stays visible — show frozen Edge in the selection
+            // (no Opacity=0 / no SetWindowRgn hole). Wheel still reaches underlay via
+            // temporary WS_EX_TRANSPARENT in SendInput.
             _screenshotImage.Opacity = 1;
             _screenshotImage.Visibility = Visibility.Visible;
-            Log.Warn(
-                "Snip scroll: selection hole not applied (full-client or invalid); showing screenshot again; wheel uses Z-order underlay",
+            ClearScrollCaptureHole();
+            UpdateLayout();
+            Log.Info(
+                "Snip scroll UI: keep frozen selection preview (window-capture; avoid white hole)",
                 GetType());
+        }
+        else
+        {
+            // SW_HIDE path (#89/#90): hide frozen screenshot before hole so DWM does not
+            // flash white over the still-painted bitmap (#87); overlay will hide shortly.
+            _screenshotImage.Opacity = 0;
+            _screenshotImage.Visibility = Visibility.Collapsed;
+            UpdateLayout();
+            Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
+
+            if (!ApplyScrollCaptureHole())
+            {
+                _screenshotImage.Opacity = 1;
+                _screenshotImage.Visibility = Visibility.Visible;
+                Log.Warn(
+                    "Snip scroll: selection hole not applied (full-client or invalid); showing screenshot again; wheel uses Z-order underlay",
+                    GetType());
+            }
         }
 
         _scrollController.Begin();
 
-        // ShowOverlay may trigger another layout; re-apply hole so hit-test region stays punched.
-        _ = ApplyScrollCaptureHole();
+        if (!keepFrozenPreview)
+        {
+            // ShowOverlay may trigger another layout; re-apply hole so hit-test region stays punched.
+            _ = ApplyScrollCaptureHole();
+        }
     }
 
     private bool ApplyScrollCaptureHole()
