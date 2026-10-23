@@ -97,6 +97,21 @@ public class SnipSettingsPersisterTests
         Assert.IsTrue(patches.Any(p => p.Key == "UiLanguage" && p.TextValue == "zh-CN"));
     }
 
+
+    [TestMethod]
+    public void BuildPatchesIncludesAnnotationBrushSettings()
+    {
+        var settings = new SnipSettings
+        {
+            LastStrokeColorHex = "#007AFF",
+            LastStrokeWidth = 5.0,
+        };
+
+        var patches = SnipSettingsPersister.BuildPatchesFromSettings(settings);
+        Assert.IsTrue(patches.Any(p => p.Key == "LastStrokeColorHex" && p.TextValue == "#007AFF"));
+        Assert.IsTrue(patches.Any(p => p.Key == "LastStrokeWidth" && p.NumberValue == 5.0));
+    }
+
     private static JsonNode Find(JsonArray options, string key)
         => options.First(o => o!["Key"]!.GetValue<string>() == key)!;
 }

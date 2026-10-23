@@ -95,4 +95,33 @@ public class AnnotationHistoryTests
             Assert.IsFalse(canvas.Redo());
         });
     }
+
+    [TestMethod]
+    public void ComputeNextStepNumberUsesMaxPlusOneAfterIntermediateDelete()
+    {
+        var items = new Annotation[]
+        {
+            new StepAnnotation { Kind = AnnotationKind.Step, Stroke = Colors.Red, StrokeWidth = 2, Center = new Point(10, 10), Number = 1, Radius = 12 },
+            new StepAnnotation { Kind = AnnotationKind.Step, Stroke = Colors.Red, StrokeWidth = 2, Center = new Point(30, 10), Number = 3, Radius = 12 },
+        };
+
+        Assert.AreEqual(4, AnnotationCanvas.ComputeNextStepNumber(items));
+        Assert.AreEqual(1, AnnotationCanvas.ComputeNextStepNumber(Array.Empty<Annotation>()));
+    }
+
+    [TestMethod]
+    public void ConstrainShapeEndpointLocksSquareAnd45DegreeAngles()
+    {
+        var s = new Point(100, 100);
+        var sq = AnnotationCanvas.ConstrainShapeEndpoint(Community.PowerToys.Run.Plugin.Snip.Models.ToolIds.Rect, s, new Point(150, 120), shiftPressed: true);
+        Assert.AreEqual(150, sq.X, 1e-6);
+        Assert.AreEqual(150, sq.Y, 1e-6);
+
+        var horiz = AnnotationCanvas.ConstrainShapeEndpoint(Community.PowerToys.Run.Plugin.Snip.Models.ToolIds.Line, s, new Point(200, 108), shiftPressed: true);
+        Assert.AreEqual(100, horiz.Y, 1e-4);
+        Assert.IsTrue(horiz.X > 190);
+
+        var diag = AnnotationCanvas.ConstrainShapeEndpoint(Community.PowerToys.Run.Plugin.Snip.Models.ToolIds.Arrow, s, new Point(160, 155), shiftPressed: true);
+        Assert.AreEqual(Math.Abs(diag.X - s.X), Math.Abs(diag.Y - s.Y), 1e-4);
+    }
 }

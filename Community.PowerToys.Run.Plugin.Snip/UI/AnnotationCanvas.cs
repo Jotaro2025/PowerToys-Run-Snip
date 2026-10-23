@@ -71,6 +71,8 @@ public sealed class AnnotationCanvas : FrameworkElement
     /// <summary>Logical-to-physical scale when sampling <see cref="SourceBitmap"/> (1.0 = 100% DPI).</summary>
     public double SourceDpiScale { get; set; } = 1.0;
 
+    public MosaicEffectKind CurrentMosaicEffect { get; set; } = MosaicEffectKind.Pixelate;
+
     public List<Annotation> Items { get; } = new();
 
     public int? SelectedIndex { get; private set; }
@@ -433,6 +435,17 @@ public sealed class AnnotationCanvas : FrameworkElement
             return;
         }
 
+        var dest = new Rect(
+            (x0 / scale) - origin.X,
+            (y0 / scale) - origin.Y,
+            regionW / scale,
+            regionH / scale);
+        if (m.Effect == MosaicEffectKind.SolidRedact)
+        {
+            dc.DrawRectangle(new SolidColorBrush(m.Stroke), null, dest);
+            return;
+        }
+
         int bs = Math.Max(4, (int)Math.Round(m.BlockSize * scale));
         var mode = preview
             ? MosaicBlocks.SampleMode.Preview2x2
@@ -445,19 +458,38 @@ public sealed class AnnotationCanvas : FrameworkElement
         {
             unsafe
             {
-                MosaicBlocks.Fill(
-                    (byte*)src.BackBuffer,
-                    src.BackBufferStride,
-                    sw,
-                    sh,
-                    (byte*)_mosaicOverlay.BackBuffer,
-                    _mosaicOverlay.BackBufferStride,
-                    x0,
-                    y0,
-                    x1,
-                    y1,
-                    bs,
-                    mode);
+                if (m.Effect == MosaicEffectKind.GaussianBlur)
+                {
+                    int radius = preview ? Math.Max(2, bs / 2) : Math.Max(3, bs);
+                    MosaicBlocks.FillGaussianBlur(
+                        (byte*)src.BackBuffer,
+                        src.BackBufferStride,
+                        sw,
+                        sh,
+                        (byte*)_mosaicOverlay.BackBuffer,
+                        _mosaicOverlay.BackBufferStride,
+                        x0,
+                        y0,
+                        x1,
+                        y1,
+                        radius);
+                }
+                else
+                {
+                    MosaicBlocks.Fill(
+                        (byte*)src.BackBuffer,
+                        src.BackBufferStride,
+                        sw,
+                        sh,
+                        (byte*)_mosaicOverlay.BackBuffer,
+                        _mosaicOverlay.BackBufferStride,
+                        x0,
+                        y0,
+                        x1,
+                        y1,
+                        bs,
+                        mode);
+                }
             }
 
             _mosaicOverlay.AddDirtyRect(new Int32Rect(0, 0, regionW, regionH));
@@ -469,11 +501,6 @@ public sealed class AnnotationCanvas : FrameworkElement
         }
 
         // Draw only the used sub-rect when the scratch bitmap is larger.
-        var dest = new Rect(
-            (x0 / scale) - origin.X,
-            (y0 / scale) - origin.Y,
-            regionW / scale,
-            regionH / scale);
         var crop = new CroppedBitmap(_mosaicOverlay, new Int32Rect(0, 0, regionW, regionH));
         dc.DrawImage(crop, dest);
     }
@@ -527,7 +554,7 @@ public sealed class AnnotationCanvas : FrameworkElement
 
         if (ActiveTool == ToolIds.Step)
         {
-            int next = Items.Count(a => a is StepAnnotation) + 1;
+            int next = ComputeNextStepNumber(Items);
             Add(new StepAnnotation
             {
                 Kind = AnnotationKind.Step,
@@ -710,8 +737,74 @@ public sealed class AnnotationCanvas : FrameworkElement
         base.OnMouseLeftButtonUp(e);
     }
 
+    /// <summary>
+    /// Computes the next sequential step badge number as <c>Max(Number) + 1</c> so deleting
+    /// an intermediate badge never produces duplicate step numbers.
+    /// </summary>
+    internal static int ComputeNextStepNumber(System.Collections.Generic.IEnumerable<Annotation> items)
+    {
+        int max = 0;
+        if (items != null)
+        {
+            foreach (var item in items)
+            {
+                if (item is StepAnnotation step && step.Number > max)
+                {
+                    max = step.Number;
+                }
+            }
+        }
+
+        return max + 1;
+    }
+
+    /// <summary>
+    /// Applies Shift orthogonal/equal-aspect constraints when drawing shapes:
+    /// <list type="bullet">
+    /// <item><description><c>rect</c> / <c>ellipse</c>: locks 1:1 square or circle using <c>max(|dx|, |dy|)</c>.</description></item>
+    /// <item><description><c>line</c> / <c>arrow</c>: snaps angle to the nearest 45° increment (0°, 45°, 90°, 135°, 180°, …).</description></item>
+    /// </list>
+    /// </summary>
+    internal static Point ConstrainShapeEndpoint(string toolId, Point start, Point end, bool shiftPressed)
+    {
+        if (!shiftPressed)
+        {
+            return end;
+        }
+
+        double dx = end.X - start.X;
+        double dy = end.Y - start.Y;
+        if (toolId is ToolIds.Rect or ToolIds.Ellipse)
+        {
+            double side = Math.Max(Math.Abs(dx), Math.Abs(dy));
+            double sx = dx >= 0 ? 1.0 : -1.0;
+            double sy = dy >= 0 ? 1.0 : -1.0;
+            return new Point(start.X + (sx * side), start.Y + (sy * side));
+        }
+
+        if (toolId is ToolIds.Line or ToolIds.Arrow)
+        {
+            double len = Math.Sqrt((dx * dx) + (dy * dy));
+            if (len < 1e-6)
+            {
+                return end;
+            }
+
+            double angle = Math.Atan2(dy, dx);
+            const double step = Math.PI / 4.0;
+            double snapped = Math.Round(angle / step) * step;
+            return new Point(
+                start.X + (len * Math.Cos(snapped)),
+                start.Y + (len * Math.Sin(snapped)));
+        }
+
+        return end;
+    }
+
     private Annotation CreateShapeAt(Point s, Point e)
     {
+        bool shift = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+        e = ConstrainShapeEndpoint(ActiveTool, s, e, shift);
         var rect = NormalizeRect(s, e);
         return ActiveTool switch
         {
@@ -759,6 +852,7 @@ public sealed class AnnotationCanvas : FrameworkElement
                 StrokeWidth = CurrentStrokeWidth,
                 Rect = rect,
                 BlockSize = MosaicBlockSizeFromStroke(CurrentStrokeWidth),
+                Effect = CurrentMosaicEffect,
             },
             _ => null,
         };

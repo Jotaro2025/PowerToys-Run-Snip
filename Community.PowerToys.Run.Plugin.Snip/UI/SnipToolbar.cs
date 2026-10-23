@@ -10,6 +10,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Shapes;
 
+using Community.PowerToys.Run.Plugin.Snip.Core.Annotations;
 using Community.PowerToys.Run.Plugin.Snip.Models;
 
 namespace Community.PowerToys.Run.Plugin.Snip.UI;
@@ -196,6 +197,8 @@ public sealed class SnipToolbar : Border
 
     public event EventHandler<double> StrokeWidthChanged;
 
+    public event EventHandler<MosaicEffectKind> MosaicEffectChanged;
+
     public string ActiveTool { get; private set; }
 
     public bool ShowSaveButton { get; }
@@ -205,6 +208,8 @@ public sealed class SnipToolbar : Border
     public Color CurrentStroke { get; private set; }
 
     public double CurrentStrokeWidth { get; private set; }
+
+    public MosaicEffectKind CurrentMosaicEffect { get; private set; } = MosaicEffectKind.Pixelate;
 
     public void NotifyHistory(int undoCount, int redoCount)
     {
@@ -218,6 +223,17 @@ public sealed class SnipToolbar : Border
     {
         if (ActiveTool == id)
         {
+            if (id == ToolIds.Mosaic)
+            {
+                CurrentMosaicEffect = CurrentMosaicEffect switch
+                {
+                    MosaicEffectKind.Pixelate => MosaicEffectKind.GaussianBlur,
+                    MosaicEffectKind.GaussianBlur => MosaicEffectKind.SolidRedact,
+                    _ => MosaicEffectKind.Pixelate,
+                };
+                MosaicEffectChanged?.Invoke(this, CurrentMosaicEffect);
+            }
+
             return;
         }
 

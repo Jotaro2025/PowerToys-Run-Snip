@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Buffers;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
@@ -246,5 +247,184 @@ public static class MosaicBlocks
         b = (byte)(sumB / count);
         g = (byte)(sumG / count);
         r = (byte)(sumR / count);
+    }
+
+    /// <summary>
+    /// Fills a BGRA32 destination covering [<paramref name="x0"/>,<paramref name="x1"/>) × [<paramref name="y0"/>,<paramref name="y1"/>)
+    /// with a two-pass separable box/Gaussian approximation blur using <see cref="ArrayPool{T}.Shared"/>.
+    /// </summary>
+    public static unsafe void FillGaussianBlur(
+        byte* src,
+        int srcStride,
+        int srcWidth,
+        int srcHeight,
+        byte* dest,
+        int destStride,
+        int x0,
+        int y0,
+        int x1,
+        int y1,
+        int radius)
+    {
+        if (src == null || dest == null)
+        {
+            throw new ArgumentNullException(src == null ? nameof(src) : nameof(dest));
+        }
+
+        x0 = Math.Clamp(x0, 0, srcWidth);
+        y0 = Math.Clamp(y0, 0, srcHeight);
+        x1 = Math.Clamp(x1, 0, srcWidth);
+        y1 = Math.Clamp(y1, 0, srcHeight);
+        int w = x1 - x0;
+        int h = y1 - y0;
+        if (w <= 0 || h <= 0 || srcStride < srcWidth * 4 || destStride < w * 4)
+        {
+            return;
+        }
+
+        int r = Math.Clamp(radius, 1, 64);
+        int tempStride = w * 4;
+        int tempBytes = tempStride * h;
+        byte[] rented = ArrayPool<byte>.Shared.Rent(tempBytes);
+        try
+        {
+            fixed (byte* temp = rented)
+            {
+                // Pass 1: horizontal blur from src[x0..x1, y0..y1] into temp[0..w, 0..h]
+                for (int y = 0; y < h; y++)
+                {
+                    byte* sRow = src + ((y0 + y) * srcStride);
+                    byte* tRow = temp + (y * tempStride);
+                    for (int x = 0; x < w; x++)
+                    {
+                        int sx0 = Math.Max(0, x - r);
+                        int sx1 = Math.Min(w - 1, x + r);
+                        int count = sx1 - sx0 + 1;
+                        int sumB = 0, sumG = 0, sumR = 0;
+                        for (int sx = sx0; sx <= sx1; sx++)
+                        {
+                            int o = (x0 + sx) * 4;
+                            sumB += sRow[o + 0];
+                            sumG += sRow[o + 1];
+                            sumR += sRow[o + 2];
+                        }
+
+                        int dOff = x * 4;
+                        tRow[dOff + 0] = (byte)(sumB / count);
+                        tRow[dOff + 1] = (byte)(sumG / count);
+                        tRow[dOff + 2] = (byte)(sumR / count);
+                        tRow[dOff + 3] = 255;
+                    }
+                }
+
+                // Pass 2: vertical blur from temp into dest
+                for (int y = 0; y < h; y++)
+                {
+                    int sy0 = Math.Max(0, y - r);
+                    int sy1 = Math.Min(h - 1, y + r);
+                    int count = sy1 - sy0 + 1;
+                    byte* dRow = dest + (y * destStride);
+                    for (int x = 0; x < w; x++)
+                    {
+                        int xOff = x * 4;
+                        int sumB = 0, sumG = 0, sumR = 0;
+                        for (int sy = sy0; sy <= sy1; sy++)
+                        {
+                            byte* tRow = temp + (sy * tempStride) + xOff;
+                            sumB += tRow[0];
+                            sumG += tRow[1];
+                            sumR += tRow[2];
+                        }
+
+                        dRow[xOff + 0] = (byte)(sumB / count);
+                        dRow[xOff + 1] = (byte)(sumG / count);
+                        dRow[xOff + 2] = (byte)(sumR / count);
+                        dRow[xOff + 3] = 255;
+                    }
+                }
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(rented);
+        }
+    }
+
+    /// <summary>Managed-buffer overload of <see cref="FillGaussianBlur(byte*,int,int,int,byte*,int,int,int,int,int,int)"/> for unit tests.</summary>
+    public static void FillGaussianBlur(
+        byte[] src,
+        int srcStride,
+        int srcWidth,
+        int srcHeight,
+        byte[] dest,
+        int destStride,
+        int x0,
+        int y0,
+        int x1,
+        int y1,
+        int radius)
+    {
+        ArgumentNullException.ThrowIfNull(src);
+        ArgumentNullException.ThrowIfNull(dest);
+        unsafe
+        {
+            fixed (byte* sp = src)
+            {
+                fixed (byte* dp = dest)
+                {
+                    FillGaussianBlur(sp, srcStride, srcWidth, srcHeight, dp, destStride, x0, y0, x1, y1, radius);
+                }
+            }
+        }
+    }
+
+    /// <summary>Fills a BGRA32 destination rectangle with a solid color for redaction.</summary>
+    public static unsafe void FillSolid(
+        byte* dest,
+        int destStride,
+        int width,
+        int height,
+        byte b,
+        byte g,
+        byte r,
+        byte a = 255)
+    {
+        if (dest == null)
+        {
+            throw new ArgumentNullException(nameof(dest));
+        }
+
+        if (width <= 0 || height <= 0 || destStride < width * 4)
+        {
+            return;
+        }
+
+        uint packed = (uint)(b | (g << 8) | (r << 16) | (a << 24));
+        for (int y = 0; y < height; y++)
+        {
+            var row = new Span<uint>(dest + (y * destStride), width);
+            row.Fill(packed);
+        }
+    }
+
+    /// <summary>Managed-buffer overload of <see cref="FillSolid(byte*,int,int,int,byte,byte,byte,byte)"/> for unit tests.</summary>
+    public static void FillSolid(
+        byte[] dest,
+        int destStride,
+        int width,
+        int height,
+        byte b,
+        byte g,
+        byte r,
+        byte a = 255)
+    {
+        ArgumentNullException.ThrowIfNull(dest);
+        unsafe
+        {
+            fixed (byte* dp = dest)
+            {
+                FillSolid(dp, destStride, width, height, b, g, r, a);
+            }
+        }
     }
 }
