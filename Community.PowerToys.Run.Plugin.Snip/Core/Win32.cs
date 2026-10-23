@@ -272,5 +272,4 @@ internal static class Win32
 
     [DllImport(User32, EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
-
 }

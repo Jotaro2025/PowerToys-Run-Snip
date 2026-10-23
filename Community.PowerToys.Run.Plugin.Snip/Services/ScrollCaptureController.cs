@@ -231,6 +231,7 @@ public sealed class ScrollCaptureController
             if (duplicate)
             {
                 bmp.Dispose();
+
                 // Failed wheels produce identical tiles; never count those toward end-of-page stop.
                 if (!ShouldCountDuplicateTowardAutoStop(wheeled, successfulWheels))
                 {

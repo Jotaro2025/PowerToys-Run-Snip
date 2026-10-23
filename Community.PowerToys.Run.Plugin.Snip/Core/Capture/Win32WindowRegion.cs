@@ -34,8 +34,17 @@ public static class Win32WindowRegion
             return false;
         }
 
-        if (!TryClampHole(clientWidth, clientHeight, holeX, holeY, holeWidth, holeHeight,
-                out int left, out int top, out int right, out int bottom))
+        if (!TryClampHole(
+                clientWidth,
+                clientHeight,
+                holeX,
+                holeY,
+                holeWidth,
+                holeHeight,
+                out int left,
+                out int top,
+                out int right,
+                out int bottom))
         {
             return false;
         }

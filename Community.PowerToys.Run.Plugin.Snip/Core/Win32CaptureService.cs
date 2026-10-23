@@ -393,10 +393,12 @@ public sealed class Win32CaptureService : ICaptureService
     private static IntPtr WindowFromPointWithOverlayTransparent(Win32.POINT pt, IntPtr overlayHwnd)
     {
         IntPtr prev = Win32.GetWindowLongPtr(overlayHwnd, Win32.GwlExStyle);
+#pragma warning disable CA2020 // OR of style bits into IntPtr; same pattern as WM_MOUSEWHEEL packing.
         _ = Win32.SetWindowLongPtr(
             overlayHwnd,
             Win32.GwlExStyle,
-            (IntPtr)(prev.ToInt64() | Win32.WsExTransparent));
+            unchecked((IntPtr)(prev.ToInt64() | Win32.WsExTransparent)));
+#pragma warning restore CA2020
         try
         {
             return Win32.WindowFromPoint(pt);
