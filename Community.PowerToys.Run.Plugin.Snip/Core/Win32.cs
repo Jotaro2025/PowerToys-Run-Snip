@@ -195,6 +195,11 @@ internal static class Win32
     [DllImport(Shcore, SetLastError = true)]
     public static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
 
+    public const uint MonitorDefaultToNearest = 2;
+
+    [DllImport(User32)]
+    public static extern IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
+
     [DllImport(User32, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool SetWindowPos(

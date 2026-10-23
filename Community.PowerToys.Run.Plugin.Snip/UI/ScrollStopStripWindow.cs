@@ -9,6 +9,8 @@ using System.Windows.Controls;
 using System.Windows.Input;
 using System.Windows.Media;
 
+using Community.PowerToys.Run.Plugin.Snip.Core;
+
 namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
 /// <summary>
@@ -173,22 +175,26 @@ public sealed class ScrollStopStripWindow : Window
 
     /// <summary>
     /// Position near the top-center of the capture area (physical pixels → DIP).
-    /// Prefer this window's DPI after Show so mixed-DPI secondary monitors stay aligned.
+    /// Uses the monitor under the capture center so mixed-DPI secondary screens stay aligned.
+    /// Prefer this window's DPI after Show when available.
     /// </summary>
     public void PlaceNearCapture(Int32Rect capturePhysicalPx, double dpiScale)
     {
-        double scale = dpiScale > 0.01 ? dpiScale : 1.0;
+        int cx = capturePhysicalPx.X + (capturePhysicalPx.Width / 2);
+        int cy = capturePhysicalPx.Y + (capturePhysicalPx.Height / 2);
+        double scale = DpiCoordinateMapping.EffectiveDpiScaleAtPhysical(cx, cy, dpiScale);
         try
         {
             var dpi = VisualTreeHelper.GetDpi(this);
             if (dpi.DpiScaleX > 0.01)
             {
+                // After Show, prefer this HWND's DPI (matches WPF layout on that monitor).
                 scale = dpi.DpiScaleX;
             }
         }
         catch (Exception)
         {
-            // Pre-Show / no composition target — keep caller scale.
+            // Pre-Show / no composition target — keep monitor/caller scale.
         }
 
         double leftDip = capturePhysicalPx.X / scale;
