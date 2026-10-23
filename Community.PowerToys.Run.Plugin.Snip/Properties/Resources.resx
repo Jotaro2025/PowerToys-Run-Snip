@@ -212,6 +212,9 @@
   <data name="pin_menu_close" xml:space="preserve">
     <value>Close</value>
   </data>
+  <data name="pin_hint_wheel" xml:space="preserve">
+    <value>Mouse wheel: zoom · Ctrl+wheel: opacity</value>
+  </data>
   <data name="tr_window_title" xml:space="preserve">
     <value>Image Translate</value>
   </data>
