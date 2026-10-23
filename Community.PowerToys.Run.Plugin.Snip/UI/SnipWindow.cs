@@ -51,6 +51,13 @@ public sealed class SnipWindow : Window
     private readonly AnnotationCanvas _annoCanvas;
     private readonly SelectionAdorner _adorner;
     private readonly SnipToolbar _toolbar;
+    private readonly Border _magnifierHud;
+    private readonly System.Windows.Controls.Image _magnifierImage;
+    private readonly Border _magnifierSwatch;
+    private readonly System.Windows.Controls.TextBlock _magnifierCoordText;
+    private readonly System.Windows.Controls.TextBlock _magnifierColorText;
+    private readonly System.Windows.Controls.TextBlock _magnifierHintText;
+    private readonly System.Windows.Media.Imaging.WriteableBitmap _magnifierBitmap;
     private readonly SnipSettings _settings;
     private readonly ICaptureService _captureService = CaptureFactory.Create();
 
@@ -63,6 +70,10 @@ public sealed class SnipWindow : Window
     private Point _dragStartPoint;
     private Rect _dragStartSelection;
     private bool _dragMovingHandle;
+    private byte _lastSampledR;
+    private byte _lastSampledG;
+    private byte _lastSampledB;
+    private bool _hasSampledPixel;
     private bool _disposed;
     private bool _exportBusy;
 
@@ -209,6 +220,86 @@ public sealed class SnipWindow : Window
 
         _root.Children.Add(_toolbar);
         Panel.SetZIndex(_toolbar, 30);
+
+        _magnifierBitmap = new System.Windows.Media.Imaging.WriteableBitmap(
+            PixelMagnifier.OutputPixelSize,
+            PixelMagnifier.OutputPixelSize,
+            96,
+            96,
+            PixelFormats.Bgra32,
+            null);
+        _magnifierImage = new System.Windows.Controls.Image
+        {
+            Width = PixelMagnifier.OutputPixelSize,
+            Height = PixelMagnifier.OutputPixelSize,
+            Source = _magnifierBitmap,
+            Stretch = Stretch.Fill,
+        };
+        RenderOptions.SetBitmapScalingMode(_magnifierImage, BitmapScalingMode.NearestNeighbor);
+
+        _magnifierSwatch = new Border
+        {
+            Width = 12,
+            Height = 12,
+            CornerRadius = new CornerRadius(2),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            Margin = new Thickness(0, 0, 6, 0),
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        _magnifierCoordText = new System.Windows.Controls.TextBlock
+        {
+            Foreground = Brushes.White,
+            FontSize = 11,
+            FontWeight = FontWeights.SemiBold,
+            Margin = new Thickness(0, 4, 0, 2),
+        };
+        _magnifierColorText = new System.Windows.Controls.TextBlock
+        {
+            Foreground = new SolidColorBrush(Color.FromRgb(220, 224, 232)),
+            FontSize = 11,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        var colorRow = new System.Windows.Controls.StackPanel
+        {
+            Orientation = System.Windows.Controls.Orientation.Horizontal,
+            Margin = new Thickness(0, 1, 0, 2),
+        };
+        colorRow.Children.Add(_magnifierSwatch);
+        colorRow.Children.Add(_magnifierColorText);
+
+        _magnifierHintText = new System.Windows.Controls.TextBlock
+        {
+            Text = "[C] HEX  [Shift+C] RGB",
+            Foreground = new SolidColorBrush(Color.FromRgb(150, 156, 168)),
+            FontSize = 10,
+        };
+        var hudStack = new System.Windows.Controls.StackPanel();
+        hudStack.Children.Add(new Border
+        {
+            CornerRadius = new CornerRadius(4),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            ClipToBounds = true,
+            Child = _magnifierImage,
+        });
+        hudStack.Children.Add(_magnifierCoordText);
+        hudStack.Children.Add(colorRow);
+        hudStack.Children.Add(_magnifierHintText);
+
+        _magnifierHud = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(230, 22, 24, 28)),
+            BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(8),
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed,
+            Child = hudStack,
+        };
+        _root.Children.Add(_magnifierHud);
+        Panel.SetZIndex(_magnifierHud, 35);
 
         Content = _root;
 
@@ -452,14 +543,16 @@ public sealed class SnipWindow : Window
 
     private void OnRootPointerMoved(object sender, MouseEventArgs e)
     {
+        var p = e.GetPosition(_root);
+        UpdateMagnifierAt(p);
         if (!_dragCreating)
         {
             return;
         }
 
-        var p = e.GetPosition(_root);
         _selection = NormalizeRect(_dragStartPoint, p);
         UpdateSelectionVisuals();
+        UpdateMagnifierAt(p);
         e.Handled = true;
     }
 
@@ -504,10 +597,12 @@ public sealed class SnipWindow : Window
             double dy = p.Y - _dragStartPoint.Y;
             _selection = ApplyHandle(_dragStartSelection, e.Kind, dx, dy);
             UpdateSelectionVisuals();
+            UpdateMagnifierAt(p);
         }
         else
         {
             _dragMovingHandle = false;
+            _magnifierHud.Visibility = Visibility.Collapsed;
             if (_selection.Width < 5 || _selection.Height < 5)
             {
                 _hasSelection = false;
@@ -574,6 +669,11 @@ public sealed class SnipWindow : Window
             _dimPath.Visibility = Visibility.Visible;
             _annoCanvas.Visibility = Visibility.Collapsed;
             _toolbar.Visibility = Visibility.Collapsed;
+        }
+
+        if (_hasSelection && !_dragCreating && !_dragMovingHandle)
+        {
+            _magnifierHud.Visibility = Visibility.Collapsed;
         }
 
         _adorner.Selection = _selection;
@@ -647,6 +747,17 @@ public sealed class SnipWindow : Window
         if (e.Key == Key.Delete)
         {
             _annoCanvas.DeleteSelected();
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.C
+            && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) == 0
+            && Keyboard.FocusedElement is not System.Windows.Controls.TextBox
+            && _hasSampledPixel)
+        {
+            bool copyRgb = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
+            CopySampledColorToClipboard(copyRgb);
             e.Handled = true;
             return;
         }
@@ -1686,5 +1797,102 @@ public sealed class SnipWindow : Window
         var w = Math.Max(1, Math.Abs(a.X - b.X));
         var h = Math.Max(1, Math.Abs(a.Y - b.Y));
         return new Rect(x, y, w, h);
+    }
+
+    private void UpdateMagnifierAt(Point dipPoint)
+    {
+        if (_source == null || _magnifierBitmap == null || _scrollController is { IsActive: true })
+        {
+            _magnifierHud.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        int sw = _source.PixelWidth;
+        int sh = _source.PixelHeight;
+        if (sw <= 0 || sh <= 0)
+        {
+            return;
+        }
+
+        int px = Math.Clamp((int)Math.Round(dipPoint.X * _dpiScale), 0, sw - 1);
+        int py = Math.Clamp((int)Math.Round(dipPoint.Y * _dpiScale), 0, sh - 1);
+
+        _source.Lock();
+        _magnifierBitmap.Lock();
+        try
+        {
+            unsafe
+            {
+                var srcPtr = (byte*)_source.BackBuffer;
+                int srcStride = _source.BackBufferStride;
+                PixelMagnifier.SamplePixelBgra(srcPtr, srcStride, sw, sh, px, py, out _lastSampledR, out _lastSampledG, out _lastSampledB);
+                _hasSampledPixel = true;
+
+                if (!_hasSelection || _dragCreating || _dragMovingHandle)
+                {
+                    PixelMagnifier.FillZoomedGrid(
+                        srcPtr,
+                        srcStride,
+                        sw,
+                        sh,
+                        px,
+                        py,
+                        (byte*)_magnifierBitmap.BackBuffer,
+                        _magnifierBitmap.BackBufferStride);
+                    _magnifierBitmap.AddDirtyRect(new Int32Rect(0, 0, PixelMagnifier.OutputPixelSize, PixelMagnifier.OutputPixelSize));
+                }
+            }
+        }
+        finally
+        {
+            _magnifierBitmap.Unlock();
+            _source.Unlock();
+        }
+
+        if (_hasSelection && !_dragCreating && !_dragMovingHandle)
+        {
+            _magnifierHud.Visibility = Visibility.Collapsed;
+            return;
+        }
+
+        _magnifierSwatch.Background = new SolidColorBrush(Color.FromRgb(_lastSampledR, _lastSampledG, _lastSampledB));
+        if (_dragCreating || _dragMovingHandle)
+        {
+            int selW = Math.Max(1, (int)Math.Round(_selection.Width * _dpiScale));
+            int selH = Math.Max(1, (int)Math.Round(_selection.Height * _dpiScale));
+            _magnifierCoordText.Text = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{selW} × {selH}  ({px}, {py})");
+        }
+        else
+        {
+            _magnifierCoordText.Text = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"({px}, {py})");
+        }
+
+        string hex = PixelMagnifier.FormatHex(_lastSampledR, _lastSampledG, _lastSampledB);
+        string rgb = PixelMagnifier.FormatRgb(_lastSampledR, _lastSampledG, _lastSampledB);
+        _magnifierColorText.Text = $"{hex}  {rgb}";
+
+        _magnifierHud.Visibility = Visibility.Visible;
+        _magnifierHud.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
+        var monitorArea = MonitorAreaFor(new Rect(dipPoint.X, dipPoint.Y, 1, 1));
+        var hudPos = PixelMagnifier.ComputeHudPosition(dipPoint, _magnifierHud.DesiredSize, monitorArea);
+        Canvas.SetLeft(_magnifierHud, hudPos.X);
+        Canvas.SetTop(_magnifierHud, hudPos.Y);
+    }
+
+    private void CopySampledColorToClipboard(bool copyRgb)
+    {
+        string value = copyRgb
+            ? PixelMagnifier.FormatRgb(_lastSampledR, _lastSampledG, _lastSampledB)
+            : PixelMagnifier.FormatHex(_lastSampledR, _lastSampledG, _lastSampledB);
+        try
+        {
+            Clipboard.SetText(value);
+            _magnifierHintText.Foreground = new SolidColorBrush(Color.FromRgb(72, 210, 110));
+            _magnifierHintText.Text = $"{Properties.Resources.ocr_copied}: {value}";
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow CopySampledColorToClipboard failed: {ex.Message}", ex, GetType());
+        }
     }
 }
