@@ -174,6 +174,7 @@ public sealed class ScrollCaptureController
 
             // Focus underlay + hold cursor while overlay is hidden so the click hits Edge.
             BeginPointerHoldAtCenter();
+            MaybeWarnElevatedTarget();
 
             // Mouse guard arms once the cursor has been inside the selection, so starting
             // from the toolbar (outside the selection) does not pause immediately.
@@ -522,6 +523,33 @@ public sealed class ScrollCaptureController
         }
 
         return true;
+    }
+
+    /// <summary>
+    /// Tip when the underlay HWND is higher integrity than this process (UIPI blocks SendInput).
+    /// Overlay is usually session-hidden; the stop strip carries the lasting tip.
+    /// </summary>
+    private void MaybeWarnElevatedTarget()
+    {
+        try
+        {
+            int cx = _captureRect.X + (_captureRect.Width / 2);
+            int cy = _captureRect.Y + (_captureRect.Height / 2);
+            var pt = new Win32.POINT { X = cx, Y = cy };
+            IntPtr target = Win32CaptureService.ResolveScrollTargetAt(pt, _overlayHwnd);
+            if (target == IntPtr.Zero || !ProcessIntegrity.IsHigherThanCurrent(target))
+            {
+                return;
+            }
+
+            PostToOverlay(() => _overlay.ShowUipiWarning());
+            _stopGuard?.SetUipiWarning(true);
+            SnipVerbose.Scroll("[scroll] UIPI: underlay higher integrity than host - tip shown");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll UIPI check failed: {ex.Message}", typeof(ScrollCaptureController));
+        }
     }
 
     private void BeginPointerHoldAtCenter()

@@ -720,4 +720,13 @@
   <data name="scroll_stop_strip_tip" xml:space="preserve">
     <value>Esc or Space also stops and keeps frames already captured</value>
   </data>
+  <data name="scroll_hint_uipi" xml:space="preserve">
+    <value>Target window is elevated (UIPI)</value>
+  </data>
+  <data name="scroll_hint_uipi_sub" xml:space="preserve">
+    <value>Scroll input may fail. Run PowerToys as admin, or use a non-elevated window.</value>
+  </data>
+  <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
+    <value>Elevated target — Esc/Space/Stop still work; wheel may be blocked by UIPI</value>
+  </data>
 </root>

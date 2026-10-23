@@ -93,6 +93,33 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
         }
     }
 
+    public void SetUipiWarning(bool elevated)
+    {
+        if (_disposed || _strip == null)
+        {
+            return;
+        }
+
+        try
+        {
+            _dispatcher.BeginInvoke(() =>
+            {
+                try
+                {
+                    _strip?.SetUipiWarning(elevated);
+                }
+                catch (Exception ex)
+                {
+                    SnipVerbose.Scroll($"[scroll] stop strip UIPI tip skipped: {ex.Message}");
+                }
+            });
+        }
+        catch (Exception ex)
+        {
+            SnipVerbose.Scroll($"[scroll] stop strip UIPI dispatch failed: {ex.Message}");
+        }
+    }
+
     /// <summary>
     /// Poll Esc/Space (edge-triggered). Call from the scroll loop when RegisterHotKey
     /// may have failed or WM_HOTKEY delivery is delayed.
