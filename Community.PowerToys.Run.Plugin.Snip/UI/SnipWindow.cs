@@ -733,7 +733,9 @@ public sealed class SnipWindow : Window
         _scrollController.Cancelled += OnScrollCaptureCancelled;
         _toolbar.SetScrollCaptureActive(true, scrollUp);
 
-        _screenshotImage.Visibility = Visibility.Collapsed;
+        // Keep the frozen screenshot visible. SetWindowRgn punches the selection so live
+        // content shows through the hole; collapsing the preview + transparent root caused
+        // a blank/white flash when the region failed or covered the full client.
         _dimPath.Fill = _selectionDimBrush;
         var outer = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
         var inner = new RectangleGeometry(_selection);
@@ -747,19 +749,24 @@ public sealed class SnipWindow : Window
         _toolbar.IsHitTestVisible = true;
         _adorner.IsVisible = false;
         _adorner.UpdateLayout();
-        _root.Background = Brushes.Transparent;
         UpdateLayout();
 
-        ApplyScrollCaptureHole();
+        if (!ApplyScrollCaptureHole())
+        {
+            Log.Warn(
+                "Snip scroll: selection hole not applied (full-client or invalid); wheel uses Z-order underlay",
+                GetType());
+        }
+
         _scrollController.Begin();
     }
 
-    private void ApplyScrollCaptureHole()
+    private bool ApplyScrollCaptureHole()
     {
         var hwnd = TryGetHwnd();
         if (hwnd == IntPtr.Zero)
         {
-            return;
+            return false;
         }
 
         int clientW = Math.Max(1, (int)Math.Round(_logicalSize.Width * _dpiScale));
@@ -775,7 +782,7 @@ public sealed class SnipWindow : Window
         int holeW = Math.Max(1, (int)Math.Round(_selection.Width * _dpiScale));
         int holeH = Math.Max(1, (int)Math.Round(_selection.Height * _dpiScale));
 
-        Win32WindowRegion.ApplySelectionHole(hwnd, clientW, clientH, holeX, holeY, holeW, holeH);
+        return Win32WindowRegion.ApplySelectionHole(hwnd, clientW, clientH, holeX, holeY, holeW, holeH);
     }
 
     private void ClearScrollCaptureHole()

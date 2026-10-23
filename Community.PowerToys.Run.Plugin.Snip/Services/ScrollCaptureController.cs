@@ -30,6 +30,9 @@ public sealed class ScrollCaptureController
     /// <summary>Stop when this many consecutive full-duplicate tiles are seen.</summary>
     internal const int ConsecutiveDuplicateStopThreshold = 2;
 
+    /// <summary>Stop when this many consecutive wheel deliveries fail (no underlay HWND).</summary>
+    internal const int ConsecutiveWheelFailStopThreshold = 5;
+
     private readonly ICaptureService _capture;
     private readonly Panel _overlayHost;
     private readonly ScrollHintOverlay _overlay;
@@ -131,15 +134,22 @@ public sealed class ScrollCaptureController
     private async Task AutoScrollLoopAsync(CancellationToken ct)
     {
         int consecutiveDups = 0;
+        int consecutiveWheelFails = 0;
+        int successfulWheels = 0;
         int projectedHeight = 0;
         int maxHeight = int.MaxValue;
         int scrollHint = 0;
+        string autoStopReason = null;
         var first = await CaptureOnceSafeAsync().ConfigureAwait(false);
         if (first != null && _active && !ct.IsCancellationRequested)
         {
             _tiles.Add(first);
             projectedHeight = first.Height;
             maxHeight = ScrollStitcher.ResolveMaxStitchedHeight(first.Width);
+        }
+        else if (first == null)
+        {
+            Log.Warn("Snip scroll: first tile capture failed", typeof(ScrollCaptureController));
         }
 
         // Mouse guard arms once the cursor has been inside the selection, so starting
@@ -178,7 +188,24 @@ public sealed class ScrollCaptureController
 
             PostToOverlay(() => _overlay.ShowCapturing(_tiles.Count + 1));
 
-            SimulateWheelAtCenter();
+            bool wheeled = SimulateWheelAtCenter();
+            if (wheeled)
+            {
+                consecutiveWheelFails = 0;
+                successfulWheels++;
+            }
+            else
+            {
+                consecutiveWheelFails++;
+                if (consecutiveWheelFails >= ConsecutiveWheelFailStopThreshold)
+                {
+                    autoStopReason = $"wheel target unresolved after {consecutiveWheelFails} failures";
+                    Log.Warn(
+                        $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
+                        typeof(ScrollCaptureController));
+                    break;
+                }
+            }
 
             try
             {
@@ -203,11 +230,24 @@ public sealed class ScrollCaptureController
 
             if (duplicate)
             {
-                consecutiveDups++;
                 bmp.Dispose();
+
+                // Failed wheels produce identical tiles; never count those toward end-of-page stop.
+                if (!ShouldCountDuplicateTowardAutoStop(wheeled, successfulWheels))
+                {
+                    consecutiveDups = 0;
+                    SnipVerbose.Scroll("[scroll] duplicate after failed wheel — streak not counted");
+                    continue;
+                }
+
+                consecutiveDups++;
                 SnipVerbose.Scroll($"[scroll] duplicate tile (streak={consecutiveDups}) — not kept");
                 if (consecutiveDups >= ConsecutiveDuplicateStopThreshold)
                 {
+                    autoStopReason = "page no longer scrolling";
+                    Log.Warn(
+                        $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
+                        typeof(ScrollCaptureController));
                     SnipVerbose.Scroll("[scroll] auto-stop — page no longer scrolling");
                     break;
                 }
@@ -237,14 +277,33 @@ public sealed class ScrollCaptureController
             {
                 _heightCapReached = true;
                 _maxHeightPx = maxHeight;
+                autoStopReason = $"stitched height cap ({maxHeight}px)";
+                Log.Warn(
+                    $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
+                    typeof(ScrollCaptureController));
                 SnipVerbose.Scroll("[scroll] auto-stop — stitched height cap reached");
                 break;
             }
         }
 
+        if (autoStopReason == null && !ct.IsCancellationRequested && _tiles.Count >= _maxTiles)
+        {
+            autoStopReason = $"max tiles ({_maxTiles})";
+            Log.Warn(
+                $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
+                typeof(ScrollCaptureController));
+        }
+
         _active = false;
         await FinishCapturingUiAsync(autoStopped: !ct.IsCancellationRequested).ConfigureAwait(false);
     }
+
+    /// <summary>
+    /// Duplicate tiles only count toward end-of-page auto-stop after at least one successful
+    /// wheel and when the latest wheel also succeeded.
+    /// </summary>
+    internal static bool ShouldCountDuplicateTowardAutoStop(bool lastWheelSucceeded, int successfulWheelCount)
+        => lastWheelSucceeded && successfulWheelCount > 0;
 
     private bool IsCursorInsideCapture()
     {
@@ -278,7 +337,7 @@ public sealed class ScrollCaptureController
         return arr;
     }
 
-    private void SimulateWheelAtCenter()
+    private bool SimulateWheelAtCenter()
     {
         int cx = _captureRect.X + (_captureRect.Width / 2);
         int cy = _captureRect.Y + (_captureRect.Height / 2);
@@ -286,8 +345,14 @@ public sealed class ScrollCaptureController
 
         if (!Win32CaptureService.TrySendWheelAt(cx, cy, delta, _overlayHwnd))
         {
+            Log.Warn(
+                $"Snip scroll SimulateWheel failed at ({cx},{cy}) — no underlay HWND",
+                typeof(ScrollCaptureController));
             SnipVerbose.Scroll($"[scroll] SimulateWheel failed at ({cx},{cy})");
+            return false;
         }
+
+        return true;
     }
 
     public async Task StopCapturingAsync()
@@ -343,6 +408,14 @@ public sealed class ScrollCaptureController
                 Log.Exception($"Snip scroll stopped-hint failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             }
 
+            if (autoStopped)
+            {
+                Log.Info(
+                    $"Snip scroll auto-stopped — {_tiles.Count} tile(s), pending stitch"
+                    + (_heightCapReached ? $" (height cap {_maxHeightPx}px)" : string.Empty),
+                    typeof(ScrollCaptureController));
+            }
+
             SnipVerbose.Scroll(autoStopped
                 ? $"[scroll] auto-stopped — {_tiles.Count} tile(s), pending stitch"
                 : $"[scroll] manually stopped — {_tiles.Count} tile(s), pending stitch");
@@ -351,6 +424,12 @@ public sealed class ScrollCaptureController
         {
             _stoppedPending = false;
             HideOverlay();
+            if (autoStopped)
+            {
+                Log.Warn(
+                    "Snip scroll auto-stopped with 0 tiles (capture/wheel failed)",
+                    typeof(ScrollCaptureController));
+            }
         }
 
         await NotifyCapturingStoppedOnceAsync().ConfigureAwait(false);

@@ -38,6 +38,8 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 修复 / Fixed
 
+- 滚动截屏：选区 hole 失败/全客户区打孔导致白屏，且 `ResolveScrollTargetAt` 命中 overlay 返回 Zero → 滚轮全失败 → 重复 tile 立刻 auto-stop — Keep frozen preview; refuse full-client hole; find window under overlay for wheel; do not count failed-wheel dups toward stop; Log.Warn/Info on auto-stop (@Jotaro2025)
+
 - 设置窗口跨 Dispatcher 导致的 FATAL 崩溃 — Settings window cross-dispatcher crash (#36, @Jotaro2025)
 - slim 包 OCR / 翻译提示框被 Topmost 遮挡导致「无响应」 — Prompts hidden behind the topmost overlay (#39, @Jotaro2025)
 - HyMT Dispose 先取消推理再限时等待，避免卸载时卡死 — HyMT dispose no longer hangs (#55, @Jotaro2025)
