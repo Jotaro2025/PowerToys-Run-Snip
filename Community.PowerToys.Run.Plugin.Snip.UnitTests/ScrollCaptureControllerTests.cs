@@ -62,7 +62,9 @@ public class ScrollCaptureControllerTests
     public void DuplicateStopThresholds_AreSoftenedForChromiumSettle()
     {
         Assert.IsTrue(ScrollCaptureController.ConsecutiveDuplicateStopThreshold >= 4);
-        Assert.IsTrue(ScrollCaptureController.MinSuccessfulWheelsBeforeDuplicateStop >= 3);
+        Assert.IsTrue(ScrollCaptureController.MinSuccessfulWheelsBeforeDuplicateStop >= 5);
+        Assert.IsTrue(ScrollCaptureController.EarlyTileExtraSettleMs >= 250);
+        Assert.IsTrue(Win32CaptureService.ScrollPointerSettleMs >= 80);
     }
 
     [TestMethod]
@@ -128,5 +130,18 @@ public class ScrollCaptureControllerTests
     public void TrySendWheelAt_ZeroDeltaReturnsFalse()
     {
         Assert.IsFalse(Win32CaptureService.TrySendWheelAt(0, 0, 0));
+    }
+
+    [TestMethod]
+    public void IsOverlayCoveringPoint_ZeroOverlayNeverCovers()
+    {
+        var pt = new Win32.POINT { X = 0, Y = 0 };
+        Assert.IsFalse(Win32CaptureService.IsOverlayCoveringPoint(pt, IntPtr.Zero));
+    }
+
+    [TestMethod]
+    public void TryActivateScrollTarget_ZeroHandleReturnsFalse()
+    {
+        Assert.IsFalse(Win32CaptureService.TryActivateScrollTarget(IntPtr.Zero));
     }
 }

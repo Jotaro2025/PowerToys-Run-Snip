@@ -31,10 +31,10 @@ public sealed class ScrollCaptureController
     internal const int ConsecutiveDuplicateStopThreshold = 4;
 
     /// <summary>Ignore duplicate streak until this many wheels have succeeded (Edge settle).</summary>
-    internal const int MinSuccessfulWheelsBeforeDuplicateStop = 3;
+    internal const int MinSuccessfulWheelsBeforeDuplicateStop = 5;
 
     /// <summary>Extra settle after wheel before capture for the first few tiles (ms).</summary>
-    internal const int EarlyTileExtraSettleMs = 120;
+    internal const int EarlyTileExtraSettleMs = 250;
 
     /// <summary>Stop when this many consecutive wheel deliveries fail (no underlay HWND).</summary>
     internal const int ConsecutiveWheelFailStopThreshold = 5;
@@ -385,7 +385,11 @@ public sealed class ScrollCaptureController
         int cy = _captureRect.Y + (_captureRect.Height / 2);
         try
         {
-            Win32CaptureService.BeginScrollPointerHold(cx, cy, injectFocusClick: true);
+            Win32CaptureService.BeginScrollPointerHold(
+                cx,
+                cy,
+                injectFocusClick: true,
+                skipOverlayHwnd: _overlayHwnd);
         }
         catch (Exception ex)
         {
