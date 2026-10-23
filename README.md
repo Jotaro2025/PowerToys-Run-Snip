@@ -253,3 +253,5 @@ Windows 手工验收见 [docs/windows-e2e-checklist.md](docs/windows-e2e-checkli
 ## 许可
 
 本仓库新增代码以 MIT 许可发布，见 [LICENSE](LICENSE)。第三方组件的许可与使用限制见上文「致谢与来源」。
+
+- **检查插件更新**（Additional Options，默认关闭）：开启后静默查询一次 GitHub Releases，将最新标签与 `plugin.json` 比较；私有仓库或网络失败时不提示。

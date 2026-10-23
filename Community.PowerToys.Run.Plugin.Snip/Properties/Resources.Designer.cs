@@ -189,6 +189,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        /// <summary>
+        ///   Looks up a localized string similar to Snip update available: {0} (current {1}).
+        /// </summary>
+        public static string msg_update_available {
+            get {
+                return ResourceManager.GetString("msg_update_available", resourceCulture);
+            }
+        }
+
 
 
         /// <summary>
@@ -1409,6 +1418,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string opt_hotkey_placeholder {
             get {
                 return ResourceManager.GetString("opt_hotkey_placeholder", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Check for plugin updates.
+        /// </summary>
+        public static string opt_check_updates_label {
+            get {
+                return ResourceManager.GetString("opt_check_updates_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to When enabled, quietly asks GitHub Releases for a newer tag than plugin.json (default off). Needs a public repo..
+        /// </summary>
+        public static string opt_check_updates_desc {
+            get {
+                return ResourceManager.GetString("opt_check_updates_desc", resourceCulture);
             }
         }
 

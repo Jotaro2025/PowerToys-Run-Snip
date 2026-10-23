@@ -116,6 +116,9 @@
   <data name="msg_saved" xml:space="preserve">
     <value>Screenshot saved</value>
   </data>
+  <data name="msg_update_available" xml:space="preserve">
+    <value>Snip update available: {0} (current {1})</value>
+  </data>
   <data name="msg_failed" xml:space="preserve">
     <value>Screenshot failed</value>
   </data>
@@ -538,6 +541,12 @@
   </data>
   <data name="opt_hotkey_placeholder" xml:space="preserve">
     <value>Empty = disabled (e.g. Ctrl+Shift+S)</value>
+  </data>
+  <data name="opt_check_updates_label" xml:space="preserve">
+    <value>Check for plugin updates</value>
+  </data>
+  <data name="opt_check_updates_desc" xml:space="preserve">
+    <value>When enabled, quietly asks GitHub Releases for a newer tag than plugin.json (default off). Needs a public repo.</value>
   </data>
   <data name="opt_ui_lang_label" xml:space="preserve">
     <value>UI language</value>
