@@ -45,7 +45,9 @@ public sealed class SnipSettingsWindow : Window
     private StackPanel _httpPanel;
     private StackPanel _hymtPanel;
     private TextBox _httpUrl;
-    private TextBox _httpKey;
+    private PasswordBox _httpKeyPassword;
+    private TextBox _httpKeyPlain;
+    private CheckBox _httpKeyShow;
     private TextBox _httpModel;
     private TextBox _hymtPath;
     private TextBox _hymtCustomUrl;
@@ -310,8 +312,24 @@ public sealed class SnipSettingsWindow : Window
         _httpUrl = new TextBox { Margin = new Thickness(0, 0, 0, 6) };
         _httpPanel.Children.Add(_httpUrl);
         _httpPanel.Children.Add(Label(Properties.Resources.opt_tr_http_key_label));
-        _httpKey = new TextBox { Margin = new Thickness(0, 0, 0, 6) };
-        _httpPanel.Children.Add(_httpKey);
+        var keyRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+        _httpKeyShow = new CheckBox
+        {
+            Content = Properties.Resources.settings_http_key_show,
+            VerticalAlignment = VerticalAlignment.Center,
+            Margin = new Thickness(8, 0, 0, 0),
+        };
+        DockPanel.SetDock(_httpKeyShow, Dock.Right);
+        keyRow.Children.Add(_httpKeyShow);
+        _httpKeyPassword = new PasswordBox { Margin = new Thickness(0) };
+        _httpKeyPlain = new TextBox { Margin = new Thickness(0), Visibility = Visibility.Collapsed };
+        var keyHost = new Grid();
+        keyHost.Children.Add(_httpKeyPassword);
+        keyHost.Children.Add(_httpKeyPlain);
+        keyRow.Children.Add(keyHost);
+        _httpKeyShow.Checked += OnHttpKeyShowToggled;
+        _httpKeyShow.Unchecked += OnHttpKeyShowToggled;
+        _httpPanel.Children.Add(keyRow);
         _httpPanel.Children.Add(Label(Properties.Resources.opt_tr_http_model_label));
         _httpModel = new TextBox { Margin = new Thickness(0, 0, 0, 6) };
         _httpPanel.Children.Add(_httpModel);
@@ -464,7 +482,12 @@ public sealed class SnipSettingsWindow : Window
         SelectProvider(_draft.TranslatorProvider);
         _targetLang.Text = _draft.TargetLanguage ?? string.Empty;
         _httpUrl.Text = _draft.HttpBaseUrl ?? string.Empty;
-        _httpKey.Text = _draft.HttpApiKey ?? string.Empty;
+        var key = _draft.HttpApiKey ?? string.Empty;
+        _httpKeyPassword.Password = key;
+        _httpKeyPlain.Text = key;
+        _httpKeyShow.IsChecked = false;
+        _httpKeyPassword.Visibility = Visibility.Visible;
+        _httpKeyPlain.Visibility = Visibility.Collapsed;
         _httpModel.Text = _draft.HttpModel ?? string.Empty;
         _hymtPath.Text = _draft.HyMtGgufPath ?? string.Empty;
         _hymtCustomUrl.Text = _draft.HyMtCustomDownloadUrl ?? string.Empty;
@@ -533,7 +556,7 @@ public sealed class SnipSettingsWindow : Window
         var uiLang = SelectedUiLanguage();
         _draft.UiLanguage = uiLang == UiLanguageHelper.System ? string.Empty : uiLang;
         _draft.HttpBaseUrl = _httpUrl.Text?.Trim() ?? string.Empty;
-        _draft.HttpApiKey = _httpKey.Text?.Trim() ?? string.Empty;
+        _draft.HttpApiKey = GetHttpApiKeyFromUi();
         _draft.HttpModel = _httpModel.Text?.Trim() ?? string.Empty;
         _draft.HyMtGgufPath = _hymtPath.Text?.Trim() ?? string.Empty;
         _draft.HyMtCustomDownloadUrl = _hymtCustomUrl.Text?.Trim() ?? string.Empty;
@@ -656,6 +679,35 @@ public sealed class SnipSettingsWindow : Window
         _hymtPanel.Visibility = provider == TranslatorProvider.HyMT2Sharp
             ? Visibility.Visible
             : Visibility.Collapsed;
+    }
+
+    private void OnHttpKeyShowToggled(object sender, RoutedEventArgs e)
+    {
+        bool show = _httpKeyShow.IsChecked == true;
+        if (show)
+        {
+            _httpKeyPlain.Text = _httpKeyPassword.Password ?? string.Empty;
+            _httpKeyPassword.Visibility = Visibility.Collapsed;
+            _httpKeyPlain.Visibility = Visibility.Visible;
+            _httpKeyShow.Content = Properties.Resources.settings_http_key_hide;
+        }
+        else
+        {
+            _httpKeyPassword.Password = _httpKeyPlain.Text ?? string.Empty;
+            _httpKeyPlain.Visibility = Visibility.Collapsed;
+            _httpKeyPassword.Visibility = Visibility.Visible;
+            _httpKeyShow.Content = Properties.Resources.settings_http_key_show;
+        }
+    }
+
+    private string GetHttpApiKeyFromUi()
+    {
+        if (_httpKeyShow?.IsChecked == true)
+        {
+            return _httpKeyPlain?.Text?.Trim() ?? string.Empty;
+        }
+
+        return _httpKeyPassword?.Password?.Trim() ?? string.Empty;
     }
 
     private void SelectOcrEngine(OcrEngineKind engine)

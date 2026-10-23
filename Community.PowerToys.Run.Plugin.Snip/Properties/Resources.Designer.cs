@@ -985,6 +985,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("opt_tr_http_key_label", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Show.
+        /// </summary>
+        public static string settings_http_key_show {
+            get {
+                return ResourceManager.GetString("settings_http_key_show", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Hide.
+        /// </summary>
+        public static string settings_http_key_hide {
+            get {
+                return ResourceManager.GetString("settings_http_key_hide", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to Sent as Bearer token when non-empty..
         /// </summary>
