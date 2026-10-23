@@ -61,7 +61,14 @@ public static class Win32WindowRegion
         _ = Win32.CombineRgn(result, full, hole, Win32.RgnDiff);
         _ = Win32.DeleteObject(full);
         _ = Win32.DeleteObject(hole);
-        _ = Win32.SetWindowRgn(hwnd, result, true);
+
+        // On success the system owns `result`; on failure delete it here or it leaks.
+        if (Win32.SetWindowRgn(hwnd, result, true) == 0)
+        {
+            _ = Win32.DeleteObject(result);
+            return false;
+        }
+
         return true;
     }
 

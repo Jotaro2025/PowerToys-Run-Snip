@@ -246,7 +246,12 @@ public sealed class OcrResultWindow : Window, IDisposable
         SetBusy(OcrService.IsBusy(_settings)
             ? Properties.Resources.ocr_busy_waiting
             : Properties.Resources.ocr_busy);
-        var scannedCodes = QrAndBarcodeScanner.Scan(_image);
+
+        // Full-frame pixel copy + decode is too slow for the dispatcher; freeze
+        // first so the copy is safe off the STA.
+        var image = _image;
+        image?.Freeze();
+        var scannedCodes = await Task.Run(() => QrAndBarcodeScanner.Scan(image)).ConfigureAwait(true);
         ApplyDetectedCodes(scannedCodes);
 
         try
