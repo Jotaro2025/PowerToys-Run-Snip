@@ -328,8 +328,9 @@ public sealed class ScrollCaptureController
         }
         finally
         {
-            EndSessionOverlayHide();
-            DisposeStopGuard();
+            // Strip first, then unhide overlay — avoids z-order race (strip over restored
+            // snip / toolbar flash) when mid-stop and loop exit interleave.
+            RestoreAfterScrollSession();
         }
 
         _active = false;
@@ -403,6 +404,17 @@ public sealed class ScrollCaptureController
         {
             Log.Warn($"Snip scroll stop guard dispose failed: {ex.Message}", typeof(ScrollCaptureController));
         }
+    }
+
+    /// <summary>
+    /// Ordered teardown after scroll: close stop strip → restore snip HWND → release pointer hold.
+    /// Call from loop finally, Stop, and Cancel so mid-stop and auto-stop share one path.
+    /// </summary>
+    private void RestoreAfterScrollSession()
+    {
+        DisposeStopGuard();
+        EndSessionOverlayHide();
+        EndPointerHold();
     }
 
     private void BeginSessionOverlayHide()
@@ -595,9 +607,7 @@ public sealed class ScrollCaptureController
             _cts?.Dispose();
             _cts = null;
             _active = false;
-            DisposeStopGuard();
-            EndSessionOverlayHide();
-            EndPointerHold();
+            RestoreAfterScrollSession();
             SnipVerbose.Scroll($"[scroll] stopped — {_tiles.Count} raw tile(s) kept");
             await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
@@ -605,6 +615,15 @@ public sealed class ScrollCaptureController
         {
             Log.Exception($"Snip scroll stop failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             _active = false;
+            try
+            {
+                RestoreAfterScrollSession();
+            }
+            catch (Exception restoreEx)
+            {
+                Log.Warn($"Snip scroll stop restore failed: {restoreEx.Message}", typeof(ScrollCaptureController));
+            }
+
             await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
     }
@@ -612,7 +631,8 @@ public sealed class ScrollCaptureController
     /// <summary>Show stopped hint (keep overlay) and raise CapturingStopped once.</summary>
     private async Task FinishCapturingUiAsync(bool autoStopped)
     {
-        EndPointerHold();
+        // Idempotent: loop finally / Stop may have already restored.
+        RestoreAfterScrollSession();
         if (_tiles.Count > 0)
         {
             _stoppedPending = true;
@@ -736,9 +756,7 @@ public sealed class ScrollCaptureController
             _cts = null;
             _active = false;
             _stoppedPending = false;
-            DisposeStopGuard();
-            EndSessionOverlayHide();
-            EndPointerHold();
+            RestoreAfterScrollSession();
             HideOverlay();
             DisposeTiles();
             await InvokeCancelledAsync().ConfigureAwait(false);
@@ -750,6 +768,7 @@ public sealed class ScrollCaptureController
             _stoppedPending = false;
             try
             {
+                RestoreAfterScrollSession();
                 HideOverlay();
                 DisposeTiles();
             }
