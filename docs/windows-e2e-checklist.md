@@ -56,6 +56,21 @@
 - [ ] `plugin.json` 中 Author / Website / Version 为本仓库信息（非 Microsoft / aka.ms）
 - [ ] 中文界面下按钮与提示为简体中文（`zh-CN` 卫星程序集已部署）
 
+
+## DPAPI HTTP API Key
+
+- [ ] 在设置窗口填写 HTTP API Key 并保存；关闭重开后键仍可用（明文不落盘）
+- [ ] 打开 `%LOCALAPPDATA%\Microsoft\PowerToys\PowerToys Run\Settings\Plugins\Community.PowerToys.Run.Plugin.Snip\settings.json`：`HttpApiKey` 的 TextValue 以 `dpapi:v1:` 开头（密文），不是明文
+- [ ] PowerToys Run → 插件附加选项里 API Key 框为空或仅占位（不展示 `dpapi:v1:…` 密文）
+- [ ] **跨机 / 跨用户失败**：把本机 `settings.json` 拷到另一台 Windows 或另一用户后启动：日志有解密失败警告；API Key 需重新填写；其它设置仍可读
+- [ ] 清空专用设置窗口中的 API Key 并保存后，密钥被清除；附加选项留空再保存时**保留**已有密钥（不误清空）
+
+## OCR nupkg SHA-256
+
+- [ ] slim 包首次 OCR：从 **nuget.org** 下载 `wechatocr` nupkg，SHA-256 与代码内 `OcrAssetsDownloader.ExpectedSha256` 一致后解压到 `wco_data`
+- [ ] 人为破坏缓存文件或用错误字节替换 nupkg：下载/校验失败，组件不被使用（拒绝哈希不匹配包）
+- [ ] （可选）断网或拦 nuget.org、仅放行 `nuget.cdn.azure.cn`：应回退到 azure.cn 镜像；**仅当镜像字节与 nuget.org 钉死哈希一致时**才通过；哈希不同则拒绝并提示失败
+
 ## 安装程序（Inno Setup）
 
 使用 `build/build-installer.ps1` 或 Release 中的 `Snip-Setup-<ver>-<arch>-<slim|full>.exe`。
