@@ -100,5 +100,18 @@ public class OcrServiceTests
         Assert.AreEqual("zh-Hans-CN", WindowsOcrService.ResolveLanguageTag("zh-CN", tags, "en-US"));
         Assert.AreEqual("en-US", WindowsOcrService.ResolveLanguageTag("en", tags, null));
     }
+
+    [TestMethod]
+    public void ResolveOcrSourceHeightCap_IsMaxTimesPasses()
+    {
+        Assert.AreEqual(10000 * WindowsOcrService.MaxStripPasses, WindowsOcrService.ResolveOcrSourceHeightCap(10000));
+        Assert.AreEqual(6000, WindowsOcrService.ResolveOcrSourceHeightCap(1000));
     }
 
+    [TestMethod]
+    public void TryBuildTallPreferWindowsHint_NullWhenShort()
+    {
+        Assert.IsNull(WindowsOcrService.TryBuildTallPreferWindowsHint(800, 10000));
+        Assert.IsNotNull(WindowsOcrService.TryBuildTallPreferWindowsHint(12000, 10000));
+    }
+}

@@ -720,4 +720,10 @@
   <data name="scroll_stop_strip_tip" xml:space="preserve">
     <value>Esc 或空格也可中途停止并保留已截帧</value>
   </data>
+  <data name="ocr_hint_tall_truncated" xml:space="preserve">
+    <value>图片高度超过 Windows OCR 单次处理能力（{0}px）。已按条带识别顶部 {1}px；其余请裁剪或分段截取。</value>
+  </data>
+  <data name="ocr_hint_tall_prefer_windows" xml:space="preserve">
+    <value>图片很高（{0}px）。Windows OCR 会按条带识别；微信 OCR 可能失败 — 若结果异常请在设置中将 OCR 引擎改为 Windows。</value>
+  </data>
 </root>
