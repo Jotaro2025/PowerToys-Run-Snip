@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Text;
 using System.Text.RegularExpressions;
+using System.Threading;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
@@ -24,6 +25,8 @@ internal static partial class TranslatorBatch
     public const int HyMtMaxLines = 8;
 
     public const int HyMtMaxChars = 1500;
+
+    private static string _pendingPartialWarning;
 
     [GeneratedRegex(@"^\s*(\d+)\s*[\.\)\:\、]\s*(.*)$", RegexOptions.CultureInvariant)]
     private static partial Regex NumberedLineRegex();
@@ -167,5 +170,68 @@ internal static partial class TranslatorBatch
         }
 
         return list;
+    }
+
+    /// <summary>
+    /// Records that <paramref name="failedCount"/> of <paramref name="totalCount"/> lines
+    /// fell back to their original source text during a multi-line translation.
+    /// </summary>
+    public static void RecordPartialFallback(int failedCount, int totalCount)
+    {
+        if (failedCount <= 0 || totalCount <= 0)
+        {
+            return;
+        }
+
+        string msg = Properties.Resources.tr_status_partial_fallback
+            .Replace("{0}", failedCount.ToString(CultureInfo.CurrentCulture), StringComparison.Ordinal)
+            .Replace("{1}", totalCount.ToString(CultureInfo.CurrentCulture), StringComparison.Ordinal);
+        Interlocked.Exchange(ref _pendingPartialWarning, msg);
+    }
+
+    /// <summary>Consumes and clears the most recent partial-fallback warning message, if any.</summary>
+    public static string ConsumePartialFallbackWarning()
+        => Interlocked.Exchange(ref _pendingPartialWarning, null);
+
+    /// <summary>
+    /// Formats source and translated lines as interleaved bilingual text (<c>source</c> followed by <c>translation</c>).
+    /// </summary>
+    public static string FormatBilingualText(IReadOnlyList<string> sources, IReadOnlyList<string> translations)
+    {
+        ArgumentNullException.ThrowIfNull(sources);
+        ArgumentNullException.ThrowIfNull(translations);
+
+        int count = Math.Max(sources.Count, translations.Count);
+        if (count == 0)
+        {
+            return string.Empty;
+        }
+
+        var sb = new StringBuilder();
+        for (int i = 0; i < count; i++)
+        {
+            string src = i < sources.Count ? (sources[i]?.Trim() ?? string.Empty) : string.Empty;
+            string dst = i < translations.Count ? (translations[i]?.Trim() ?? string.Empty) : string.Empty;
+            if (src.Length == 0 && dst.Length == 0)
+            {
+                continue;
+            }
+
+            if (sb.Length > 0)
+            {
+                sb.AppendLine().AppendLine();
+            }
+
+            if (src.Length > 0 && dst.Length > 0)
+            {
+                sb.Append(src).AppendLine().Append(dst);
+            }
+            else
+            {
+                sb.Append(src.Length > 0 ? src : dst);
+            }
+        }
+
+        return sb.ToString();
     }
 }

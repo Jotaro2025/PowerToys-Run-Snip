@@ -115,38 +115,69 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
                 return results;
             }
 
+            int failedLines = 0;
+            TranslatorException firstFailure = null;
             var chunks = TranslatorBatch.Chunk(work, TranslatorBatch.HyMtMaxLines, TranslatorBatch.HyMtMaxChars);
             foreach (var chunk in chunks)
             {
                 cancellationToken.ThrowIfCancellationRequested();
                 var lines = chunk.Select(c => c.Text).ToList();
-                var prompt = TranslatorBatch.BuildNumberedPrompt(targetLanguage, lines);
-                var reply = await GenerateAsync(
-                    prompt,
-                    maxTokens: Math.Clamp(lines.Sum(l => l.Length) * 4, 128, 1024),
-                    cancellationToken).ConfigureAwait(false);
-
-                if (TranslatorBatch.TryParseNumberedReply(reply, lines.Count, out var parsed))
+                try
                 {
-                    for (int i = 0; i < chunk.Count; i++)
+                    var prompt = TranslatorBatch.BuildNumberedPrompt(targetLanguage, lines);
+                    var reply = await GenerateAsync(
+                        prompt,
+                        maxTokens: Math.Clamp(lines.Sum(l => l.Length) * 4, 128, 1024),
+                        cancellationToken).ConfigureAwait(false);
+
+                    if (TranslatorBatch.TryParseNumberedReply(reply, lines.Count, out var parsed))
                     {
-                        results[chunk[i].Index] = parsed[i];
+                        for (int i = 0; i < chunk.Count; i++)
+                        {
+                            results[chunk[i].Index] = parsed[i];
+                        }
+
+                        continue;
                     }
 
-                    continue;
+                    Log.Info(
+                        $"Snip HyMT2Sharp batch parse failed for {lines.Count} lines; falling back to per-line.",
+                        typeof(HyMT2SharpTranslator));
+                }
+                catch (TranslatorException)
+                {
+                    Log.Info(
+                        $"Snip HyMT2Sharp batch chunk failed for {lines.Count} lines; falling back to per-line.",
+                        typeof(HyMT2SharpTranslator));
                 }
 
-                Log.Info(
-                    $"Snip HyMT2Sharp batch parse failed for {lines.Count} lines; falling back to per-line.",
-                    typeof(HyMT2SharpTranslator));
                 foreach (var (index, text) in chunk)
                 {
                     cancellationToken.ThrowIfCancellationRequested();
-                    results[index] = await GenerateAsync(
-                        TranslatorPrompts.Build(targetLanguage, text),
-                        maxTokens: Math.Clamp(text.Length * 4, 64, 512),
-                        cancellationToken).ConfigureAwait(false);
+                    try
+                    {
+                        results[index] = await GenerateAsync(
+                            TranslatorPrompts.Build(targetLanguage, text),
+                            maxTokens: Math.Clamp(text.Length * 4, 64, 512),
+                            cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (TranslatorException ex)
+                    {
+                        firstFailure ??= ex;
+                        failedLines++;
+                        results[index] = text;
+                    }
                 }
+            }
+
+            if (failedLines >= work.Count && firstFailure != null)
+            {
+                throw firstFailure;
+            }
+
+            if (failedLines > 0)
+            {
+                TranslatorBatch.RecordPartialFallback(failedLines, work.Count);
             }
 
             return results;

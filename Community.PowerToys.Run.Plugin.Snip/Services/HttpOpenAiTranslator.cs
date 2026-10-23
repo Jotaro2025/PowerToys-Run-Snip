@@ -26,6 +26,9 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
     private readonly string _model;
     private readonly bool _ownsClient;
 
+    /// <summary>Number of lines that fell back to original source text in the last <see cref="TranslateAsync"/> call.</summary>
+    public int LastPartialFallbackCount { get; private set; }
+
     public HttpOpenAiTranslator(string baseUrl, string apiKey, string model, HttpClient httpClient = null)
     {
         ArgumentException.ThrowIfNullOrWhiteSpace(baseUrl);
@@ -91,6 +94,9 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
             return results;
         }
 
+        LastPartialFallbackCount = 0;
+        int failedLines = 0;
+        TranslatorException firstFailure = null;
         var chunks = TranslatorBatch.Chunk(work, TranslatorBatch.HttpMaxLines, TranslatorBatch.HttpMaxChars);
         foreach (var chunk in chunks)
         {
@@ -128,8 +134,28 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
             foreach (var (index, text) in chunk)
             {
                 cancellationToken.ThrowIfCancellationRequested();
-                results[index] = await TranslateOneAsync(text, targetLanguage, cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    results[index] = await TranslateOneAsync(text, targetLanguage, cancellationToken).ConfigureAwait(false);
+                }
+                catch (TranslatorException ex)
+                {
+                    firstFailure ??= ex;
+                    failedLines++;
+                    results[index] = text;
+                }
             }
+        }
+
+        if (failedLines >= work.Count && firstFailure != null)
+        {
+            throw firstFailure;
+        }
+
+        if (failedLines > 0)
+        {
+            LastPartialFallbackCount = failedLines;
+            TranslatorBatch.RecordPartialFallback(failedLines, work.Count);
         }
 
         return results;

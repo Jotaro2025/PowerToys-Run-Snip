@@ -756,4 +756,16 @@
   <data name="pin_badge_exit_click_through" xml:space="preserve">
     <value>退出穿透</value>
   </data>
+  <data name="tr_copy_source" xml:space="preserve">
+    <value>复制原文</value>
+  </data>
+  <data name="tr_copy_bilingual" xml:space="preserve">
+    <value>复制双语对照</value>
+  </data>
+  <data name="tr_pin_image" xml:space="preserve">
+    <value>贴图置顶</value>
+  </data>
+  <data name="tr_status_partial_fallback" xml:space="preserve">
+    <value>已完成部分翻译（{0}/{1} 行因超时或错误保留原文）</value>
+  </data>
 </root>

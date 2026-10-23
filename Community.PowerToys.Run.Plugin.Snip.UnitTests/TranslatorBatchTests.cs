@@ -175,6 +175,58 @@ public class TranslatorBatchTests
         Assert.AreEqual(1, postCount);
     }
 
+
+    [TestMethod]
+    public void FormatBilingualTextInterleavesSourceAndTranslation()
+    {
+        var text = TranslatorBatch.FormatBilingualText(
+            new[] { "Hello", "World" },
+            new[] { "你好", "世界" });
+        string expected = "Hello" + Environment.NewLine + "你好" + Environment.NewLine + Environment.NewLine + "World" + Environment.NewLine + "世界";
+        Assert.AreEqual(expected, text);
+    }
+
+    [TestMethod]
+    public async Task HttpTranslatorPartialFailureKeepsSourceTextAndRecordsWarning()
+    {
+        _ = TranslatorBatch.ConsumePartialFallbackWarning();
+        int postCount = 0;
+        var handler = new ScriptableHandler((request, ct) =>
+        {
+            int n = Interlocked.Increment(ref postCount);
+            var body = request.Content!.ReadAsStringAsync(ct).GetAwaiter().GetResult();
+            if (n == 1)
+            {
+                // Force per-line fallback.
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                {
+                    Content = new StringContent("batch timeout"),
+                });
+            }
+
+            if (body.Contains("Hello", StringComparison.Ordinal))
+            {
+                const string payload = """{"choices":[{"message":{"content":"你好"}}]}""";
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+                });
+            }
+
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.GatewayTimeout)
+            {
+                Content = new StringContent("chunk timeout"),
+            });
+        });
+
+        using var http = new HttpClient(handler) { BaseAddress = new Uri("http://127.0.0.1:9/v1/") };
+        using var translator = new HttpOpenAiTranslator("http://127.0.0.1:9/v1", apiKey: null, model: "test", http);
+        var results = await translator.TranslateAsync(new[] { "Hello", "World" }, "简体中文");
+        CollectionAssert.AreEqual(new[] { "你好", "World" }, results.ToArray());
+        Assert.AreEqual(1, translator.LastPartialFallbackCount);
+        Assert.IsFalse(string.IsNullOrEmpty(TranslatorBatch.ConsumePartialFallbackWarning()));
+    }
+
     private sealed class ScriptableHandler : HttpMessageHandler
     {
         private readonly Func<HttpRequestMessage, CancellationToken, Task<HttpResponseMessage>> _impl;
