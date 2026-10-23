@@ -640,6 +640,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Mouse wheel: zoom · Ctrl+wheel: opacity.
+        /// </summary>
+        public static string pin_hint_wheel {
+            get {
+                return ResourceManager.GetString("pin_hint_wheel", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Image Translate.
         /// </summary>
         public static string tr_window_title {

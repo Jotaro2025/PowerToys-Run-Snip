@@ -17,13 +17,23 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 
 /// <summary>
 /// Lightweight Snipaste-style pin: topmost thin-border window showing a still
-/// screenshot. Drag to move; Esc, double-click, or context menu closes it.
+/// screenshot. Drag to move; mouse wheel zooms; Ctrl+wheel changes opacity;
+/// Esc, double-click, or context menu closes it.
 /// The UI holds only a downsampled/frozen display copy — not the export full-res.
 /// </summary>
 public sealed class PinImageWindow : Window
 {
+    internal const double MinZoom = 0.25;
+    internal const double MaxZoom = 8.0;
+    internal const double MinOpacity = 0.15;
+    internal const double MaxOpacity = 1.0;
+    private const double ZoomStep = 1.1;
+    private const double OpacityStep = 0.05;
+
+    private readonly ScaleTransform _scale = new ScaleTransform(1, 1);
     private Point _dragStart;
     private bool _dragging;
+    private double _zoom = 1.0;
 
     public PinImageWindow(BitmapSource image)
     {
@@ -40,6 +50,7 @@ public sealed class PinImageWindow : Window
         SizeToContent = SizeToContent.WidthAndHeight;
         WindowStartupLocation = WindowStartupLocation.Manual;
         Cursor = Cursors.SizeAll;
+        Opacity = 1.0;
 
         // Materialized display bitmap (may be downsampled). Do not keep full-res as Source.
         BitmapSource display = BitmapPreview.ForPin(image);
@@ -49,6 +60,7 @@ public sealed class PinImageWindow : Window
             Source = display,
             Stretch = Stretch.None,
             SnapsToDevicePixels = true,
+            LayoutTransform = _scale,
         };
         RenderOptions.SetBitmapScalingMode(imageView, BitmapScalingMode.NearestNeighbor);
 
@@ -58,9 +70,16 @@ public sealed class PinImageWindow : Window
         var closeItem = new MenuItem { Header = Properties.Resources.pin_menu_close };
         closeItem.Click += (sender, e) => Close();
         menu.Items.Add(closeItem);
+        menu.Items.Add(new Separator());
+        menu.Items.Add(new MenuItem
+        {
+            Header = Properties.Resources.pin_hint_wheel,
+            IsEnabled = false,
+        });
         ContextMenu = menu;
 
         PreviewKeyDown += OnPreviewKeyDown;
+        PreviewMouseWheel += OnPreviewMouseWheel;
         MouseLeftButtonDown += OnMouseLeftButtonDown;
         MouseLeftButtonUp += OnMouseLeftButtonUp;
         MouseMove += OnMouseMove;
@@ -71,6 +90,36 @@ public sealed class PinImageWindow : Window
         };
 
         Loaded += (sender, e) => PlaceNearCursor();
+    }
+
+    /// <summary>Applies a mouse-wheel zoom factor; clamps to <see cref="MinZoom"/>..<see cref="MaxZoom"/>.</summary>
+    internal static double ApplyZoom(double current, int wheelDelta)
+    {
+        double factor = wheelDelta > 0 ? ZoomStep : 1.0 / ZoomStep;
+        return Math.Clamp(current * factor, MinZoom, MaxZoom);
+    }
+
+    /// <summary>Applies a Ctrl+wheel opacity step; clamps to <see cref="MinOpacity"/>..<see cref="MaxOpacity"/>.</summary>
+    internal static double ApplyOpacity(double current, int wheelDelta)
+    {
+        double step = wheelDelta > 0 ? OpacityStep : -OpacityStep;
+        return Math.Clamp(current + step, MinOpacity, MaxOpacity);
+    }
+
+    private void OnPreviewMouseWheel(object sender, MouseWheelEventArgs e)
+    {
+        if (Keyboard.Modifiers == ModifierKeys.Control)
+        {
+            Opacity = ApplyOpacity(Opacity, e.Delta);
+        }
+        else
+        {
+            _zoom = ApplyZoom(_zoom, e.Delta);
+            _scale.ScaleX = _zoom;
+            _scale.ScaleY = _zoom;
+        }
+
+        e.Handled = true;
     }
 
     private void PlaceNearCursor()
