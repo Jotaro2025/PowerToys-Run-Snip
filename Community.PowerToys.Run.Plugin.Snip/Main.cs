@@ -47,6 +47,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionDownloadHyMt = "DownloadRecommendedHyMtModel";
     private const string OptionHyMtCustomDownloadUrl = "HyMtCustomDownloadUrl";
     private const string OptionCheckForUpdates = "CheckForUpdates";
+    private const string OptionVerboseScrollLogging = "VerboseScrollLogging";
 
     private PluginInitContext _context;
     private string _iconPath;
@@ -291,6 +292,14 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
             Value = _settings.CheckForUpdates,
         },
+        new PluginAdditionalOption()
+        {
+            Key = OptionVerboseScrollLogging,
+            DisplayLabel = Properties.Resources.opt_verbose_scroll_label,
+            DisplayDescription = Properties.Resources.opt_verbose_scroll_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.VerboseScrollLogging,
+        },
     };
 
     public List<Result> Query(Query query)
@@ -421,6 +430,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         _context.API.ThemeChanged += OnThemeChanged;
         UpdateIconPath(_context.API.GetCurrentTheme());
         UiLanguageHelper.Apply(_settings.UiLanguage);
+        SnipVerbose.ScrollLogging = _settings.VerboseScrollLogging;
         ApplyHotkeyRegistration();
         UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
     }
@@ -475,6 +485,8 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         HyMT2SharpTranslatorCache.ConfigureIdleUnload(_settings.HyMtIdleUnloadMinutes);
 
         _settings.CheckForUpdates = options.FirstOrDefault(x => x.Key == OptionCheckForUpdates)?.Value ?? false;
+        _settings.VerboseScrollLogging = options.FirstOrDefault(x => x.Key == OptionVerboseScrollLogging)?.Value ?? false;
+        SnipVerbose.ScrollLogging = _settings.VerboseScrollLogging;
 
         var unloadHyMt = options.FirstOrDefault(x => x.Key == OptionUnloadHyMt);
         if (unloadHyMt is { Value: true })
@@ -587,6 +599,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         {
             UiLanguageHelper.Apply(_settings.UiLanguage);
             HyMT2SharpTranslatorCache.ConfigureIdleUnload(_settings.HyMtIdleUnloadMinutes);
+            SnipVerbose.ScrollLogging = _settings.VerboseScrollLogging;
             ApplyHotkeyRegistration();
             UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
         });

@@ -548,6 +548,12 @@
   <data name="opt_check_updates_desc" xml:space="preserve">
     <value>开启后在后台查询 GitHub Releases 是否有比 plugin.json 更新的标签（默认关闭）。仓库需为公开。</value>
   </data>
+  <data name="opt_verbose_scroll_label" xml:space="preserve">
+    <value>滚动/拼接详细日志</value>
+  </data>
+  <data name="opt_verbose_scroll_desc" xml:space="preserve">
+    <value>默认关闭。开启后，滚动截图与拼接诊断写入 PowerToys 插件调试日志（Log.Debug）。未开启时保持安静。</value>
+  </data>
   <data name="opt_ui_lang_label" xml:space="preserve">
     <value>界面语言</value>
   </data>

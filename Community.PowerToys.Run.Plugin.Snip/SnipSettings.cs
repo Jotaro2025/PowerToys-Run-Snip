@@ -92,6 +92,12 @@ public sealed class SnipSettings
     /// </summary>
     public bool CheckForUpdates { get; set; }
 
+    /// <summary>
+    /// When true, scroll/stitch diagnostics go to the plugin debug log.
+    /// Default off (quiet) — same intent as #54 not to spam.
+    /// </summary>
+    public bool VerboseScrollLogging { get; set; }
+
     /// <summary>Fallback directory when <see cref="SaveDirectory"/> is not set.</summary>
     public static string DefaultSaveFolder
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Snip");
@@ -121,6 +127,7 @@ public sealed class SnipSettings
             HyMtCustomDownloadUrl = HyMtCustomDownloadUrl,
             HyMtIdleUnloadMinutes = HyMtIdleUnloadMinutes,
             CheckForUpdates = CheckForUpdates,
+            VerboseScrollLogging = VerboseScrollLogging,
         };
     }
 
@@ -148,5 +155,6 @@ public sealed class SnipSettings
         HyMtCustomDownloadUrl = other.HyMtCustomDownloadUrl;
         HyMtIdleUnloadMinutes = other.HyMtIdleUnloadMinutes;
         CheckForUpdates = other.CheckForUpdates;
+        VerboseScrollLogging = other.VerboseScrollLogging;
     }
 }

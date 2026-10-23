@@ -5,7 +5,6 @@
 // Adapted from LdotJdot/TDS (MIT) ScrollCaptureController for WPF/Snip.
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -14,6 +13,7 @@ using System.Windows.Media;
 using System.Windows.Media.Imaging;
 using System.Windows.Threading;
 
+using Community.PowerToys.Run.Plugin.Snip;
 using Community.PowerToys.Run.Plugin.Snip.Core;
 using Community.PowerToys.Run.Plugin.Snip.UI;
 using Wox.Plugin.Logger;
@@ -122,7 +122,7 @@ public sealed class ScrollCaptureController
 
         ShowOverlay();
         PostToOverlay(() => _overlay.ShowManualCapturing(0));
-        Debug.WriteLine("[scroll] auto-scroll started");
+        SnipVerbose.Scroll("[scroll] auto-scroll started");
 
         _cts = new CancellationTokenSource();
         _ = AutoScrollLoopAsync(_cts.Token);
@@ -155,7 +155,7 @@ public sealed class ScrollCaptureController
                 {
                     _paused = true;
                     PostToOverlay(() => _overlay.ShowPaused());
-                    Debug.WriteLine("[scroll] paused — cursor left selection");
+                    SnipVerbose.Scroll("[scroll] paused — cursor left selection");
                 }
 
                 try
@@ -173,7 +173,7 @@ public sealed class ScrollCaptureController
             if (_paused)
             {
                 _paused = false;
-                Debug.WriteLine("[scroll] resumed — cursor back in selection");
+                SnipVerbose.Scroll("[scroll] resumed — cursor back in selection");
             }
 
             PostToOverlay(() => _overlay.ShowCapturing(_tiles.Count + 1));
@@ -205,10 +205,10 @@ public sealed class ScrollCaptureController
             {
                 consecutiveDups++;
                 bmp.Dispose();
-                Debug.WriteLine($"[scroll] duplicate tile (streak={consecutiveDups}) — not kept");
+                SnipVerbose.Scroll($"[scroll] duplicate tile (streak={consecutiveDups}) — not kept");
                 if (consecutiveDups >= ConsecutiveDuplicateStopThreshold)
                 {
-                    Debug.WriteLine("[scroll] auto-stop — page no longer scrolling");
+                    SnipVerbose.Scroll("[scroll] auto-stop — page no longer scrolling");
                     break;
                 }
 
@@ -231,13 +231,13 @@ public sealed class ScrollCaptureController
             _tiles.Add(bmp);
             projectedHeight += contributed;
             PostToOverlay(() => _overlay.ShowManualCapturing(_tiles.Count));
-            Debug.WriteLine($"[scroll] tile #{_tiles.Count} captured (projected h={projectedHeight}/{maxHeight})");
+            SnipVerbose.Scroll($"[scroll] tile #{_tiles.Count} captured (projected h={projectedHeight}/{maxHeight})");
 
             if (projectedHeight >= maxHeight)
             {
                 _heightCapReached = true;
                 _maxHeightPx = maxHeight;
-                Debug.WriteLine("[scroll] auto-stop — stitched height cap reached");
+                SnipVerbose.Scroll("[scroll] auto-stop — stitched height cap reached");
                 break;
             }
         }
@@ -286,7 +286,7 @@ public sealed class ScrollCaptureController
 
         if (!Win32CaptureService.TrySendWheelAt(cx, cy, delta, _overlayHwnd))
         {
-            Debug.WriteLine($"[scroll] SimulateWheel failed at ({cx},{cy})");
+            SnipVerbose.Scroll($"[scroll] SimulateWheel failed at ({cx},{cy})");
         }
     }
 
@@ -303,7 +303,7 @@ public sealed class ScrollCaptureController
             _cts?.Dispose();
             _cts = null;
             _active = false;
-            Debug.WriteLine($"[scroll] stopped — {_tiles.Count} raw tile(s) kept");
+            SnipVerbose.Scroll($"[scroll] stopped — {_tiles.Count} raw tile(s) kept");
             await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
         catch (Exception ex)
@@ -343,7 +343,7 @@ public sealed class ScrollCaptureController
                 Log.Exception($"Snip scroll stopped-hint failed: {ex.Message}", ex, typeof(ScrollCaptureController));
             }
 
-            Debug.WriteLine(autoStopped
+            SnipVerbose.Scroll(autoStopped
                 ? $"[scroll] auto-stopped — {_tiles.Count} tile(s), pending stitch"
                 : $"[scroll] manually stopped — {_tiles.Count} tile(s), pending stitch");
         }
@@ -369,7 +369,7 @@ public sealed class ScrollCaptureController
 
             if (_tiles.Count == 0)
             {
-                Debug.WriteLine("[scroll] stitch skipped — no tiles");
+                SnipVerbose.Scroll("[scroll] stitch skipped — no tiles");
                 return await _dispatcher.InvokeAsync(EmptyTile).Task.ConfigureAwait(true);
             }
 
@@ -381,10 +381,10 @@ public sealed class ScrollCaptureController
             else
             {
                 var tilesCopy = OrderTilesForStitch(_tiles, _scrollUp);
-                Debug.WriteLine($"[scroll] stitching {tilesCopy.Length} raw tile(s) — pixel buffers on pool");
+                SnipVerbose.Scroll($"[scroll] stitching {tilesCopy.Length} raw tile(s) — pixel buffers on pool");
                 using var stitchResult = await Task.Run(() => ScrollStitcher.Stitch(tilesCopy)).ConfigureAwait(true);
                 resultBitmap = await _dispatcher.InvokeAsync(stitchResult.ToWriteableBitmap).Task.ConfigureAwait(true);
-                Debug.WriteLine($"[scroll] stitch complete — {tilesCopy.Length} tiles → h={resultBitmap.PixelHeight} truncated={stitchResult.Truncated}");
+                SnipVerbose.Scroll($"[scroll] stitch complete — {tilesCopy.Length} tiles → h={resultBitmap.PixelHeight} truncated={stitchResult.Truncated}");
             }
         }
         catch (Exception ex)
@@ -577,7 +577,7 @@ public sealed class ScrollCaptureController
             }
             catch (Exception ex)
             {
-                Debug.WriteLine($"[scroll] overlay update skipped: {ex.Message}");
+                SnipVerbose.Scroll($"[scroll] overlay update skipped: {ex.Message}");
             }
         });
     }

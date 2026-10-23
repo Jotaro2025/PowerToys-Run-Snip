@@ -1440,6 +1440,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Verbose scroll/stitch log.
+        /// </summary>
+        public static string opt_verbose_scroll_label {
+            get {
+                return ResourceManager.GetString("opt_verbose_scroll_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Off by default. When on, scroll-capture and stitch diagnostics go to the PowerToys plugin debug log (Log.Debug). Keeps Release quiet unless you opt in..
+        /// </summary>
+        public static string opt_verbose_scroll_desc {
+            get {
+                return ResourceManager.GetString("opt_verbose_scroll_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to UI language.
         /// </summary>
         public static string opt_ui_lang_label {
