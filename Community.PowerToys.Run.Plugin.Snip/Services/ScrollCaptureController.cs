@@ -62,6 +62,9 @@ public sealed class ScrollCaptureController
     private volatile bool _paused;
     private ScrollCaptureStopGuard _stopGuard;
     private bool _sessionOverlayHidden;
+    private IntPtr _windowCaptureHwnd;
+    private bool _preferWindowCapture;
+    private int _windowCaptureFailStreak;
 
     public event Action<int> CapturingStopped;
 
@@ -150,15 +153,27 @@ public sealed class ScrollCaptureController
         int scrollHint = 0;
         string autoStopReason = null;
 
-        // Session-long SW_HIDE: #89 needed the Topmost snip gone for Chromium to
-        // accept SendInput, but per-cycle hide/show flickered. Keep hidden until
-        // stop; mid-stop via ScrollCaptureStopGuard (Esc/Space/「停止」strip).
-        BeginSessionOverlayHide();
-        try
+        // Prefer window-local capture (WinRT CreateForWindow / PrintWindow) so the
+        // overlay can stay visible (selection hole + stop strip). Fall back to
+        // session SW_HIDE + desktop BitBlt when window capture is unavailable —
+        // required for Edge reliability (#89/#90).
+        ProbeWindowCapturePreference();
+        if (!_preferWindowCapture)
+        {
+            BeginSessionOverlayHide();
+            Log.Info(
+                "Snip scroll: overlay session SW_HIDE for Edge wheel/capture (window-capture unavailable)",
+                typeof(ScrollCaptureController));
+        }
+        else
         {
             Log.Info(
-                "Snip scroll: overlay session SW_HIDE for Edge wheel/capture",
+                $"Snip scroll: prefer window capture hwnd=0x{_windowCaptureHwnd.ToInt64():X} (overlay stays visible)",
                 typeof(ScrollCaptureController));
+        }
+
+        try
+        {
             var first = await CaptureOnceSafeAsync().ConfigureAwait(false);
             if (first != null && _active && !ct.IsCancellationRequested)
             {
@@ -816,15 +831,7 @@ public sealed class ScrollCaptureController
             Interlocked.Exchange(ref _captureBusy, 1);
 
             // Capture + copy to managed BGRA on the thread pool — no WriteableBitmap yet.
-            return await Task.Run(() =>
-            {
-                using var frame = _capture.CaptureScreenRectPixels(
-                    _captureRect.X,
-                    _captureRect.Y,
-                    _captureRect.Width,
-                    _captureRect.Height);
-                return frame.ToOwnedPixels();
-            }).ConfigureAwait(false);
+            return await Task.Run(CaptureTilePixelsCore).ConfigureAwait(false);
         }
         catch (Exception ex)
         {
@@ -835,6 +842,94 @@ public sealed class ScrollCaptureController
         {
             Interlocked.Exchange(ref _captureBusy, 0);
         }
+    }
+
+    private void ProbeWindowCapturePreference()
+    {
+        _preferWindowCapture = false;
+        _windowCaptureHwnd = IntPtr.Zero;
+        _windowCaptureFailStreak = 0;
+        try
+        {
+            int cx = _captureRect.X + (_captureRect.Width / 2);
+            int cy = _captureRect.Y + (_captureRect.Height / 2);
+            IntPtr hwnd = ScrollWindowCapture.ResolveUnderlayTopLevel(cx, cy, _overlayHwnd);
+            if (hwnd == IntPtr.Zero)
+            {
+                return;
+            }
+
+            // Probe one frame; reject blank / undersized. Do not hide overlay for the probe.
+            if (!ScrollWindowCapture.TryCaptureRect(
+                    hwnd,
+                    _captureRect.X,
+                    _captureRect.Y,
+                    _captureRect.Width,
+                    _captureRect.Height,
+                    out CapturedFrame probe)
+                || probe == null)
+            {
+                return;
+            }
+
+            probe.Dispose();
+            _windowCaptureHwnd = hwnd;
+            _preferWindowCapture = true;
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll window-capture probe failed: {ex.Message}", typeof(ScrollCaptureController));
+            _preferWindowCapture = false;
+            _windowCaptureHwnd = IntPtr.Zero;
+        }
+    }
+
+    private ScrollTilePixels CaptureTilePixelsCore()
+    {
+        if (_preferWindowCapture && _windowCaptureHwnd != IntPtr.Zero)
+        {
+            if (ScrollWindowCapture.TryCaptureRect(
+                    _windowCaptureHwnd,
+                    _captureRect.X,
+                    _captureRect.Y,
+                    _captureRect.Width,
+                    _captureRect.Height,
+                    out CapturedFrame windowFrame)
+                && windowFrame != null)
+            {
+                _windowCaptureFailStreak = 0;
+                return windowFrame.ToOwnedPixels();
+            }
+
+            _windowCaptureFailStreak++;
+            Log.Warn(
+                $"Snip scroll window-capture tile failed (streak={_windowCaptureFailStreak})",
+                typeof(ScrollCaptureController));
+            if (_windowCaptureFailStreak >= 2)
+            {
+                _preferWindowCapture = false;
+
+                // Switch to hide+BitBlt for the rest of the session.
+                try
+                {
+                    BeginSessionOverlayHide();
+                    Log.Info(
+                        "Snip scroll: falling back to session SW_HIDE + BitBlt after window-capture failures",
+                        typeof(ScrollCaptureController));
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"Snip scroll fallback hide failed: {ex.Message}", typeof(ScrollCaptureController));
+                }
+            }
+        }
+
+        using var frame = _capture.CaptureScreenRectPixels(
+            _captureRect.X,
+            _captureRect.Y,
+            _captureRect.Width,
+            _captureRect.Height);
+        return frame.ToOwnedPixels();
     }
 
     private WriteableBitmap EmptyTile()

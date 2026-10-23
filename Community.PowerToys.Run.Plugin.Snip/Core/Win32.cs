@@ -237,6 +237,16 @@ internal static class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetWindowRect(IntPtr hWnd, out RECT lpRect);
 
+    /// <summary>PrintWindow: copy window into DC. Use with <see cref="PwRenderFullContent"/> for DWM/Chromium.</summary>
+    public const uint PwClientOnly = 0x00000001;
+
+    /// <summary>Windows 8.1+: render full DWM content (needed for Edge/Chrome).</summary>
+    public const uint PwRenderFullContent = 0x00000002;
+
+    [DllImport(User32, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool PrintWindow(IntPtr hwnd, IntPtr hdcBlt, uint nFlags);
+
     [DllImport(User32)]
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool IsIconic(IntPtr hWnd);
