@@ -1517,7 +1517,16 @@ public sealed class SnipWindow : Window
             }
 
             var path = dialog.FileName;
-            await File.WriteAllBytesAsync(path, built.Value.Png).ConfigureAwait(true);
+            var format = PngEncoder.FormatFromPath(path);
+            if (format == ImageFileFormat.Png)
+            {
+                await File.WriteAllBytesAsync(path, built.Value.Png).ConfigureAwait(true);
+            }
+            else
+            {
+                await PngEncoder.EncodeToFileAsync(built.Value.Bitmap, path, format).ConfigureAwait(true);
+            }
+
             Result = new EditResult
             {
                 Outcome = EditOutcome.Saved,

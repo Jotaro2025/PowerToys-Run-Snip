@@ -156,7 +156,7 @@
     <value>Save Screenshot</value>
   </data>
   <data name="save_dialog_filter" xml:space="preserve">
-    <value>PNG image (*.png)|*.png</value>
+    <value>PNG (*.png)|*.png|JPEG (*.jpg;*.jpeg)|*.jpg;*.jpeg|BMP (*.bmp)|*.bmp</value>
   </data>
   <data name="tip_ocr" xml:space="preserve">
     <value>Extract text (OCR)</value>
