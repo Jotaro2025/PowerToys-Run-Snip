@@ -337,33 +337,17 @@ public static class WindowsOcrService
                 decoder,
                 strip,
                 (uint)srcW,
+                scaleW,
                 cancellationToken).ConfigureAwait(false);
 
-            SoftwareBitmap forOcr = stripBmp;
-            SoftwareBitmap scaled = null;
-            try
+            var ocr = await engine.RecognizeAsync(stripBmp).AsTask(cancellationToken).ConfigureAwait(false);
+            foreach (var line in ocr.Lines)
             {
-                if (scaleW < 0.999)
+                var mapped = MapLine(line, strip, scaleW);
+                if (mapped != null)
                 {
-                    int dw = Math.Max(1, (int)Math.Round(srcW * scaleW));
-                    int dh = Math.Max(1, (int)Math.Round(strip.Height * scaleW));
-                    scaled = await ScaleSoftwareBitmapAsync(stripBmp, dw, dh, cancellationToken).ConfigureAwait(false);
-                    forOcr = scaled;
+                    result.Add(mapped);
                 }
-
-                var ocr = await engine.RecognizeAsync(forOcr).AsTask(cancellationToken).ConfigureAwait(false);
-                foreach (var line in ocr.Lines)
-                {
-                    var mapped = MapLine(line, strip, scaleW);
-                    if (mapped != null)
-                    {
-                        result.Add(mapped);
-                    }
-                }
-            }
-            finally
-            {
-                scaled?.Dispose();
             }
         }
 
@@ -373,13 +357,17 @@ public static class WindowsOcrService
             .ToList();
     }
 
-    /// <summary>Decode one source-pixel strip without scaling the full image height.</summary>
+    /// <summary>Decode one source-pixel strip; scales via the decode transform when
+    /// <paramref name="scaledWidth"/> is below the source width, avoiding a PNG
+    /// encode→decode round-trip per strip.</summary>
     private static async Task<SoftwareBitmap> DecodeSourceStripAsync(
         BitmapDecoder decoder,
         OcrStrip strip,
         uint srcW,
+        double scaleW,
         CancellationToken cancellationToken)
     {
+        bool scale = scaleW < 0.999;
         var transform = new BitmapTransform
         {
             Bounds = new BitmapBounds
@@ -391,33 +379,19 @@ public static class WindowsOcrService
             },
         };
 
+        if (scale)
+        {
+            transform.ScaledWidth = (uint)Math.Max(1, (int)Math.Round(srcW * scaleW));
+            transform.ScaledHeight = (uint)Math.Max(1, (int)Math.Round(strip.Height * scaleW));
+            transform.InterpolationMode = BitmapInterpolationMode.Fant;
+        }
+
         return await decoder.GetSoftwareBitmapAsync(
             BitmapPixelFormat.Bgra8,
             BitmapAlphaMode.Premultiplied,
             transform,
             ExifOrientationMode.IgnoreExifOrientation,
             ColorManagementMode.DoNotColorManage).AsTask(cancellationToken).ConfigureAwait(false);
-    }
-
-    private static async Task<SoftwareBitmap> ScaleSoftwareBitmapAsync(
-        SoftwareBitmap source,
-        int width,
-        int height,
-        CancellationToken cancellationToken)
-    {
-        using var stream = new InMemoryRandomAccessStream();
-        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream)
-            .AsTask(cancellationToken).ConfigureAwait(false);
-        encoder.SetSoftwareBitmap(source);
-        encoder.BitmapTransform.ScaledWidth = (uint)width;
-        encoder.BitmapTransform.ScaledHeight = (uint)height;
-        encoder.BitmapTransform.InterpolationMode = BitmapInterpolationMode.Fant;
-        await encoder.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
-        stream.Seek(0);
-        var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellationToken).ConfigureAwait(false);
-        return await decoder.GetSoftwareBitmapAsync(
-            BitmapPixelFormat.Bgra8,
-            BitmapAlphaMode.Premultiplied).AsTask(cancellationToken).ConfigureAwait(false);
     }
 
     private static OcrTextLine MapLine(OcrLine line, OcrStrip strip, double scale)

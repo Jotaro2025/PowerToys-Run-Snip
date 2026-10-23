@@ -76,7 +76,6 @@ public static class ScreenshotFileSaver
                 }
             }
 
-            _ = Directory.GetFiles(directory);
             var path = BuildUniquePath(directory);
             await using var fs = new FileStream(
                 path, FileMode.CreateNew, FileAccess.Write, FileShare.Read);

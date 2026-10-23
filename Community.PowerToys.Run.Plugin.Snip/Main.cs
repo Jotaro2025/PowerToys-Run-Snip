@@ -765,6 +765,9 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             // Release process-wide HyMT weights if loaded; otherwise process exit cleans up.
             HyMT2SharpTranslatorCache.Unload();
 
+            // Kill the warm WeChatOCR.exe child process started by the shared OCR component.
+            WeChatOcrService.ShutdownOcr();
+
             _disposed = true;
         }
     }
