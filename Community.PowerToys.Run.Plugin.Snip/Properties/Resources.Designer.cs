@@ -1762,6 +1762,26 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        /// <summary>
+        ///   Looks up a localized string similar to paused tip on stop strip.
+        /// </summary>
+        public static string scroll_stop_strip_paused_tip {
+            get {
+                return ResourceManager.GetString("scroll_stop_strip_paused_tip", resourceCulture);
+            }
+        }
+
+
+        /// <summary>
+        ///   Looks up a localized string similar to Esc/Space hotkey conflict tip.
+        /// </summary>
+        public static string scroll_stop_strip_conflict_tip {
+            get {
+                return ResourceManager.GetString("scroll_stop_strip_conflict_tip", resourceCulture);
+            }
+        }
+
+
         public static string scroll_hint_capturing {
             get {
                 return ResourceManager.GetString("scroll_hint_capturing", resourceCulture);
@@ -1926,6 +1946,35 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("tr_cancel_busy", resourceCulture);
             }
         }
+
+
+        /// <summary>
+        ///   Looks up a localized string similar to Target window is elevated (UIPI).
+        /// </summary>
+        public static string scroll_hint_uipi {
+            get {
+                return ResourceManager.GetString("scroll_hint_uipi", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Scroll input may fail. Run PowerToys as admin, or use a non-elevated window..
+        /// </summary>
+        public static string scroll_hint_uipi_sub {
+            get {
+                return ResourceManager.GetString("scroll_hint_uipi_sub", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Elevated target — Esc/Space/Stop still work; wheel may be blocked by UIPI.
+        /// </summary>
+        public static string scroll_stop_strip_uipi_tip {
+            get {
+                return ResourceManager.GetString("scroll_stop_strip_uipi_tip", resourceCulture);
+            }
+        }
+
 
     }
 }

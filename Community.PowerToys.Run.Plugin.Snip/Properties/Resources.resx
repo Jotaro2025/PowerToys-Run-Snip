@@ -726,4 +726,19 @@
   <data name="ocr_hint_tall_prefer_windows" xml:space="preserve">
     <value>Very tall image ({0}px). Windows OCR tiles in strips; WeChat OCR may fail — switch OCR engine to Windows in settings if recognition looks wrong.</value>
   </data>
+  <data name="scroll_stop_strip_conflict_tip" xml:space="preserve">
+    <value>Esc/Space hotkey taken by another app — click Stop, or try Esc/Space (poll fallback)</value>
+  </data>
+  <data name="scroll_stop_strip_paused_tip" xml:space="preserve">
+    <value>Paused — move cursor back into the selection to continue</value>
+  </data>
+  <data name="scroll_hint_uipi" xml:space="preserve">
+    <value>Target window is elevated (UIPI)</value>
+  </data>
+  <data name="scroll_hint_uipi_sub" xml:space="preserve">
+    <value>Scroll input may fail. Run PowerToys as admin, or use a non-elevated window.</value>
+  </data>
+  <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
+    <value>Elevated target — Esc/Space/Stop still work; wheel may be blocked by UIPI</value>
+  </data>
 </root>
