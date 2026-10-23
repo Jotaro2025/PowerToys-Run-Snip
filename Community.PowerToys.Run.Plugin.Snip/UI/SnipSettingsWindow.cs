@@ -732,7 +732,7 @@ public sealed class SnipSettingsWindow : Window
         return _httpKeyPassword?.Password?.Trim() ?? string.Empty;
     }
 
-private void SelectWindowsOcrLanguage(string tag)
+    private void SelectWindowsOcrLanguage(string tag)
     {
         var want = string.IsNullOrWhiteSpace(tag) ? "auto" : tag.Trim();
         for (int i = 0; i < _windowsOcrLang.Items.Count; i++)
