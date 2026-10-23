@@ -66,4 +66,34 @@ public class ScrollCaptureControllerTests
         var hwnd = new IntPtr(0x1234);
         Assert.IsTrue(Win32CaptureService.IsOwnedByOverlay(hwnd, hwnd));
     }
+
+    [TestMethod]
+    public void PackWheelWParam_PlacesDeltaInHighWord()
+    {
+        Assert.AreEqual(unchecked((IntPtr)(((-120) << 16) & 0xFFFFFFFF)), Win32CaptureService.PackWheelWParam(-120));
+        Assert.AreEqual(unchecked((IntPtr)((120 << 16) & 0xFFFFFFFF)), Win32CaptureService.PackWheelWParam(120));
+        Assert.AreEqual(unchecked((IntPtr)(((-240) << 16) & 0xFFFFFFFF)), Win32CaptureService.PackWheelWParam(-240));
+    }
+
+    [TestMethod]
+    public void PackWheelLParam_PacksScreenCoords()
+    {
+        // x=100, y=200 → low word 100, high word 200
+        Assert.AreEqual(unchecked((IntPtr)((uint)((200 << 16) | 100))), Win32CaptureService.PackWheelLParam(100, 200));
+        Assert.AreEqual(unchecked((IntPtr)0u), Win32CaptureService.PackWheelLParam(0, 0));
+    }
+
+    [TestMethod]
+    public void PackSendInputWheelData_PreservesSignedDeltaAsUInt()
+    {
+        Assert.AreEqual(unchecked((uint)(-120)), Win32CaptureService.PackSendInputWheelData(-120));
+        Assert.AreEqual(120u, Win32CaptureService.PackSendInputWheelData(120));
+        Assert.AreEqual(0u, Win32CaptureService.PackSendInputWheelData(0));
+    }
+
+    [TestMethod]
+    public void TrySendWheelAt_ZeroDeltaReturnsFalse()
+    {
+        Assert.IsFalse(Win32CaptureService.TrySendWheelAt(0, 0, 0));
+    }
 }

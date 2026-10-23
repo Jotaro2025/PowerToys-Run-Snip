@@ -4,6 +4,7 @@
 
 using System;
 using System.Runtime.InteropServices;
+using System.Text;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Core;
 
@@ -182,6 +183,10 @@ internal static class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     public static extern bool GetCursorPos(out POINT lpPoint);
 
+    [DllImport(User32, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetCursorPos(int x, int y);
+
     [DllImport(Shcore, SetLastError = true)]
     public static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
 
@@ -243,6 +248,51 @@ internal static class Win32
 
     [DllImport(User32, SetLastError = true)]
     public static extern IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
+
+    public const uint InputMouse = 0;
+    public const uint MouseEventFMove = 0x0001;
+    public const uint MouseEventFWheel = 0x0800;
+    public const uint MouseEventFAbsolute = 0x8000;
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct MOUSEINPUT
+    {
+        public int Dx;
+
+        public int Dy;
+
+        public uint MouseData;
+
+        public uint DwFlags;
+
+        public uint Time;
+
+        public IntPtr DwExtraInfo;
+    }
+
+    [StructLayout(LayoutKind.Explicit)]
+    public struct INPUTUNION
+    {
+        [FieldOffset(0)]
+        public MOUSEINPUT Mi;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    public struct INPUT
+    {
+        public uint Type;
+
+        public INPUTUNION U;
+    }
+
+    [DllImport(User32, SetLastError = true)]
+    public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);
+
+    [DllImport(User32, CharSet = CharSet.Unicode, SetLastError = true)]
+    public static extern int GetClassName(IntPtr hWnd, StringBuilder lpClassName, int nMaxCount);
+
+    [DllImport(User32, SetLastError = true)]
+    public static extern uint GetWindowThreadProcessId(IntPtr hWnd, out uint lpdwProcessId);
 
     [DllImport(Gdi32)]
     public static extern IntPtr CreateRectRgn(int left, int top, int right, int bottom);
