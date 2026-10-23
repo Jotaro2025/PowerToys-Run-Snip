@@ -144,4 +144,27 @@ public class ScrollCaptureControllerTests
     {
         Assert.IsFalse(Win32CaptureService.TryActivateScrollTarget(IntPtr.Zero));
     }
+
+    [TestMethod]
+    public void TemporaryHideOverlayWindow_ZeroHandleIsNoOp()
+    {
+        using var scope = Win32CaptureService.TemporaryHideOverlayWindow(IntPtr.Zero);
+        Assert.IsNotNull(scope);
+    }
+
+    [TestMethod]
+    public void PostWheelNudge_ZeroTargetIsNoOp()
+    {
+        Win32CaptureService.PostWheelNudge(IntPtr.Zero, 10, 20, -120);
+    }
+
+    [TestMethod]
+    public void ShowWindowConstants_MatchUser32()
+    {
+        Assert.AreEqual(0, Win32.SwHide);
+        Assert.AreEqual(4, Win32.SwShowNoActivate);
+        Assert.AreEqual(1u, Win32.GaParent);
+        Assert.AreEqual(2u, Win32.GaRoot);
+        Assert.AreEqual(unchecked((IntPtr)(-1)), Win32.HwndTopmost);
+    }
 }
