@@ -2,9 +2,8 @@
 // The Microsoft Corporation licenses this file to you under the MIT license.
 // See the LICENSE file in the project root for more information.
 
-using System.Windows;
-
 using System;
+using System.Windows;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
 using Community.PowerToys.Run.Plugin.Snip.Services;
@@ -43,7 +42,6 @@ public class ScrollCaptureControllerTests
     {
         CollectionAssert.AreEqual(new[] { 3, 2, 1 }, ScrollCaptureController.OrderTilesForStitch(new[] { 1, 2, 3 }, scrollUp: true));
     }
-}
 
     [TestMethod]
     public void ShouldCountDuplicateTowardAutoStop_RequiresSuccessfulWheel()
@@ -68,3 +66,4 @@ public class ScrollCaptureControllerTests
         var hwnd = new IntPtr(0x1234);
         Assert.IsTrue(Win32CaptureService.IsOwnedByOverlay(hwnd, hwnd));
     }
+}
