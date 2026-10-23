@@ -720,6 +720,12 @@
   <data name="scroll_stop_strip_tip" xml:space="preserve">
     <value>Esc or Space also stops and keeps frames already captured</value>
   </data>
+  <data name="scroll_stop_strip_conflict_tip" xml:space="preserve">
+    <value>Esc/Space hotkey taken by another app — click Stop, or try Esc/Space (poll fallback)</value>
+  </data>
+  <data name="scroll_stop_strip_paused_tip" xml:space="preserve">
+    <value>Paused — move cursor back into the selection to continue</value>
+  </data>
   <data name="scroll_hint_uipi" xml:space="preserve">
     <value>Target window is elevated (UIPI)</value>
   </data>

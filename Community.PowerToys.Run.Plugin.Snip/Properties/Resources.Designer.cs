@@ -1742,6 +1742,26 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
 
+        /// <summary>
+        ///   Looks up a localized string similar to paused tip on stop strip.
+        /// </summary>
+        public static string scroll_stop_strip_paused_tip {
+            get {
+                return ResourceManager.GetString("scroll_stop_strip_paused_tip", resourceCulture);
+            }
+        }
+
+
+        /// <summary>
+        ///   Looks up a localized string similar to Esc/Space hotkey conflict tip.
+        /// </summary>
+        public static string scroll_stop_strip_conflict_tip {
+            get {
+                return ResourceManager.GetString("scroll_stop_strip_conflict_tip", resourceCulture);
+            }
+        }
+
+
         public static string scroll_hint_capturing {
             get {
                 return ResourceManager.GetString("scroll_hint_capturing", resourceCulture);
