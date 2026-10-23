@@ -312,21 +312,9 @@ internal static class QrAndBarcodeScanner
 
     private static void BinarizeBgra(ReadOnlySpan<byte> bgra, int width, int height, int stride, Span<byte> binary)
     {
+        // Single luminance pass: stash luma into `binary` while summing; the
+        // threshold pass then reads bytes instead of recomputing 3-channel luma.
         long sum = 0;
-        for (int y = 0; y < height; y++)
-        {
-            var row = bgra.Slice(y * stride, width * 4);
-            for (int x = 0; x < width; x++)
-            {
-                int i = x * 4;
-                int lum = ((row[i + 2] * 77) + (row[i + 1] * 150) + (row[i] * 29)) >> 8;
-                sum += lum;
-            }
-        }
-
-        int threshold = (int)(sum / Math.Max(1, (long)width * height));
-        threshold = Math.Clamp(threshold, 32, 224);
-
         for (int y = 0; y < height; y++)
         {
             var row = bgra.Slice(y * stride, width * 4);
@@ -334,9 +322,18 @@ internal static class QrAndBarcodeScanner
             for (int x = 0; x < width; x++)
             {
                 int i = x * 4;
-                int lum = ((row[i + 2] * 77) + (row[i + 1] * 150) + (row[i] * 29)) >> 8;
-                bRow[x] = lum < threshold ? (byte)1 : (byte)0;
+                byte lum = (byte)(((row[i + 2] * 77) + (row[i + 1] * 150) + (row[i] * 29)) >> 8);
+                bRow[x] = lum;
+                sum += lum;
             }
+        }
+
+        int threshold = (int)(sum / Math.Max(1, (long)width * height));
+        threshold = Math.Clamp(threshold, 32, 224);
+
+        for (int i = 0; i < binary.Length; i++)
+        {
+            binary[i] = binary[i] < threshold ? (byte)1 : (byte)0;
         }
     }
 

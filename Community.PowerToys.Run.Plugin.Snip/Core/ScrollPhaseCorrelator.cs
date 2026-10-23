@@ -19,6 +19,12 @@ internal static class ScrollPhaseCorrelator
     private const double MinPeakResponse = 0.35;
     private const int MaxHorizontalPeakPx = 2;
 
+    /// <summary>
+    /// FFT 单边网格上限（3000+ px 选区在 step=2 下仍会得到 4096 点列变换）。
+    /// dh 精度以 step 为粒度，后续 hint 窗口 + SAD 精修会吸收该量化，无需更大网格。
+    /// </summary>
+    private const int MaxFftEdge = 512;
+
     internal readonly struct PhaseEstimate
     {
         public int Dh { get; init; }
@@ -39,6 +45,14 @@ internal static class ScrollPhaseCorrelator
             return default;
 
         int step = width > 320 || h > 520 ? 2 : 1;
+        // Raise the decimation step until the FFT grid fits under MaxFftEdge,
+        // keeping huge selections from paying multi-megapoint transforms.
+        while ((Math.Max(width, 8) + step - 1) / step > MaxFftEdge
+               || (Math.Max(h, 8) + step - 1) / step > MaxFftEdge)
+        {
+            step *= 2;
+        }
+
         int sw = (width + step - 1) / step;
         int sh = (h + step - 1) / step;
         if (sw < 8 || sh < 8)

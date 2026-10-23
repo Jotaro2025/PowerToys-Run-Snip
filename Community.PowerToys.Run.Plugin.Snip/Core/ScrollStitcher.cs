@@ -455,28 +455,47 @@ public static class ScrollStitcher
         return ComposeStitchedPixels(tiles, offsets, width, totalHeight, truncated);
     }
 
-    private static PixelStitchResult ComposeStitchedPixels(
+    private static unsafe PixelStitchResult ComposeStitchedPixels(
         IReadOnlyList<ScrollTilePixels> tiles, StitchOffset[] offsets, int width, int totalHeight, bool truncated)
     {
         int dstStride = CaptureBuffers.BgraStride(width);
         int byteCount = CaptureBuffers.BgraByteCount(width, totalHeight);
         var dest = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
-        dest.AsSpan(0, byteCount).Clear();
         int pixelRowBytes = width * 4;
 
-        for (int i = 0; i < tiles.Count; i++)
+        // Contributing tiles write contiguous rows from y=0 (DestY advances
+        // monotonically), so no pre-clear is needed. Same stride on both sides
+        // lets each tile copy as one block instead of per-row spans.
+        fixed (byte* dstBase = dest)
         {
-            var tile = tiles[i];
-            var off = offsets[i];
-            if (off.RowsContributed <= 0) continue;
-            var src = tile.DangerousGetArray();
-            int srcStride = tile.Stride;
-            int srcY = off.TopSkip;
-            for (int row = 0; row < off.RowsContributed; row++)
+            for (int i = 0; i < tiles.Count; i++)
             {
-                int srcOffset = (srcY + row) * srcStride;
-                int dstOffset = (off.DestY + row) * dstStride;
-                src.AsSpan(srcOffset, pixelRowBytes).CopyTo(dest.AsSpan(dstOffset, pixelRowBytes));
+                var tile = tiles[i];
+                var off = offsets[i];
+                if (off.RowsContributed <= 0) continue;
+                var src = tile.DangerousGetArray();
+                int srcStride = tile.Stride;
+                int srcY = off.TopSkip;
+                if (srcStride == dstStride)
+                {
+                    fixed (byte* srcBase = src)
+                    {
+                        Buffer.MemoryCopy(
+                            srcBase + ((long)srcY * srcStride),
+                            dstBase + ((long)off.DestY * dstStride),
+                            (long)off.RowsContributed * srcStride,
+                            (long)off.RowsContributed * srcStride);
+                    }
+                }
+                else
+                {
+                    for (int row = 0; row < off.RowsContributed; row++)
+                    {
+                        int srcOffset = (srcY + row) * srcStride;
+                        int dstOffset = (off.DestY + row) * dstStride;
+                        src.AsSpan(srcOffset, pixelRowBytes).CopyTo(dest.AsSpan(dstOffset, pixelRowBytes));
+                    }
+                }
             }
         }
 
@@ -1006,6 +1025,12 @@ public static class ScrollStitcher
         int width, int h, int scrollHintPx, IReadOnlyList<int> candidates,
         int stepX, int stepY)
     {
+        // Materialize luma planes once per tile pair: every SAD/TextEdge metric
+        // for every candidate then reads one byte per pixel instead of
+        // recomputing the 3-channel luminance (6+ multiplies) on every pass.
+        byte[] lumaPrev = BuildLumaPlane(prevBase, prevStride, prevH, width);
+        byte[] lumaNext = BuildLumaPlane(nextBase, nextStride, nextH, width);
+
         var metrics = new DhMetrics[candidates.Count];
         Parallel.For(0, candidates.Count, i =>
         {
@@ -1025,25 +1050,21 @@ public static class ScrollStitcher
                     prevBase, prevStride, prevH, dh,
                     nextBase, nextStride, nextH, 0,
                     overlapRows, width, stepX, stepY),
-                Sad = ComputeSadMatchRatio(
-                    prevBase, prevStride, prevH, dh,
-                    nextBase, nextStride, nextH, 0,
+                Sad = ComputeSadMatchRatioLuma(
+                    lumaPrev, lumaNext, prevH, dh, nextH, 0,
                     overlapRows, width, stepX, stepY),
                 EdgeRaw = ComputeRawMatchRatio(
                     prevBase, prevStride, prevH, dh + edgeStart,
                     nextBase, nextStride, nextH, edgeStart,
                     band, width, stepX, Math.Max(1, stepY)),
-                EdgeSad = ComputeSadMatchRatio(
-                    prevBase, prevStride, prevH, dh + edgeStart,
-                    nextBase, nextStride, nextH, edgeStart,
+                EdgeSad = ComputeSadMatchRatioLuma(
+                    lumaPrev, lumaNext, prevH, dh + edgeStart, nextH, edgeStart,
                     band, width, stepX, Math.Max(1, stepY)),
-                TextEdge = ComputeTextEdgeMatchRatio(
-                    prevBase, prevStride, prevH, dh,
-                    nextBase, nextStride, nextH, 0,
+                TextEdge = ComputeTextEdgeMatchRatioLuma(
+                    lumaPrev, lumaNext, prevH, dh, nextH, 0,
                     overlapRows, width, stepX, stepY),
-                EdgeText = ComputeTextEdgeMatchRatio(
-                    prevBase, prevStride, prevH, dh + edgeStart,
-                    nextBase, nextStride, nextH, edgeStart,
+                EdgeText = ComputeTextEdgeMatchRatioLuma(
+                    lumaPrev, lumaNext, prevH, dh + edgeStart, nextH, edgeStart,
                     band, width, stepX, Math.Max(1, stepY)),
             };
         });
@@ -1054,6 +1075,87 @@ public static class ScrollStitcher
             .ThenByDescending(m => m.EdgeSad)
             .ThenByDescending(m => m.Dh)
             .ToArray();
+    }
+
+    /// <summary>
+    /// One luma byte per pixel, row-major with a compact width stride (no stride
+    /// gaps). Same 299/587/114 weights as the old RowLum, exact integer match.
+    /// </summary>
+    private static unsafe byte[] BuildLumaPlane(byte* basePtr, int stride, int height, int width)
+    {
+        var plane = new byte[width * height];
+        fixed (byte* dst = plane)
+        {
+            for (int y = 0; y < height; y++)
+            {
+                byte* row = basePtr + ((long)y * stride);
+                byte* dRow = dst + ((long)y * width);
+                for (int x = 0; x < width; x++)
+                {
+                    int o = x * 4;
+                    dRow[x] = (byte)((299 * row[o + 2] + 587 * row[o + 1] + 114 * row[o]) / 1000);
+                }
+            }
+        }
+
+        return plane;
+    }
+
+    private static double ComputeSadMatchRatioLuma(
+        byte[] lumaPrev, byte[] lumaNext,
+        int prevH, int prevStartY, int nextH, int nextStartY,
+        int overlapRows, int width, int stepX, int stepY)
+    {
+        long sad = 0;
+        int total = 0;
+
+        for (int r = 0; r < overlapRows; r += stepY)
+        {
+            int py = prevStartY + r;
+            int ny = nextStartY + r;
+            if (py >= prevH || ny >= nextH) continue;
+
+            int prevOff = py * width;
+            int nextOff = ny * width;
+            for (int x = 0; x < width; x += stepX)
+            {
+                total++;
+                int d = Math.Abs(lumaPrev[prevOff + x] - lumaNext[nextOff + x]);
+                sad += d <= SadMatchTolerance ? 0 : d - SadMatchTolerance;
+            }
+        }
+        if (total == 0) return 0;
+        double meanSad = (double)sad / total;
+        return Math.Clamp(1.0 - meanSad / 64.0, 0, 1);
+    }
+
+    private static double ComputeTextEdgeMatchRatioLuma(
+        byte[] lumaPrev, byte[] lumaNext,
+        int prevH, int prevStartY, int nextH, int nextStartY,
+        int overlapRows, int width, int stepX, int stepY)
+    {
+        if (width < 2) return 0;
+        int matches = 0;
+        int total = 0;
+
+        for (int r = 0; r < overlapRows; r += stepY)
+        {
+            int py = prevStartY + r;
+            int ny = nextStartY + r;
+            if (py >= prevH || ny >= nextH) continue;
+
+            int prevOff = py * width;
+            int nextOff = ny * width;
+            for (int x = 0; x < width - 1; x += stepX)
+            {
+                int edgeP = lumaPrev[prevOff + x + 1] - lumaPrev[prevOff + x];
+                int edgeN = lumaNext[nextOff + x + 1] - lumaNext[nextOff + x];
+                total++;
+                if (Math.Abs(edgeP - edgeN) <= TextEdgeTolerance)
+                    matches++;
+            }
+        }
+        return total > 0 ? (double)matches / total : 0;
     }
 
     private static (int topSkip, string mode, TileRelation relation) ClassifyFromMetrics(
@@ -1128,40 +1230,6 @@ public static class ScrollStitcher
     /// <summary>
     /// Compare horizontal luminance edges — sensitive to text strokes, ignores flat backgrounds.
     /// </summary>
-    private static unsafe double ComputeTextEdgeMatchRatio(
-        byte* prevBase, int prevStride, int prevH, int prevStartY,
-        byte* nextBase, int nextStride, int nextH, int nextStartY,
-        int overlapRows, int width, int stepX, int stepY)
-    {
-        if (width < 2) return 0;
-        int matches = 0;
-        int total = 0;
-
-        for (int r = 0; r < overlapRows; r += stepY)
-        {
-            int py = prevStartY + r;
-            int ny = nextStartY + r;
-            if (py >= prevH || ny >= nextH) continue;
-
-            byte* prevRow = prevBase + (long)py * prevStride;
-            byte* nextRow = nextBase + (long)ny * nextStride;
-            for (int x = 0; x < width - 1; x += stepX)
-            {
-                int o0 = x * 4;
-                int o1 = (x + 1) * 4;
-                int edgeP = RowLum(prevRow, o1) - RowLum(prevRow, o0);
-                int edgeN = RowLum(nextRow, o1) - RowLum(nextRow, o0);
-                total++;
-                if (Math.Abs(edgeP - edgeN) <= TextEdgeTolerance)
-                    matches++;
-            }
-        }
-        return total > 0 ? (double)matches / total : 0;
-    }
-
-    private static unsafe int RowLum(byte* row, int o)
-        => (299 * row[o + 2] + 587 * row[o + 1] + 114 * row[o]) / 1000;
-
     private static unsafe double ComputeRawMatchRatio(
         byte* prevBase, int prevStride, int prevH, int prevStartY,
         byte* nextBase, int nextStride, int nextH, int nextStartY,
@@ -1189,37 +1257,6 @@ public static class ScrollStitcher
             }
         }
         return total > 0 ? (double)matches / total : 0;
-    }
-
-    private static unsafe double ComputeSadMatchRatio(
-        byte* prevBase, int prevStride, int prevH, int prevStartY,
-        byte* nextBase, int nextStride, int nextH, int nextStartY,
-        int overlapRows, int width, int stepX, int stepY)
-    {
-        long sad = 0;
-        int total = 0;
-
-        for (int r = 0; r < overlapRows; r += stepY)
-        {
-            int py = prevStartY + r;
-            int ny = nextStartY + r;
-            if (py >= prevH || ny >= nextH) continue;
-
-            byte* prevRow = prevBase + (long)py * prevStride;
-            byte* nextRow = nextBase + (long)ny * nextStride;
-            for (int x = 0; x < width; x += stepX)
-            {
-                total++;
-                int o = x * 4;
-                int lumP = (299 * prevRow[o + 2] + 587 * prevRow[o + 1] + 114 * prevRow[o]) / 1000;
-                int lumN = (299 * nextRow[o + 2] + 587 * nextRow[o + 1] + 114 * nextRow[o]) / 1000;
-                int d = Math.Abs(lumP - lumN);
-                sad += d <= SadMatchTolerance ? 0 : d - SadMatchTolerance;
-            }
-        }
-        if (total == 0) return 0;
-        double meanSad = (double)sad / total;
-        return Math.Clamp(1.0 - meanSad / 64.0, 0, 1);
     }
 
     private static void ValidateTiles(IReadOnlyList<WriteableBitmap> tiles, int width)

@@ -113,6 +113,7 @@ public static class LightInpaint
         SeedFrontier(unknown, queued, frontier, rw, rh, x0, y0, width, height);
 
         int guard = unknownCount + 8;
+        byte[] estimates = Array.Empty<byte>();
         while (unknownCount > 0 && guard-- > 0)
         {
             if (frontier.Count == 0)
@@ -123,7 +124,11 @@ public static class LightInpaint
 
             // Estimate all band pixels from the *current* known set, then commit,
             // then expand the frontier (so same-band neighbors are not re-queued).
-            var estimates = new byte[frontier.Count * 4];
+            if (estimates.Length < frontier.Count * 4)
+            {
+                estimates = new byte[frontier.Count * 4];
+            }
+
             for (int i = 0; i < frontier.Count; i++)
             {
                 int li = frontier[i];
@@ -513,20 +518,72 @@ public static class LightInpaint
                 // Directional / distance weight (Telea-inspired dst term).
                 double w = 1.0 / (dist + Eps);
 
-                // Cheap gradient at q from known finite differences.
-                float gxB = 0, gyB = 0, gxG = 0, gyG = 0, gxR = 0, gyR = 0;
-                SampleGrad(pixels, unknown, stride, width, height, x0, y0, rw, rh, qx, qy, ref gxB, ref gyB, 0);
-                SampleGrad(pixels, unknown, stride, width, height, x0, y0, rw, rh, qx, qy, ref gxG, ref gyG, 1);
-                SampleGrad(pixels, unknown, stride, width, height, x0, y0, rw, rh, qx, qy, ref gxR, ref gyR, 2);
+                // Neighbor known-flags shared by all three channels: one probe
+                // set instead of 12 ChannelOrNaN calls per sample.
+                bool knownL = qx > 0 && !IsUnknown(unknown, rw, rh, x0, y0, width, height, qx - 1, qy);
+                bool knownR = qx + 1 < width && !IsUnknown(unknown, rw, rh, x0, y0, width, height, qx + 1, qy);
+                bool knownU = qy > 0 && !IsUnknown(unknown, rw, rh, x0, y0, width, height, qx, qy - 1);
+                bool knownD = qy + 1 < height && !IsUnknown(unknown, rw, rh, x0, y0, width, height, qx, qy + 1);
 
                 int qi = (qy * stride) + (qx * 4);
-                double b = pixels[qi] + (gxB * dx) + (gyB * dy);
-                double g = pixels[qi + 1] + (gxG * dx) + (gyG * dy);
-                double r = pixels[qi + 2] + (gxR * dx) + (gyR * dy);
+                int li = qi - 4;
+                int ri = qi + 4;
+                int ui = qi - stride;
+                int di = qi + stride;
 
-                sumB += w * b;
-                sumG += w * g;
-                sumR += w * r;
+                for (int channel = 0; channel < 3; channel++)
+                {
+                    float center = pixels[qi + channel];
+                    float left = knownL ? pixels[li + channel] : float.NaN;
+                    float right = knownR ? pixels[ri + channel] : float.NaN;
+                    float up = knownU ? pixels[ui + channel] : float.NaN;
+                    float down = knownD ? pixels[di + channel] : float.NaN;
+
+                    float gx;
+                    if (!float.IsNaN(left) && !float.IsNaN(right))
+                    {
+                        gx = (right - left) * 0.5f;
+                    }
+                    else if (!float.IsNaN(right))
+                    {
+                        gx = right - center;
+                    }
+                    else if (!float.IsNaN(left))
+                    {
+                        gx = center - left;
+                    }
+                    else
+                    {
+                        gx = 0;
+                    }
+
+                    float gy;
+                    if (!float.IsNaN(up) && !float.IsNaN(down))
+                    {
+                        gy = (down - up) * 0.5f;
+                    }
+                    else if (!float.IsNaN(down))
+                    {
+                        gy = down - center;
+                    }
+                    else if (!float.IsNaN(up))
+                    {
+                        gy = center - up;
+                    }
+                    else
+                    {
+                        gy = 0;
+                    }
+
+                    float predicted = center + (gx * dx) + (gy * dy);
+                    switch (channel)
+                    {
+                        case 0: sumB += w * predicted; break;
+                        case 1: sumG += w * predicted; break;
+                        default: sumR += w * predicted; break;
+                    }
+                }
+
                 sumW += w;
             }
         }
@@ -544,86 +601,6 @@ public static class LightInpaint
         dest[destOffset + 1] = ClampByte(sumG / sumW);
         dest[destOffset + 2] = ClampByte(sumR / sumW);
         dest[destOffset + 3] = 255;
-    }
-
-    private static void SampleGrad(
-        Span<byte> pixels,
-        bool[] unknown,
-        int stride,
-        int width,
-        int height,
-        int x0,
-        int y0,
-        int rw,
-        int rh,
-        int x,
-        int y,
-        ref float gx,
-        ref float gy,
-        int channel)
-    {
-        float left = ChannelOrNaN(pixels, unknown, stride, width, height, x0, y0, rw, rh, x - 1, y, channel);
-        float right = ChannelOrNaN(pixels, unknown, stride, width, height, x0, y0, rw, rh, x + 1, y, channel);
-        float up = ChannelOrNaN(pixels, unknown, stride, width, height, x0, y0, rw, rh, x, y - 1, channel);
-        float down = ChannelOrNaN(pixels, unknown, stride, width, height, x0, y0, rw, rh, x, y + 1, channel);
-        float center = pixels[(y * stride) + (x * 4) + channel];
-
-        if (!float.IsNaN(left) && !float.IsNaN(right))
-        {
-            gx = (right - left) * 0.5f;
-        }
-        else if (!float.IsNaN(right))
-        {
-            gx = right - center;
-        }
-        else if (!float.IsNaN(left))
-        {
-            gx = center - left;
-        }
-        else
-        {
-            gx = 0;
-        }
-
-        if (!float.IsNaN(up) && !float.IsNaN(down))
-        {
-            gy = (down - up) * 0.5f;
-        }
-        else if (!float.IsNaN(down))
-        {
-            gy = down - center;
-        }
-        else if (!float.IsNaN(up))
-        {
-            gy = center - up;
-        }
-        else
-        {
-            gy = 0;
-        }
-    }
-
-    private static float ChannelOrNaN(
-        Span<byte> pixels,
-        bool[] unknown,
-        int stride,
-        int width,
-        int height,
-        int x0,
-        int y0,
-        int rw,
-        int rh,
-        int x,
-        int y,
-        int channel)
-    {
-        if (x < 0 || y < 0 || x >= width || y >= height
-            || IsUnknown(unknown, rw, rh, x0, y0, width, height, x, y))
-        {
-            return float.NaN;
-        }
-
-        return pixels[(y * stride) + (x * 4) + channel];
     }
 
     private static float Luma(ReadOnlySpan<byte> pixels, int stride, int x, int y)

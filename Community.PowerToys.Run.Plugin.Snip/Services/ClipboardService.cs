@@ -143,13 +143,24 @@ public static class ClipboardService
             };
             MemoryMarshal.Write(dib.AsSpan(0, headerBytes), in bmi);
 
-            // Bottom-up DIB: CopyPixels one source row at a time (frozen → any thread).
-            for (int y = 0; y < height; y++)
+            // One bulk CopyPixels into a pooled staging buffer, then flip rows into
+            // the bottom-up DIB — thousands of per-row interop calls for a 4K
+            // frame collapse into one interop transition + memcpys.
+            byte[] staging = System.Buffers.ArrayPool<byte>.Shared.Rent(imageBytes);
+            try
             {
-                int srcY = height - 1 - y;
-                int destOffset = headerBytes + (y * stride);
-                bitmap.CopyPixels(new Int32Rect(0, srcY, width, 1), dib, stride, destOffset);
-                ClearBgraAlpha(dib.AsSpan(destOffset, stride));
+                bitmap.CopyPixels(new Int32Rect(0, 0, width, height), staging, stride, 0);
+                for (int y = 0; y < height; y++)
+                {
+                    int destOffset = headerBytes + (y * stride);
+                    var dstRow = dib.AsSpan(destOffset, stride);
+                    staging.AsSpan((height - 1 - y) * stride, stride).CopyTo(dstRow);
+                    ClearBgraAlpha(dstRow);
+                }
+            }
+            finally
+            {
+                System.Buffers.ArrayPool<byte>.Shared.Return(staging);
             }
 
             byte[] png;
@@ -346,14 +357,29 @@ public static class ClipboardService
 
         byte* pixelsBase = (byte*)pDib + headerBytes;
 
-        // Bottom-up DIB row y ← top-down source row (height - 1 - y).
-        // CopyPixels writes that one row directly into the locked buffer.
-        for (int y = 0; y < height; y++)
+        // One bulk CopyPixels into pooled staging, then flip rows into the locked
+        // HGLOBAL (bottom-up DIB row y ← top-down source row height-1-y).
+        byte[] staging = System.Buffers.ArrayPool<byte>.Shared.Rent(imageBytes);
+        try
         {
-            int srcY = height - 1 - y;
-            IntPtr destRow = (IntPtr)(pixelsBase + (y * (long)stride));
-            bitmap.CopyPixels(new Int32Rect(0, srcY, width, 1), destRow, stride, stride);
-            ClearBgraAlpha(new Span<byte>(pixelsBase + (y * (long)stride), stride));
+            fixed (byte* stageBase = staging)
+            {
+                bitmap.CopyPixels(new Int32Rect(0, 0, width, height), (IntPtr)stageBase, imageBytes, 0);
+                for (int y = 0; y < height; y++)
+                {
+                    byte* dstRow = pixelsBase + (y * (long)stride);
+                    Buffer.MemoryCopy(
+                        stageBase + ((long)(height - 1 - y) * stride),
+                        dstRow,
+                        stride,
+                        stride);
+                    ClearBgraAlpha(new Span<byte>(dstRow, stride));
+                }
+            }
+        }
+        finally
+        {
+            System.Buffers.ArrayPool<byte>.Shared.Return(staging);
         }
     }
 
@@ -429,12 +455,21 @@ public static class ClipboardService
         }
     }
 
-    /// <summary>Zero every alpha byte in a BGRA row (BI_RGB high byte).</summary>
-    internal static void ClearBgraAlpha(Span<byte> bgraRow)
+    /// <summary>Zero every alpha byte in a BGRA row (BI_RGB high byte); 4-byte stride guaranteed by callers.</summary>
+    internal static unsafe void ClearBgraAlpha(Span<byte> bgraRow)
     {
-        for (int x = 3; x < bgraRow.Length; x += 4)
+        // Cast to uint writes so the JIT can merge consecutive byte clears.
+        int dwords = bgraRow.Length / 4;
+        if (dwords > 0)
         {
-            bgraRow[x] = 0;
+            fixed (byte* p = bgraRow)
+            {
+                uint* v = (uint*)p;
+                for (int i = 0; i < dwords; i++)
+                {
+                    v[i] &= 0x00FFFFFFu;
+                }
+            }
         }
     }
 

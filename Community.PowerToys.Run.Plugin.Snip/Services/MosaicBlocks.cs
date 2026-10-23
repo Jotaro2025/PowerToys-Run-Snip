@@ -286,60 +286,128 @@ public static class MosaicBlocks
         int tempStride = w * 4;
         int tempBytes = tempStride * h;
         byte[] rented = ArrayPool<byte>.Shared.Rent(tempBytes);
+
+        // Per-column sliding-window sums for the vertical pass; O(1) per pixel
+        // instead of re-summing (2r+1) taps: add the entering row, drop the leaving one.
+        int[] sumRented = ArrayPool<int>.Shared.Rent(w * 3);
         try
         {
             fixed (byte* temp = rented)
             {
-                // Pass 1: horizontal blur from src[x0..x1, y0..y1] into temp[0..w, 0..h]
+                Span<int> sums = sumRented.AsSpan(0, w * 3);
+                Span<int> sumB = sums.Slice(0, w);
+                Span<int> sumG = sums.Slice(w, w);
+                Span<int> sumR = sums.Slice(w * 2, w);
+
+                // Pass 1: horizontal sliding-window box blur from src[x0..x1, y0..y1]
+                // into temp[0..w, 0..h].
                 for (int y = 0; y < h; y++)
                 {
                     byte* sRow = src + ((y0 + y) * srcStride);
                     byte* tRow = temp + (y * tempStride);
+                    int sx0 = 0;
+                    int sx1 = Math.Min(r, w - 1);
+                    int count = sx1 - sx0 + 1;
+                    int b = 0, g = 0, rr = 0;
+                    for (int sx = sx0; sx <= sx1; sx++)
+                    {
+                        int o = (x0 + sx) * 4;
+                        b += sRow[o + 0];
+                        g += sRow[o + 1];
+                        rr += sRow[o + 2];
+                    }
+
                     for (int x = 0; x < w; x++)
                     {
-                        int sx0 = Math.Max(0, x - r);
-                        int sx1 = Math.Min(w - 1, x + r);
-                        int count = sx1 - sx0 + 1;
-                        int sumB = 0, sumG = 0, sumR = 0;
-                        for (int sx = sx0; sx <= sx1; sx++)
+                        int dOff = x * 4;
+                        tRow[dOff + 0] = (byte)(b / count);
+                        tRow[dOff + 1] = (byte)(g / count);
+                        tRow[dOff + 2] = (byte)(rr / count);
+                        tRow[dOff + 3] = 255;
+
+                        // The window grows at the left edge, slides in the middle,
+                        // and shrinks after the right edge — no clamped re-add.
+                        if (x + r + 1 < w)
                         {
-                            int o = (x0 + sx) * 4;
-                            sumB += sRow[o + 0];
-                            sumG += sRow[o + 1];
-                            sumR += sRow[o + 2];
+                            int oAdd = (x0 + x + r + 1) * 4;
+                            b += sRow[oAdd + 0];
+                            g += sRow[oAdd + 1];
+                            rr += sRow[oAdd + 2];
+                            count++;
                         }
 
-                        int dOff = x * 4;
-                        tRow[dOff + 0] = (byte)(sumB / count);
-                        tRow[dOff + 1] = (byte)(sumG / count);
-                        tRow[dOff + 2] = (byte)(sumR / count);
-                        tRow[dOff + 3] = 255;
+                        if (x >= r)
+                        {
+                            int oRemove = (x0 + (x - r)) * 4;
+                            b -= sRow[oRemove + 0];
+                            g -= sRow[oRemove + 1];
+                            rr -= sRow[oRemove + 2];
+                            count--;
+                        }
                     }
                 }
 
-                // Pass 2: vertical blur from temp into dest
+                // Pass 2: vertical sliding-window box blur from temp into dest,
+                // keeping per-column sums so each row update is O(w) not O(w*r).
+                int countV = Math.Min(r, h - 1) + 1;
+                for (int x = 0; x < w; x++)
+                {
+                    int xOff = x * 4;
+                    int b = 0, g = 0, rr = 0;
+                    for (int sy = 0; sy <= Math.Min(r, h - 1); sy++)
+                    {
+                        byte* tRow = temp + (sy * tempStride) + xOff;
+                        b += tRow[0];
+                        g += tRow[1];
+                        rr += tRow[2];
+                    }
+
+                    sumB[x] = b;
+                    sumG[x] = g;
+                    sumR[x] = rr;
+                }
+
                 for (int y = 0; y < h; y++)
                 {
-                    int sy0 = Math.Max(0, y - r);
-                    int sy1 = Math.Min(h - 1, y + r);
-                    int count = sy1 - sy0 + 1;
                     byte* dRow = dest + (y * destStride);
                     for (int x = 0; x < w; x++)
                     {
                         int xOff = x * 4;
-                        int sumB = 0, sumG = 0, sumR = 0;
-                        for (int sy = sy0; sy <= sy1; sy++)
+                        dRow[xOff + 0] = (byte)(sumB[x] / countV);
+                        dRow[xOff + 1] = (byte)(sumG[x] / countV);
+                        dRow[xOff + 2] = (byte)(sumR[x] / countV);
+                        dRow[xOff + 3] = 255;
+                    }
+
+                    // Slide the window down: add row y+r+1, drop row y-r.
+                    int addY = y + r + 1;
+                    if (addY < h)
+                    {
+                        byte* aRow = temp + (addY * tempStride);
+                        for (int x = 0; x < w; x++)
                         {
-                            byte* tRow = temp + (sy * tempStride) + xOff;
-                            sumB += tRow[0];
-                            sumG += tRow[1];
-                            sumR += tRow[2];
+                            int xOff = x * 4;
+                            sumB[x] += aRow[xOff + 0];
+                            sumG[x] += aRow[xOff + 1];
+                            sumR[x] += aRow[xOff + 2];
                         }
 
-                        dRow[xOff + 0] = (byte)(sumB / count);
-                        dRow[xOff + 1] = (byte)(sumG / count);
-                        dRow[xOff + 2] = (byte)(sumR / count);
-                        dRow[xOff + 3] = 255;
+                        countV++;
+                    }
+
+                    int removeY = y - r;
+                    if (removeY >= 0)
+                    {
+                        byte* dRow2 = temp + (removeY * tempStride);
+                        for (int x = 0; x < w; x++)
+                        {
+                            int xOff = x * 4;
+                            sumB[x] -= dRow2[xOff + 0];
+                            sumG[x] -= dRow2[xOff + 1];
+                            sumR[x] -= dRow2[xOff + 2];
+                        }
+
+                        countV--;
                     }
                 }
             }
@@ -347,6 +415,7 @@ public static class MosaicBlocks
         finally
         {
             ArrayPool<byte>.Shared.Return(rented);
+            ArrayPool<int>.Shared.Return(sumRented);
         }
     }
 
