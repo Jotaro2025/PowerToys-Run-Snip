@@ -253,3 +253,5 @@ To land the plugin in [microsoft/PowerToys](https://github.com/microsoft/PowerTo
 ## License
 
 New code in this repository is released under the MIT License — see [LICENSE](LICENSE). Third-party licenses and usage limits are listed under Acknowledgments & Sources above.
+
+- **Check for plugin updates** (Additional Options, default off): when enabled, one quiet GitHub Releases lookup compares the latest tag to `plugin.json`; private/offline failures stay silent.

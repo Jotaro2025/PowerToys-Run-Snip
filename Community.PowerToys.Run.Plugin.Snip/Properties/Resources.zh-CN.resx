@@ -116,6 +116,9 @@
   <data name="msg_saved" xml:space="preserve">
     <value>截屏已保存</value>
   </data>
+  <data name="msg_update_available" xml:space="preserve">
+    <value>Snip 有新版本：{0}（当前 {1}）</value>
+  </data>
   <data name="msg_failed" xml:space="preserve">
     <value>截屏失败</value>
   </data>
@@ -538,6 +541,12 @@
   </data>
   <data name="opt_hotkey_placeholder" xml:space="preserve">
     <value>留空=禁用（如 Ctrl+Shift+S）</value>
+  </data>
+  <data name="opt_check_updates_label" xml:space="preserve">
+    <value>检查插件更新</value>
+  </data>
+  <data name="opt_check_updates_desc" xml:space="preserve">
+    <value>开启后在后台查询 GitHub Releases 是否有比 plugin.json 更新的标签（默认关闭）。仓库需为公开。</value>
   </data>
   <data name="opt_ui_lang_label" xml:space="preserve">
     <value>界面语言</value>

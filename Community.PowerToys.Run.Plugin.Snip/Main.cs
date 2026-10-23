@@ -46,6 +46,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionHyMtBackend = "HyMtBackend";
     private const string OptionDownloadHyMt = "DownloadRecommendedHyMtModel";
     private const string OptionHyMtCustomDownloadUrl = "HyMtCustomDownloadUrl";
+    private const string OptionCheckForUpdates = "CheckForUpdates";
 
     private PluginInitContext _context;
     private string _iconPath;
@@ -282,6 +283,14 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
                 new KeyValuePair<string, string>(Properties.Resources.opt_tr_hymt_backend_vulkan, "2"),
             ],
         },
+        new PluginAdditionalOption()
+        {
+            Key = OptionCheckForUpdates,
+            DisplayLabel = Properties.Resources.opt_check_updates_label,
+            DisplayDescription = Properties.Resources.opt_check_updates_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.CheckForUpdates,
+        },
     };
 
     public List<Result> Query(Query query)
@@ -413,6 +422,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         UpdateIconPath(_context.API.GetCurrentTheme());
         UiLanguageHelper.Apply(_settings.UiLanguage);
         ApplyHotkeyRegistration();
+        UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
     }
 
     public string GetTranslatedPluginTitle() => Properties.Resources.plugin_name;
@@ -463,6 +473,8 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         }
 
         HyMT2SharpTranslatorCache.ConfigureIdleUnload(_settings.HyMtIdleUnloadMinutes);
+
+        _settings.CheckForUpdates = options.FirstOrDefault(x => x.Key == OptionCheckForUpdates)?.Value ?? false;
 
         var unloadHyMt = options.FirstOrDefault(x => x.Key == OptionUnloadHyMt);
         if (unloadHyMt is { Value: true })
@@ -565,6 +577,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
         UiLanguageHelper.Apply(_settings.UiLanguage);
         ApplyHotkeyRegistration();
+        UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
     }
 
     private void OpenSettingsWindow()
@@ -575,6 +588,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             UiLanguageHelper.Apply(_settings.UiLanguage);
             HyMT2SharpTranslatorCache.ConfigureIdleUnload(_settings.HyMtIdleUnloadMinutes);
             ApplyHotkeyRegistration();
+            UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
         });
     }
 
