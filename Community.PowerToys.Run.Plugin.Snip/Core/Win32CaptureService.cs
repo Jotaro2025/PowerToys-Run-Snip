@@ -6,8 +6,11 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Windows;
 using System.Windows.Media.Imaging;
+
+using Wox.Plugin.Logger;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Core;
 
@@ -272,8 +275,11 @@ public sealed class Win32CaptureService : ICaptureService
     }
 
     /// <summary>
-    /// Deliver <c>WM_MOUSEWHEEL</c> to the scroll target under a screen point,
-    /// skipping the overlay HWND. Cursor position is irrelevant.
+    /// Deliver a mouse wheel tick at a screen point under the selection hole.
+    /// Prefers <c>SendInput(MOUSEEVENTF_WHEEL)</c> (Chromium/Edge accept real input;
+    /// <c>SendMessage(WM_MOUSEWHEEL)</c> alone often returns 0 with no scroll). Falls back
+    /// to SendMessage when SendInput fails. Briefly moves the cursor into the hole so
+    /// hit-testing reaches the underlay, then restores it.
     /// </summary>
     public static bool TrySendWheelAt(
         int physicalX,
@@ -288,17 +294,112 @@ public sealed class Win32CaptureService : ICaptureService
 
         var pt = new Win32.POINT { X = physicalX, Y = physicalY };
         IntPtr target = ResolveScrollTargetAt(pt, skipOverlayHwnd);
-        if (target == IntPtr.Zero)
+        string targetClass = DescribeHwndClass(target);
+        uint targetPid = 0;
+        if (target != IntPtr.Zero)
         {
-            return false;
+            _ = Win32.GetWindowThreadProcessId(target, out targetPid);
         }
 
-#pragma warning disable CA2020 // WM_MOUSEWHEEL packs signed delta / coords into WPARAM/LPARAM bits.
-        IntPtr wParam = unchecked((IntPtr)((delta << 16) & 0xFFFFFFFF));
-        IntPtr lParam = unchecked((IntPtr)((uint)(((physicalY & 0xFFFF) << 16) | (physicalX & 0xFFFF))));
+        bool moved = false;
+        Win32.POINT saved = default;
+        if (Win32.GetCursorPos(out saved)
+            && (saved.X != physicalX || saved.Y != physicalY)
+            && Win32.SetCursorPos(physicalX, physicalY))
+        {
+            moved = true;
+        }
+
+        try
+        {
+            if (TrySendInputWheel(delta))
+            {
+                Log.Info(
+                    $"Snip scroll wheel via SendInput at ({physicalX},{physicalY}) delta={delta} target={targetClass} pid={targetPid}",
+                    typeof(Win32CaptureService));
+                return true;
+            }
+
+            int sendInputErr = Marshal.GetLastWin32Error();
+            if (target == IntPtr.Zero)
+            {
+                Log.Warn(
+                    $"Snip scroll SendInput failed (err={sendInputErr}) and no underlay HWND at ({physicalX},{physicalY})",
+                    typeof(Win32CaptureService));
+                return false;
+            }
+
+            IntPtr wParam = PackWheelWParam(delta);
+            IntPtr lParam = PackWheelLParam(physicalX, physicalY);
+            _ = Win32.SendMessage(target, Win32.WmMouseWheel, wParam, lParam);
+            Log.Warn(
+                $"Snip scroll wheel fallback SendMessage at ({physicalX},{physicalY}) delta={delta} target={targetClass} pid={targetPid} (SendInput err={sendInputErr})",
+                typeof(Win32CaptureService));
+            return true;
+        }
+        finally
+        {
+            if (moved)
+            {
+                _ = Win32.SetCursorPos(saved.X, saved.Y);
+            }
+        }
+    }
+
+    /// <summary>Pack signed wheel delta into <c>WM_MOUSEWHEEL</c> WPARAM (high word).</summary>
+    internal static IntPtr PackWheelWParam(int delta)
+    {
+#pragma warning disable CA2020 // WM_MOUSEWHEEL packs signed delta into WPARAM bits.
+        return unchecked((IntPtr)((delta << 16) & 0xFFFFFFFF));
 #pragma warning restore CA2020
-        _ = Win32.SendMessage(target, Win32.WmMouseWheel, wParam, lParam);
-        return true;
+    }
+
+    /// <summary>Pack screen coords into <c>WM_MOUSEWHEEL</c> LPARAM.</summary>
+    internal static IntPtr PackWheelLParam(int physicalX, int physicalY)
+    {
+#pragma warning disable CA2020 // WM_MOUSEWHEEL packs coords into LPARAM bits.
+        return unchecked((IntPtr)((uint)(((physicalY & 0xFFFF) << 16) | (physicalX & 0xFFFF))));
+#pragma warning restore CA2020
+    }
+
+    /// <summary>Pack signed wheel delta for <c>MOUSEINPUT.mouseData</c> with <c>MOUSEEVENTF_WHEEL</c>.</summary>
+    internal static uint PackSendInputWheelData(int delta)
+        => unchecked((uint)delta);
+
+    /// <summary>Inject one wheel tick via <c>SendInput</c>. Returns false when the API reports no events.</summary>
+    internal static bool TrySendInputWheel(int delta)
+    {
+        var input = new Win32.INPUT
+        {
+            Type = Win32.InputMouse,
+            U = new Win32.INPUTUNION
+            {
+                Mi = new Win32.MOUSEINPUT
+                {
+                    Dx = 0,
+                    Dy = 0,
+                    MouseData = PackSendInputWheelData(delta),
+                    DwFlags = Win32.MouseEventFWheel,
+                    Time = 0,
+                    DwExtraInfo = IntPtr.Zero,
+                },
+            },
+        };
+
+        uint sent = Win32.SendInput(1, new[] { input }, Marshal.SizeOf<Win32.INPUT>());
+        return sent == 1;
+    }
+
+    private static string DescribeHwndClass(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return "(none)";
+        }
+
+        var sb = new StringBuilder(256);
+        int n = Win32.GetClassName(hwnd, sb, sb.Capacity);
+        return n > 0 ? sb.ToString() : $"hwnd=0x{hwnd.ToInt64():X}";
     }
 
     /// <summary>
