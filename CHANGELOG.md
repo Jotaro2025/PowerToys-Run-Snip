@@ -14,6 +14,8 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 修复 / Fixed
 
+- 滚动截屏：SendInput 期间临时 WS_EX_TRANSPARENT 让滚轮命中 Edge；AttachThreadInput/SetForegroundWindow 激活目标；PostMessage 辅投；延长 settle；打孔前 Opacity+Render flush 并在 Begin 后复打孔 — Make SendInput hit Edge via temporary WS_EX_TRANSPARENT; activate underlay; PostMessage nudge; longer settle; anti-flash Opacity/Render + re-hole (@Jotaro2025)
+
 - 滚动截屏：首轮左键聚焦 + 会话内光标保持选区中心（避免立刻还原导致 Edge 不滚）；放宽 duplicate auto-stop（阈值 4、至少 3 次成功滚轮）；StartScrollCapture 隐藏冻结截图再打孔，消除白闪 — Edge focus click + hold cursor; soften duplicate stop; hide frozen screenshot before hole to avoid white flash (@Jotaro2025)
 
 - 滚动截屏对 Chromium/Edge：`SendMessage(WM_MOUSEWHEEL)` 虽返回 0 但页面不滚 → 相同 tile 立刻 auto-stop；改为优先 `SendInput(MOUSEEVENTF_WHEEL)`（选区 hole 内短暂移入光标后还原），失败再回退 SendMessage；保留 #84 下窗解析 — Prefer SendInput wheel so Edge/Chromium scroll; SendMessage fallback; keep underlay resolve from #84 (@Jotaro2025)

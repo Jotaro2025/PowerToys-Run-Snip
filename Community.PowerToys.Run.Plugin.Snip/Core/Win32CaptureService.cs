@@ -276,7 +276,7 @@ public sealed class Win32CaptureService : ICaptureService
     }
 
     /// <summary>Settle delay after SetCursorPos / focus click before wheel (Chromium hit-test).</summary>
-    internal const int ScrollPointerSettleMs = 40;
+    internal const int ScrollPointerSettleMs = 80;
 
     /// <summary>Expected <c>sizeof(INPUT)</c>: 40 on x64, 28 on x86.</summary>
     internal static int ExpectedSendInputStructSize
@@ -303,9 +303,16 @@ public sealed class Win32CaptureService : ICaptureService
     /// <summary>
     /// Move the cursor to the selection center and keep it there until
     /// <see cref="EndScrollPointerHold"/>. Optionally injects a left click so
-    /// Chromium/Edge take focus before the first wheel.
+    /// Chromium/Edge take focus before the first wheel. When
+    /// <paramref name="skipOverlayHwnd"/> is set, briefly marks the overlay
+    /// <c>WS_EX_TRANSPARENT</c> for the click so hit-testing reaches the underlay
+    /// even if <c>SetWindowRgn</c> hole hit-test is incomplete.
     /// </summary>
-    public static void BeginScrollPointerHold(int physicalX, int physicalY, bool injectFocusClick = true)
+    public static void BeginScrollPointerHold(
+        int physicalX,
+        int physicalY,
+        bool injectFocusClick = true,
+        IntPtr skipOverlayHwnd = default)
     {
         lock (ScrollPointerLock)
         {
@@ -320,6 +327,10 @@ public sealed class Win32CaptureService : ICaptureService
         _ = Win32.SetCursorPos(physicalX, physicalY);
         Thread.Sleep(ScrollPointerSettleMs);
 
+        var pt = new Win32.POINT { X = physicalX, Y = physicalY };
+        IntPtr target = ResolveScrollTargetAt(pt, skipOverlayHwnd);
+        _ = TryActivateScrollTarget(target);
+
         if (injectFocusClick)
         {
             bool clicked;
@@ -332,12 +343,22 @@ public sealed class Win32CaptureService : ICaptureService
                 }
             }
 
-            if (clicked && TrySendInputFocusClick())
+            if (clicked)
             {
-                Log.Info(
-                    $"Snip scroll focus click via SendInput at ({physicalX},{physicalY})",
-                    typeof(Win32CaptureService));
-                Thread.Sleep(ScrollPointerSettleMs);
+                bool overlayCovers = IsOverlayCoveringPoint(pt, skipOverlayHwnd);
+                using (TemporaryOverlayTransparent(skipOverlayHwnd, force: overlayCovers || skipOverlayHwnd != IntPtr.Zero))
+                {
+                    _ = Win32.SetCursorPos(physicalX, physicalY);
+                    Thread.Sleep(ScrollPointerSettleMs / 2);
+                    if (TrySendInputFocusClick())
+                    {
+                        Log.Info(
+                            $"Snip scroll focus click via SendInput at ({physicalX},{physicalY}) overlayCovers={overlayCovers} target={DescribeHwndClass(target)}",
+                            typeof(Win32CaptureService));
+                        Thread.Sleep(ScrollPointerSettleMs);
+                        _ = TryActivateScrollTarget(target);
+                    }
+                }
             }
         }
     }
@@ -369,10 +390,11 @@ public sealed class Win32CaptureService : ICaptureService
 
     /// <summary>
     /// Deliver a mouse wheel tick at a screen point under the selection hole.
-    /// Prefers <c>SendInput(MOUSEEVENTF_WHEEL)</c> (Chromium/Edge accept real input;
-    /// <c>SendMessage(WM_MOUSEWHEEL)</c> alone often returns 0 with no scroll). Falls back
-    /// to SendMessage when SendInput fails. When a scroll pointer hold is active the cursor
-    /// stays at the target; otherwise it is restored after the wheel (legacy one-shot path).
+    /// Prefers <c>SendInput(MOUSEEVENTF_WHEEL)</c> while the overlay is briefly
+    /// <c>WS_EX_TRANSPARENT</c> so the OS hit-tests Edge/Chromium (hole alone is
+    /// often insufficient for Topmost WPF). Activates the underlay, then
+    /// <c>PostMessage(WM_MOUSEWHEEL)</c> as a secondary nudge. Falls back to
+    /// SendMessage when SendInput fails.
     /// </summary>
     public static bool TrySendWheelAt(
         int physicalX,
@@ -423,30 +445,47 @@ public sealed class Win32CaptureService : ICaptureService
         // Chromium often ignores a wheel that arrives before hit-testing settles.
         Thread.Sleep(ScrollPointerSettleMs);
 
+        bool overlayCovers = IsOverlayCoveringPoint(pt, skipOverlayHwnd);
+        _ = TryActivateScrollTarget(target);
+
         try
         {
-            if (TrySendInputWheel(delta))
+            using (TemporaryOverlayTransparent(skipOverlayHwnd, force: skipOverlayHwnd != IntPtr.Zero))
             {
-                Log.Info(
-                    $"Snip scroll wheel via SendInput at ({physicalX},{physicalY}) delta={delta} target={targetClass} pid={targetPid}",
-                    typeof(Win32CaptureService));
-                return true;
+                _ = Win32.SetCursorPos(physicalX, physicalY);
+                Thread.Sleep(ScrollPointerSettleMs / 4);
+
+                if (TrySendInputWheel(delta))
+                {
+                    // Real input first; PostMessage is a secondary nudge after focus.
+                    if (target != IntPtr.Zero)
+                    {
+                        IntPtr wParam = PackWheelWParam(delta);
+                        IntPtr lParam = PackWheelLParam(physicalX, physicalY);
+                        _ = Win32.PostMessage(target, Win32.WmMouseWheel, wParam, lParam);
+                    }
+
+                    Log.Info(
+                        $"Snip scroll wheel via SendInput at ({physicalX},{physicalY}) delta={delta} target={targetClass} pid={targetPid} overlayCovers={overlayCovers}",
+                        typeof(Win32CaptureService));
+                    return true;
+                }
             }
 
             int sendInputErr = Marshal.GetLastWin32Error();
             if (target == IntPtr.Zero)
             {
                 Log.Warn(
-                    $"Snip scroll SendInput failed (err={sendInputErr}) and no underlay HWND at ({physicalX},{physicalY})",
+                    $"Snip scroll SendInput failed (err={sendInputErr}) and no underlay HWND at ({physicalX},{physicalY}) overlayCovers={overlayCovers}",
                     typeof(Win32CaptureService));
                 return false;
             }
 
-            IntPtr wParam = PackWheelWParam(delta);
-            IntPtr lParam = PackWheelLParam(physicalX, physicalY);
-            _ = Win32.SendMessage(target, Win32.WmMouseWheel, wParam, lParam);
+            IntPtr wParamFb = PackWheelWParam(delta);
+            IntPtr lParamFb = PackWheelLParam(physicalX, physicalY);
+            _ = Win32.SendMessage(target, Win32.WmMouseWheel, wParamFb, lParamFb);
             Log.Warn(
-                $"Snip scroll wheel fallback SendMessage at ({physicalX},{physicalY}) delta={delta} target={targetClass} pid={targetPid} (SendInput err={sendInputErr})",
+                $"Snip scroll wheel fallback SendMessage at ({physicalX},{physicalY}) delta={delta} target={targetClass} pid={targetPid} overlayCovers={overlayCovers} (SendInput err={sendInputErr})",
                 typeof(Win32CaptureService));
             return true;
         }
@@ -455,6 +494,133 @@ public sealed class Win32CaptureService : ICaptureService
             if (moved && !holding)
             {
                 _ = Win32.SetCursorPos(saved.X, saved.Y);
+            }
+        }
+    }
+
+    /// <summary>
+    /// AttachThreadInput + BringWindowToTop + SetForegroundWindow so Chromium
+    /// accepts the following wheel (foreground-lock safe best-effort).
+    /// </summary>
+    internal static bool TryActivateScrollTarget(IntPtr hwnd)
+    {
+        if (hwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr root = Win32.GetAncestor(hwnd, Win32.GaRoot);
+        if (root == IntPtr.Zero)
+        {
+            root = hwnd;
+        }
+
+        IntPtr foreground = Win32.GetForegroundWindow();
+        if (foreground == root)
+        {
+            return true;
+        }
+
+        uint ourTid = Win32.GetCurrentThreadId();
+        uint fgTid = 0;
+        if (foreground != IntPtr.Zero)
+        {
+            fgTid = Win32.GetWindowThreadProcessId(foreground, out _);
+        }
+
+        uint targetTid = Win32.GetWindowThreadProcessId(root, out _);
+        bool attachedFg = false;
+        bool attachedTarget = false;
+        try
+        {
+            if (fgTid != 0 && fgTid != ourTid)
+            {
+                attachedFg = Win32.AttachThreadInput(ourTid, fgTid, true);
+            }
+
+            if (targetTid != 0 && targetTid != ourTid)
+            {
+                attachedTarget = Win32.AttachThreadInput(ourTid, targetTid, true);
+            }
+
+            _ = Win32.BringWindowToTop(root);
+            bool ok = Win32.SetForegroundWindow(root);
+            if (!ok)
+            {
+                Log.Warn(
+                    $"Snip scroll SetForegroundWindow failed for {DescribeHwndClass(root)} (err={Marshal.GetLastWin32Error()})",
+                    typeof(Win32CaptureService));
+            }
+
+            return ok;
+        }
+        finally
+        {
+            if (attachedTarget)
+            {
+                _ = Win32.AttachThreadInput(ourTid, targetTid, false);
+            }
+
+            if (attachedFg)
+            {
+                _ = Win32.AttachThreadInput(ourTid, fgTid, false);
+            }
+        }
+    }
+
+    /// <summary>True when <see cref="Win32.WindowFromPoint"/> hits the snip overlay at <paramref name="pt"/>.</summary>
+    internal static bool IsOverlayCoveringPoint(Win32.POINT pt, IntPtr skipOverlayHwnd)
+    {
+        if (skipOverlayHwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        IntPtr hit = Win32.WindowFromPoint(pt);
+        return IsOwnedByOverlay(hit, skipOverlayHwnd);
+    }
+
+    /// <summary>
+    /// Briefly OR <c>WS_EX_TRANSPARENT</c> onto the overlay so SendInput hit-tests
+    /// the underlay. No-op when <paramref name="overlayHwnd"/> is zero or <paramref name="force"/> is false.
+    /// </summary>
+    private static TemporaryStyleScope TemporaryOverlayTransparent(IntPtr overlayHwnd, bool force)
+    {
+        if (!force || overlayHwnd == IntPtr.Zero)
+        {
+            return TemporaryStyleScope.None;
+        }
+
+        IntPtr prev = Win32.GetWindowLongPtr(overlayHwnd, Win32.GwlExStyle);
+#pragma warning disable CA2020 // OR of style bits into IntPtr; same pattern as WM_MOUSEWHEEL packing.
+        _ = Win32.SetWindowLongPtr(
+            overlayHwnd,
+            Win32.GwlExStyle,
+            unchecked((IntPtr)(prev.ToInt64() | Win32.WsExTransparent)));
+#pragma warning restore CA2020
+        return new TemporaryStyleScope(overlayHwnd, prev);
+    }
+
+    private readonly struct TemporaryStyleScope : IDisposable
+    {
+        private readonly IntPtr _hwnd;
+        private readonly IntPtr _prev;
+        private readonly bool _active;
+
+        public static TemporaryStyleScope None => default;
+
+        public TemporaryStyleScope(IntPtr hwnd, IntPtr prev)
+        {
+            _hwnd = hwnd;
+            _prev = prev;
+            _active = hwnd != IntPtr.Zero;
+        }
+
+        public void Dispose()
+        {
+            if (_active)
+            {
+                _ = Win32.SetWindowLongPtr(_hwnd, Win32.GwlExStyle, _prev);
             }
         }
     }

@@ -749,11 +749,17 @@ public sealed class SnipWindow : Window
         _toolbar.IsHitTestVisible = true;
         _adorner.IsVisible = false;
         _adorner.UpdateLayout();
+
+        // Opacity+Collapsed before hole: one layout/render pass so DWM never composites
+        // the frozen ImageSource into the punched region (white flash).
+        _screenshotImage.Opacity = 0;
         _screenshotImage.Visibility = Visibility.Collapsed;
         UpdateLayout();
+        Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
 
         if (!ApplyScrollCaptureHole())
         {
+            _screenshotImage.Opacity = 1;
             _screenshotImage.Visibility = Visibility.Visible;
             Log.Warn(
                 "Snip scroll: selection hole not applied (full-client or invalid); showing screenshot again; wheel uses Z-order underlay",
@@ -761,6 +767,9 @@ public sealed class SnipWindow : Window
         }
 
         _scrollController.Begin();
+
+        // ShowOverlay may trigger another layout; re-apply hole so hit-test region stays punched.
+        _ = ApplyScrollCaptureHole();
     }
 
     private bool ApplyScrollCaptureHole()
@@ -906,6 +915,7 @@ public sealed class SnipWindow : Window
                 {
                     _screenshotImage.Source = BitmapPreview.ForOverlay(_source);
                     _annoCanvas.SourceBitmap = _source;
+                    _screenshotImage.Opacity = 1;
                     _screenshotImage.Visibility = Visibility.Visible;
                 }
 
@@ -997,6 +1007,7 @@ public sealed class SnipWindow : Window
         {
             _screenshotImage.Source = BitmapPreview.ForOverlay(_source);
             _annoCanvas.SourceBitmap = _source;
+            _screenshotImage.Opacity = 1;
             _screenshotImage.Visibility = Visibility.Visible;
         }
 
