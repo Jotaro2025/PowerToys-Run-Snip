@@ -22,10 +22,13 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 - 设置页界面语言切换（跟随系统 / English / 简体中文） — UI language switch in settings (#38, @Jotaro2025)
 - 截屏覆盖层右键取消（等同 Esc） — Right-click cancels the overlay (#40, @Jotaro2025)
 - 译图忙态取消按钮 — Cancel button while translating an image (#47, @Jotaro2025)
+- Windows.Media.Ocr 备用 OCR 引擎与引擎设置（自动 / 微信 / Windows），ARM64 可用文字提取与译图 — Windows OCR fallback engine and OCR engine setting, enabling OCR on ARM64 (#63, @Jotaro2025)
+- 多显示器跨屏框选：按虚拟桌面捕获，混合 DPI 统一换算 — Cross-monitor selection with mixed-DPI support (#64, @Jotaro2025)
 
 ### 变更 / Changed
 
 - 图片翻译 UX：隐藏 OCR 列表、处理动画、仅展示成品图 — Image-translate UX shows only the finished image (#42, @Jotaro2025)
+- HTTP API Key 改用 DPAPI（当前用户）加密存储，旧明文自动迁移 — HTTP API key stored with DPAPI, plaintext migrated automatically (#62, @Jotaro2025)
 
 ### 性能 / Performance
 
@@ -40,6 +43,7 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 - slim 包 OCR / 翻译提示框被 Topmost 遮挡导致「无响应」 — Prompts hidden behind the topmost overlay (#39, @Jotaro2025)
 - HyMT Dispose 先取消推理再限时等待，避免卸载时卡死 — HyMT dispose no longer hangs (#55, @Jotaro2025)
 - 原先被吞掉的异常改为写入插件日志 — Swallowed exceptions are now logged (#54, @Jotaro2025)
+- OCR 组件包（wechatocr.1.0.5.nupkg）下载校验 SHA-256，不匹配即拒绝 — SHA-256 check for the OCR package download (#61, @Jotaro2025)
 
 ### 测试 / Tests
 
@@ -49,6 +53,8 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 ### CI / 发布 / Release
 
 - CI 警告即错误（含代码风格），上传 Release zip 与测试结果 — Warnings-as-errors CI, release zip and test-result artifacts (#57, @Jotaro2025)
+- 版本号升至 1.4.0 并新增 CHANGELOG — Bump to 1.4.0 and add this changelog (#60, @Jotaro2025)
+- DLL 版本取自 plugin.json；修正 .gitignore；验收清单补充安装程序 — Assembly version from plugin.json, .gitignore fix, installer checklist (#59, @Jotaro2025)
 
 ### 文档 / Docs
 
