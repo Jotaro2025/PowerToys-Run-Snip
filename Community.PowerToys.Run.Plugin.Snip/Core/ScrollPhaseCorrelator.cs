@@ -6,6 +6,7 @@
 #pragma warning disable SA1117, SA1214, SA1316, SA1407, SA1503, SA1508, SA1512, SA1513, SA1515, SA1516, SA1518, SA1519
 
 using System;
+using System.Buffers;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Core;
 
@@ -47,98 +48,126 @@ internal static class ScrollPhaseCorrelator
         int fftCols = NextPow2(sw * 2);
         int n = fftRows * fftCols;
 
-        var a = new double[n];
-        var b = new double[n];
-        FillHorizontalEdge(prevBase, prevStride, prevH, width, step, a, fftCols, sh, sw);
-        FillHorizontalEdge(nextBase, nextStride, nextH, width, step, b, fftCols, sh, sw);
-        NormalizeZeroMeanInPlace(a, sh, sw, fftCols);
-        NormalizeZeroMeanInPlace(b, sh, sw, fftCols);
-        ApplyHannInPlace(a, sh, sw, fftRows, fftCols);
-        ApplyHannInPlace(b, sh, sw, fftRows, fftCols);
-
-        var surface = PhaseCorrelateSurface(a, b, fftRows, fftCols);
-
-        int minRow = Math.Max(1, (minDh + step - 1) / step);
-        int maxRow = Math.Min(sh - 1, maxDh / step);
-        if (scrollHintPx > 0)
+        double[] a = ArrayPool<double>.Shared.Rent(n);
+        double[] b = ArrayPool<double>.Shared.Rent(n);
+        ComplexF[] surface = ArrayPool<ComplexF>.Shared.Rent(n);
+        try
         {
-            int slack = Math.Max(12, (int)(scrollHintPx * 0.35 / step));
-            int hintRow = scrollHintPx / step;
-            minRow = Math.Max(minRow, hintRow - slack);
-            maxRow = Math.Min(maxRow, hintRow + slack);
+            a.AsSpan(0, n).Clear();
+            b.AsSpan(0, n).Clear();
+            FillHorizontalEdge(prevBase, prevStride, prevH, width, step, a, fftCols, sh, sw);
+            FillHorizontalEdge(nextBase, nextStride, nextH, width, step, b, fftCols, sh, sw);
+            NormalizeZeroMeanInPlace(a, sh, sw, fftCols);
+            NormalizeZeroMeanInPlace(b, sh, sw, fftCols);
+            ApplyHannInPlace(a, sh, sw, fftRows, fftCols);
+            ApplyHannInPlace(b, sh, sw, fftRows, fftCols);
+
+            PhaseCorrelateSurfaceInto(a.AsSpan(0, n), b.AsSpan(0, n), surface.AsSpan(0, n), fftRows, fftCols);
+
+            int minRow = Math.Max(1, (minDh + step - 1) / step);
+            int maxRow = Math.Min(sh - 1, maxDh / step);
+            if (scrollHintPx > 0)
+            {
+                int slack = Math.Max(12, (int)(scrollHintPx * 0.35 / step));
+                int hintRow = scrollHintPx / step;
+                minRow = Math.Max(minRow, hintRow - slack);
+                maxRow = Math.Min(maxRow, hintRow + slack);
+            }
+            if (minRow > maxRow)
+                return default;
+
+            FindPeak(surface.AsSpan(0, n), fftRows, fftCols, minRow, maxRow, out int peakRow, out int peakCol, out double peakVal);
+            if (peakVal < MinPeakResponse || Math.Abs(peakCol) > MaxHorizontalPeakPx)
+                return default;
+
+            int dh = peakRow * step;
+            if (dh < minDh || dh > maxDh)
+                return default;
+
+            return new PhaseEstimate { Dh = dh, Peak = peakVal, Success = true };
         }
-        if (minRow > maxRow)
-            return default;
-
-        FindPeak(surface, fftRows, fftCols, minRow, maxRow, out int peakRow, out int peakCol, out double peakVal);
-        if (peakVal < MinPeakResponse || Math.Abs(peakCol) > MaxHorizontalPeakPx)
-            return default;
-
-        int dh = peakRow * step;
-        if (dh < minDh || dh > maxDh)
-            return default;
-
-        return new PhaseEstimate { Dh = dh, Peak = peakVal, Success = true };
+        finally
+        {
+            ArrayPool<ComplexF>.Shared.Return(surface);
+            ArrayPool<double>.Shared.Return(b);
+            ArrayPool<double>.Shared.Return(a);
+        }
     }
 
-    private static ComplexF[] PhaseCorrelateSurface(
-        double[] a, double[] b, int fftRows, int fftCols)
+    private static void PhaseCorrelateSurfaceInto(
+        ReadOnlySpan<double> a,
+        ReadOnlySpan<double> b,
+        Span<ComplexF> cross,
+        int fftRows,
+        int fftCols)
     {
         int n = fftRows * fftCols;
-        var fa = new ComplexF[n];
-        var fb = new ComplexF[n];
-        for (int i = 0; i < n; i++)
+        ComplexF[] faArr = ArrayPool<ComplexF>.Shared.Rent(n);
+        ComplexF[] fbArr = ArrayPool<ComplexF>.Shared.Rent(n);
+        try
         {
-            fa[i] = new ComplexF((float)a[i], 0);
-            fb[i] = new ComplexF((float)b[i], 0);
+            Span<ComplexF> fa = faArr.AsSpan(0, n);
+            Span<ComplexF> fb = fbArr.AsSpan(0, n);
+            for (int i = 0; i < n; i++)
+            {
+                fa[i] = new ComplexF((float)a[i], 0);
+                fb[i] = new ComplexF((float)b[i], 0);
+            }
+
+            FourierTransform2D(fa, fftRows, fftCols, inverse: false);
+            FourierTransform2D(fb, fftRows, fftCols, inverse: false);
+
+            for (int i = 0; i < n; i++)
+            {
+                var c = fa[i] * fb[i].Conjugate;
+                float mag = c.Magnitude;
+                cross[i] = mag > 1e-6f ? c / mag : ComplexF.Zero;
+            }
+
+            FourierTransform2D(cross, fftRows, fftCols, inverse: true);
         }
-
-        FourierTransform2D(fa, fftRows, fftCols, inverse: false);
-        FourierTransform2D(fb, fftRows, fftCols, inverse: false);
-
-        var cross = new ComplexF[n];
-        for (int i = 0; i < n; i++)
+        finally
         {
-            var c = fa[i] * fb[i].Conjugate;
-            float mag = c.Magnitude;
-            cross[i] = mag > 1e-6f ? c / mag : ComplexF.Zero;
+            ArrayPool<ComplexF>.Shared.Return(fbArr);
+            ArrayPool<ComplexF>.Shared.Return(faArr);
         }
-
-        FourierTransform2D(cross, fftRows, fftCols, inverse: true);
-        return cross;
     }
 
-    private static void FourierTransform2D(ComplexF[] data, int rows, int cols, bool inverse)
+    private static void FourierTransform2D(Span<ComplexF> data, int rows, int cols, bool inverse)
     {
-        var rowBuf = new ComplexF[cols];
         for (int r = 0; r < rows; r++)
         {
-            for (int c = 0; c < cols; c++)
-                rowBuf[c] = data[r * cols + c];
+            Span<ComplexF> rowSpan = data.Slice(r * cols, cols);
             if (inverse)
-                Radix2Fft.Inverse(rowBuf);
+                Radix2Fft.Inverse(rowSpan);
             else
-                Radix2Fft.Forward(rowBuf);
-            for (int c = 0; c < cols; c++)
-                data[r * cols + c] = rowBuf[c];
+                Radix2Fft.Forward(rowSpan);
         }
 
-        var colBuf = new ComplexF[rows];
-        for (int c = 0; c < cols; c++)
+        ComplexF[] colArr = ArrayPool<ComplexF>.Shared.Rent(rows);
+        try
         {
-            for (int r = 0; r < rows; r++)
-                colBuf[r] = data[r * cols + c];
-            if (inverse)
-                Radix2Fft.Inverse(colBuf);
-            else
-                Radix2Fft.Forward(colBuf);
-            for (int r = 0; r < rows; r++)
-                data[r * cols + c] = colBuf[r];
+            Span<ComplexF> colBuf = colArr.AsSpan(0, rows);
+            for (int c = 0; c < cols; c++)
+            {
+                for (int r = 0; r < rows; r++)
+                    colBuf[r] = data[r * cols + c];
+                if (inverse)
+                    Radix2Fft.Inverse(colBuf);
+                else
+                    Radix2Fft.Forward(colBuf);
+                for (int r = 0; r < rows; r++)
+                    data[r * cols + c] = colBuf[r];
+            }
+        }
+        finally
+        {
+            ArrayPool<ComplexF>.Shared.Return(colArr);
         }
     }
 
     private static void FindPeak(
-        ComplexF[] surface, int fftRows, int fftCols,
+        ReadOnlySpan<ComplexF> surface, int fftRows, int fftCols,
         int minRow, int maxRow,
         out int peakRow, out int peakCol, out double peakVal)
     {

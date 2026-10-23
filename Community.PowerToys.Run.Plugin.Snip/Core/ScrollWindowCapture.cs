@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Buffers;
 using System.Runtime.InteropServices;
 
 using Wox.Plugin.Logger;
@@ -90,7 +91,7 @@ internal static class ScrollWindowCapture
         return false;
     }
 
-    /// <summary>Pure BGRA crop (tests + WinRT/PrintWindow).</summary>
+    /// <summary>Pure BGRA crop into a newly allocated buffer (unit tests).</summary>
     internal static byte[] CropBgraBuffer(
         ReadOnlySpan<byte> src,
         int srcWidth,
@@ -101,22 +102,39 @@ internal static class ScrollWindowCapture
         int cropW,
         int cropH)
     {
-        if (cropX < 0 || cropY < 0 || cropW <= 0 || cropH <= 0
-            || cropX + cropW > srcWidth || cropY + cropH > srcHeight)
-        {
-            throw new ArgumentOutOfRangeException(nameof(cropX), "Crop rect outside source.");
-        }
-
-        int dstStride = CaptureBuffers.BgraStride(cropW);
-        int dstBytes = CaptureBuffers.BgraByteCount(cropW, cropH);
+        int dstBytes = ValidateAndComputeCropBytes(srcWidth, srcHeight, cropX, cropY, cropW, cropH);
         var dst = new byte[dstBytes];
-        for (int y = 0; y < cropH; y++)
-        {
-            var row = src.Slice(((cropY + y) * srcStride) + (cropX * 4), cropW * 4);
-            row.CopyTo(dst.AsSpan(y * dstStride, cropW * 4));
-        }
-
+        CropBgraBufferInto(src, srcStride, cropX, cropY, cropW, cropH, dst.AsSpan(0, dstBytes));
         return dst;
+    }
+
+    /// <summary>
+    /// Rents a destination buffer from <see cref="ArrayPool{T}.Shared"/> and copies the cropped
+    /// BGRA rows into the first <paramref name="dstBytes"/> bytes.
+    /// </summary>
+    internal static byte[] RentCropBgraBuffer(
+        ReadOnlySpan<byte> src,
+        int srcWidth,
+        int srcHeight,
+        int srcStride,
+        int cropX,
+        int cropY,
+        int cropW,
+        int cropH,
+        out int dstBytes)
+    {
+        dstBytes = ValidateAndComputeCropBytes(srcWidth, srcHeight, cropX, cropY, cropW, cropH);
+        byte[] dst = ArrayPool<byte>.Shared.Rent(dstBytes);
+        try
+        {
+            CropBgraBufferInto(src, srcStride, cropX, cropY, cropW, cropH, dst.AsSpan(0, dstBytes));
+            return dst;
+        }
+        catch
+        {
+            ArrayPool<byte>.Shared.Return(dst);
+            throw;
+        }
     }
 
     /// <summary>True when a buffer looks like a failed PrintWindow (nearly all black).</summary>
@@ -149,6 +167,41 @@ internal static class ScrollWindowCapture
         return samples == 0 || nonBlack == 0;
     }
 
+    private static int ValidateAndComputeCropBytes(
+        int srcWidth,
+        int srcHeight,
+        int cropX,
+        int cropY,
+        int cropW,
+        int cropH)
+    {
+        if (cropX < 0 || cropY < 0 || cropW <= 0 || cropH <= 0
+            || cropX + cropW > srcWidth || cropY + cropH > srcHeight)
+        {
+            throw new ArgumentOutOfRangeException(nameof(cropX), "Crop rect outside source.");
+        }
+
+        return CaptureBuffers.BgraByteCount(cropW, cropH);
+    }
+
+    private static void CropBgraBufferInto(
+        ReadOnlySpan<byte> src,
+        int srcStride,
+        int cropX,
+        int cropY,
+        int cropW,
+        int cropH,
+        Span<byte> dst)
+    {
+        int dstStride = CaptureBuffers.BgraStride(cropW);
+        int rowBytes = cropW * 4;
+        for (int y = 0; y < cropH; y++)
+        {
+            var row = src.Slice(((cropY + y) * srcStride) + (cropX * 4), rowBytes);
+            row.CopyTo(dst.Slice(y * dstStride, rowBytes));
+        }
+    }
+
     private static bool TryCaptureViaWinRt(
         IntPtr windowHwnd,
         int cropX,
@@ -164,6 +217,7 @@ internal static class ScrollWindowCapture
             return false;
         }
 
+        byte[] crop = null;
         try
         {
             if (full.Width < cropX + width || full.Height < cropY + height)
@@ -176,7 +230,8 @@ internal static class ScrollWindowCapture
 
             using ScrollTilePixels owned = full.ToOwnedPixels();
             full = null; // disposed by ToOwnedPixels
-            byte[] crop = CropBgraBuffer(
+            int dstStride = CaptureBuffers.BgraStride(width);
+            crop = RentCropBgraBuffer(
                 owned.Pixels,
                 owned.Width,
                 owned.Height,
@@ -184,14 +239,16 @@ internal static class ScrollWindowCapture
                 cropX,
                 cropY,
                 width,
-                height);
-            if (LooksBlankBgra(crop, CaptureBuffers.BgraStride(width)))
+                height,
+                out int dstBytes);
+            if (LooksBlankBgra(crop.AsSpan(0, dstBytes), dstStride))
             {
                 Log.Info("Snip scroll WinRT window crop looked blank — reject", typeof(ScrollWindowCapture));
                 return false;
             }
 
-            frame = new CapturedFrame(crop, width, height, CaptureBuffers.BgraStride(width));
+            frame = new CapturedFrame(crop, width, height, dstStride, rentedFromPool: true);
+            crop = null; // ownership transferred to CapturedFrame
             Log.Info(
                 $"Snip scroll tile via WinRT CreateForWindow crop ({cropX},{cropY},{width}x{height})",
                 typeof(ScrollWindowCapture));
@@ -206,6 +263,11 @@ internal static class ScrollWindowCapture
         }
         finally
         {
+            if (crop != null)
+            {
+                ArrayPool<byte>.Shared.Return(crop);
+            }
+
             full?.Dispose();
         }
     }
@@ -230,6 +292,7 @@ internal static class ScrollWindowCapture
         IntPtr memDc = IntPtr.Zero;
         IntPtr dib = IntPtr.Zero;
         IntPtr old = IntPtr.Zero;
+        byte[] crop = null;
         try
         {
             memDc = Win32.CreateCompatibleDC(screenDc);
@@ -268,21 +331,35 @@ internal static class ScrollWindowCapture
 
             int srcStride = CaptureBuffers.BgraStride(winW);
             int srcBytes = CaptureBuffers.BgraByteCount(winW, winH);
-            byte[] fullBuf;
+            int dstStride = CaptureBuffers.BgraStride(width);
             unsafe
             {
-                fullBuf = new byte[srcBytes];
-                new ReadOnlySpan<byte>((void*)bits, srcBytes).CopyTo(fullBuf);
+                var srcSpan = new ReadOnlySpan<byte>((void*)bits, srcBytes);
+                if (LooksBlankBgra(srcSpan, srcStride))
+                {
+                    Log.Info("Snip scroll PrintWindow looked blank — reject", typeof(ScrollWindowCapture));
+                    return false;
+                }
+
+                crop = RentCropBgraBuffer(
+                    srcSpan,
+                    winW,
+                    winH,
+                    srcStride,
+                    cropX,
+                    cropY,
+                    width,
+                    height,
+                    out int dstBytes);
+                if (LooksBlankBgra(crop.AsSpan(0, dstBytes), dstStride))
+                {
+                    Log.Info("Snip scroll PrintWindow crop looked blank — reject", typeof(ScrollWindowCapture));
+                    return false;
+                }
             }
 
-            if (LooksBlankBgra(fullBuf, srcStride))
-            {
-                Log.Info("Snip scroll PrintWindow looked blank — reject", typeof(ScrollWindowCapture));
-                return false;
-            }
-
-            byte[] crop = CropBgraBuffer(fullBuf, winW, winH, srcStride, cropX, cropY, width, height);
-            frame = new CapturedFrame(crop, width, height, CaptureBuffers.BgraStride(width));
+            frame = new CapturedFrame(crop, width, height, dstStride, rentedFromPool: true);
+            crop = null; // ownership transferred to CapturedFrame
             Log.Info(
                 $"Snip scroll tile via PrintWindow crop ({cropX},{cropY},{width}x{height})",
                 typeof(ScrollWindowCapture));
@@ -297,6 +374,11 @@ internal static class ScrollWindowCapture
         }
         finally
         {
+            if (crop != null)
+            {
+                ArrayPool<byte>.Shared.Return(crop);
+            }
+
             if (old != IntPtr.Zero && memDc != IntPtr.Zero)
             {
                 _ = Win32.SelectObject(memDc, old);

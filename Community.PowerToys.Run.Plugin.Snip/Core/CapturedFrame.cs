@@ -95,6 +95,14 @@ public sealed class CapturedFrame : IDisposable
     public ScrollTilePixels ToOwnedPixels()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_bits == IntPtr.Zero && _pixels != null && _pixelsRentedFromPool)
+        {
+            byte[] pooled = _pixels;
+            _pixels = null; // transfer pool ownership to ScrollTilePixels before Dispose
+            Dispose();
+            return new ScrollTilePixels(pooled, Width, Height, Stride, rentedFromPool: true);
+        }
+
         int byteCount = CaptureBuffers.BgraByteCount(Width, Height);
         var buffer = System.Buffers.ArrayPool<byte>.Shared.Rent(byteCount);
         try
