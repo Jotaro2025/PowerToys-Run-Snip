@@ -7,12 +7,13 @@
 
 using System;
 using System.Collections.Generic;
-using System.Diagnostics;
 using System.Linq;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+
+using Community.PowerToys.Run.Plugin.Snip;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Core;
 
@@ -359,7 +360,7 @@ public static class ScrollStitcher
                     DestY = totalHeight,
                     Mode = mode,
                 };
-                Debug.WriteLine($"[stitch] tile {i}: full-duplicate — skipped");
+                SnipVerbose.Scroll($"[stitch] tile {i}: full-duplicate — skipped");
                 continue;
             }
 
@@ -368,7 +369,7 @@ public static class ScrollStitcher
             {
                 contributed = Math.Max(0, maxHeight - totalHeight);
                 truncated = true;
-                Debug.WriteLine($"[stitch] tile {i}: height cap {maxHeight}px reached — truncating");
+                SnipVerbose.Scroll($"[stitch] tile {i}: height cap {maxHeight}px reached — truncating");
             }
 
             offsets[i] = new StitchOffset
@@ -386,7 +387,7 @@ public static class ScrollStitcher
                 if (recentDh.Count > 6) recentDh.RemoveAt(0);
                 scrollHintPx = Median(recentDh);
             }
-            Debug.WriteLine($"[stitch] tile {i}: {relation} skip={offsets[i].TopSkip} contrib={contributed} mode={mode} totalH={totalHeight} hint={scrollHintPx}");
+            SnipVerbose.Scroll($"[stitch] tile {i}: {relation} skip={offsets[i].TopSkip} contrib={contributed} mode={mode} totalH={totalHeight} hint={scrollHintPx}");
         }
 
         return ComposeStitchedPixels(tiles, offsets, width, totalHeight, truncated);
@@ -627,7 +628,7 @@ public static class ScrollStitcher
 
         if (finals.relation == TileRelation.NoOverlap && scrollHintPx > 0)
         {
-            Debug.WriteLine(
+            SnipVerbose.Scroll(
                 $"[stitch] hint-fallback: dh={scrollHintPx} (avoid full-tile stack after weak match)");
             return (h - scrollHintPx, "hint-fallback", TileRelation.PartialOverlap);
         }
@@ -663,7 +664,7 @@ public static class ScrollStitcher
         if (candidates.Count >= maxDh - MinPartialOverlapPx)
             return result;
 
-        Debug.WriteLine($"[stitch] rescan full dh range (was {modeTag}, viable={IsViable(finals, effectiveHint)})");
+        SnipVerbose.Scroll($"[stitch] rescan full dh range (was {modeTag}, viable={IsViable(finals, effectiveHint)})");
         finals = ScoreCandidatesAdaptive(
             prevBase, prevStride, prevH, nextBase, nextStride, nextH,
             width, h, effectiveHint, BuildAllDhCandidates(maxDh), maxDh);
@@ -809,7 +810,7 @@ public static class ScrollStitcher
 
         if (maxEdgeText < softFloor && maxText < softFloor && maxEdgeSad < softFloor)
         {
-            Debug.WriteLine($"[stitch] no-overlap: text={maxText:F3} edgeSad={maxEdgeSad:F3} edgeText={maxEdgeText:F3}");
+            SnipVerbose.Scroll($"[stitch] no-overlap: text={maxText:F3} edgeSad={maxEdgeSad:F3} edgeText={maxEdgeText:F3}");
             return (0, "no-overlap", TileRelation.NoOverlap);
         }
 
@@ -826,11 +827,11 @@ public static class ScrollStitcher
             {
                 var softBest = ranked[0];
                 int softSkip = h - softBest.Dh;
-                Debug.WriteLine(
+                SnipVerbose.Scroll(
                     $"[stitch] partial-soft: dh={softBest.Dh} skip={softSkip} edgeText={softBest.EdgeText:F3} text={softBest.TextEdge:F3} hint={scrollHintPx} mode={modeTag}");
                 return (softSkip, modeTag + "-soft", TileRelation.PartialOverlap);
             }
-            Debug.WriteLine($"[stitch] no-overlap: floor={ratioFloor:F3} maxEdgeSad={maxEdgeSad:F3}");
+            SnipVerbose.Scroll($"[stitch] no-overlap: floor={ratioFloor:F3} maxEdgeSad={maxEdgeSad:F3}");
             return (0, "no-overlap", TileRelation.NoOverlap);
         }
 
@@ -856,7 +857,7 @@ public static class ScrollStitcher
 
         var best = viable.First(m => m.Dh == bestDh);
         int topSkip = h - bestDh;
-        Debug.WriteLine(
+        SnipVerbose.Scroll(
             $"[stitch] partial: dh={bestDh} skip={topSkip} edgeText={best.EdgeText:F3} text={best.TextEdge:F3} sad={best.EdgeSad:F3} raw={best.EdgeRaw:F3} hint={scrollHintPx} mode={modeTag}");
         return (topSkip, modeTag, TileRelation.PartialOverlap);
     }

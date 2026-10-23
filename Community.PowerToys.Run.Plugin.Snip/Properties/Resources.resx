@@ -548,6 +548,12 @@
   <data name="opt_check_updates_desc" xml:space="preserve">
     <value>When enabled, quietly asks GitHub Releases for a newer tag than plugin.json (default off). Needs a public repo.</value>
   </data>
+  <data name="opt_verbose_scroll_label" xml:space="preserve">
+    <value>Verbose scroll/stitch log</value>
+  </data>
+  <data name="opt_verbose_scroll_desc" xml:space="preserve">
+    <value>Off by default. When on, scroll-capture and stitch diagnostics go to the PowerToys plugin debug log (Log.Debug). Keeps Release quiet unless you opt in.</value>
+  </data>
   <data name="opt_ui_lang_label" xml:space="preserve">
     <value>UI language</value>
   </data>
