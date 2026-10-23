@@ -119,6 +119,9 @@ public sealed class SnipToolbar : Border
         var ocrBtn = AddIcon(actions, ToolIcons.Ocr, Properties.Resources.tip_ocr);
         ocrBtn.Click += (sender, e) => ExtractTextClicked?.Invoke(this, EventArgs.Empty);
         _hiddenDuringScroll.Add(ocrBtn);
+        var qrBtn = AddIcon(actions, ToolIcons.QrCode, Properties.Resources.toolbar_scan_qr);
+        qrBtn.Click += (sender, e) => ScanQrClicked?.Invoke(this, EventArgs.Empty);
+        _hiddenDuringScroll.Add(qrBtn);
         var trBtn = AddIcon(actions, ToolIcons.Translate, Properties.Resources.tip_translate);
         trBtn.Click += (sender, e) => TranslateImageClicked?.Invoke(this, EventArgs.Empty);
         _hiddenDuringScroll.Add(trBtn);
@@ -179,6 +182,8 @@ public sealed class SnipToolbar : Border
     public event EventHandler SaveClicked;
 
     public event EventHandler ExtractTextClicked;
+
+    public event EventHandler ScanQrClicked;
 
     public event EventHandler TranslateImageClicked;
 

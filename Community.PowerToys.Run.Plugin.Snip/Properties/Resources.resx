@@ -768,4 +768,16 @@
   <data name="tr_status_partial_fallback" xml:space="preserve">
     <value>Partially translated ({0}/{1} lines kept original text due to timeout/error)</value>
   </data>
+  <data name="toolbar_scan_qr" xml:space="preserve">
+    <value>Scan QR / Barcode</value>
+  </data>
+  <data name="qr_detected_prefix" xml:space="preserve">
+    <value>QR / Barcode: </value>
+  </data>
+  <data name="qr_copy" xml:space="preserve">
+    <value>Copy Code</value>
+  </data>
+  <data name="qr_open_url" xml:space="preserve">
+    <value>Open Link</value>
+  </data>
 </root>

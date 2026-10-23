@@ -768,4 +768,16 @@
   <data name="tr_status_partial_fallback" xml:space="preserve">
     <value>已完成部分翻译（{0}/{1} 行因超时或错误保留原文）</value>
   </data>
+  <data name="toolbar_scan_qr" xml:space="preserve">
+    <value>识别二维码 / 条形码</value>
+  </data>
+  <data name="qr_detected_prefix" xml:space="preserve">
+    <value>识别到二维码/条码：</value>
+  </data>
+  <data name="qr_copy" xml:space="preserve">
+    <value>复制码内容</value>
+  </data>
+  <data name="qr_open_url" xml:space="preserve">
+    <value>打开链接</value>
+  </data>
 </root>

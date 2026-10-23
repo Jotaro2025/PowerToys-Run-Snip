@@ -191,6 +191,7 @@ public sealed class SnipWindow : Window
         _toolbar.RedoClicked += (sender, e) => _annoCanvas.Redo();
         _toolbar.SaveClicked += async (sender, e) => await DoSaveAsync();
         _toolbar.ExtractTextClicked += async (sender, e) => await DoExtractTextAsync();
+        _toolbar.ScanQrClicked += async (sender, e) => await DoExtractTextAsync();
         _toolbar.TranslateImageClicked += async (sender, e) => await DoTranslateImageAsync();
         _toolbar.PinClicked += async (sender, e) => await DoPinAsync();
         _toolbar.CancelClicked += (sender, e) =>
