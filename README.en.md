@@ -183,6 +183,10 @@ Translation is **off** by default; pick one engine in settings:
 
 If misconfigured, “Image translate” shows a prompt and does not close the capture window.
 
+## winget (draft)
+
+[`winget/`](winget/) holds draft manifests for `Jotaro2025.PowerToysRunSnip` pointing at Release `Snip-Setup-<ver>-{x64,arm64}-slim.exe`. **Submit to [winget-pkgs](https://github.com/microsoft/winget-pkgs) only after assets exist and SHA256 values are filled**; see [`winget/README.md`](winget/README.md).
+
 ## Build & test
 
 Requires the .NET 10 SDK and an installed PowerToys (for `Wox.Plugin` etc.). For CI / no full install, use repo `build/PowerToysRefs` as `-p:PowerToysInstallDir=...` (see `.github/workflows/ci.yml`).

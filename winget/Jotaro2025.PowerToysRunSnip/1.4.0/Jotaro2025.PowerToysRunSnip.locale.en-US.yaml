@@ -1,0 +1,27 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.defaultLocale.1.6.0.schema.json
+PackageIdentifier: Jotaro2025.PowerToysRunSnip
+PackageVersion: 1.4.0
+PackageLocale: en-US
+Publisher: Jotaro2025
+PublisherUrl: https://github.com/Jotaro2025
+PublisherSupportUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip/issues
+Author: Jotaro2025
+PackageName: PowerToys Run Snip
+PackageUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip
+License: MIT
+LicenseUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip/blob/main/LICENSE
+Copyright: Copyright (c) Jotaro2025
+ShortDescription: Region screenshot, OCR and image translate plugin for PowerToys Run
+Description: |-
+  PowerToys Run plugin for region / window / full-screen capture with annotation,
+  Windows OCR / WeChat OCR, and image translation. Requires PowerToys 0.100+.
+  Default winget installers are the slim builds (OCR assets download on first use).
+Tags:
+  - powertoys
+  - run
+  - screenshot
+  - snip
+  - ocr
+ReleaseNotesUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip/releases/tag/v1.4.0
+ManifestType: defaultLocale
+ManifestVersion: 1.6.0
