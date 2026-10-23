@@ -58,6 +58,8 @@ public sealed class SnipWindow : Window
     private readonly System.Windows.Controls.TextBlock _magnifierColorText;
     private readonly System.Windows.Controls.TextBlock _magnifierHintText;
     private readonly System.Windows.Media.Imaging.WriteableBitmap _magnifierBitmap;
+    private readonly System.Windows.Shapes.Rectangle _snapPreviewRect;
+    private readonly System.Collections.Generic.IReadOnlyList<WindowSnapService.SnapCandidate> _windowCandidates;
     private readonly SnipSettings _settings;
     private readonly ICaptureService _captureService = CaptureFactory.Create();
 
@@ -74,6 +76,8 @@ public sealed class SnipWindow : Window
     private byte _lastSampledG;
     private byte _lastSampledB;
     private bool _hasSampledPixel;
+    private Rect? _hoveredSnapDipRect;
+    private Point _lastHoverDipPoint;
     private bool _disposed;
     private bool _exportBusy;
 
@@ -231,6 +235,19 @@ public sealed class SnipWindow : Window
 
         // Border + 8 resize handles are added directly to root so they sit
         // above AnnotationCanvas but do not block pointer events elsewhere.
+        // Snapshot visible desktop windows before our fullscreen overlay covers them.
+        _windowCandidates = WindowSnapService.CaptureTopLevelWindows(IntPtr.Zero);
+
+        _snapPreviewRect = new System.Windows.Shapes.Rectangle
+        {
+            Stroke = new SolidColorBrush(Color.FromRgb(0, 183, 255)),
+            StrokeThickness = 2,
+            IsHitTestVisible = false,
+            Visibility = Visibility.Collapsed,
+        };
+        _root.Children.Add(_snapPreviewRect);
+        Panel.SetZIndex(_snapPreviewRect, 15);
+
         _adorner = new SelectionAdorner(_root);
         _adorner.HandleDrag += OnHandleDrag;
 
@@ -330,6 +347,7 @@ public sealed class SnipWindow : Window
 
         // Tunnel so Esc closes immediately even when a child (e.g. inline TextBox) has focus.
         PreviewKeyDown += OnKeyDown;
+        PreviewKeyUp += OnKeyUp;
 
         // Right-click cancels the whole session (same as Esc / Cancel toolbar),
         // including mid-drag selection. Toolbar buttons only use left click.
@@ -561,11 +579,18 @@ public sealed class SnipWindow : Window
     {
         var p = e.GetPosition(_root);
         UpdateMagnifierAt(p);
+        _lastHoverDipPoint = p;
         if (!_dragCreating)
         {
+            if (!_hasSelection)
+            {
+                UpdateHoverWindowSnap(p);
+            }
+
             return;
         }
 
+        _hoveredSnapDipRect = null;
         _selection = NormalizeRect(_dragStartPoint, p);
         UpdateSelectionVisuals();
         UpdateMagnifierAt(p);
@@ -583,6 +608,17 @@ public sealed class SnipWindow : Window
         _inputCatcher.ReleaseMouseCapture();
         if (_selection.Width < 5 || _selection.Height < 5)
         {
+            if (_hoveredSnapDipRect is { Width: >= 5, Height: >= 5 } snapRect)
+            {
+                _selection = snapRect;
+                _hoveredSnapDipRect = null;
+                _hasSelection = true;
+                UpdateSelectionVisuals();
+                _annoCanvas.Focus();
+                e.Handled = true;
+                return;
+            }
+
             _selection = default;
             _hasSelection = false;
             UpdateSelectionVisuals();
@@ -680,8 +716,25 @@ public sealed class SnipWindow : Window
         }
         else
         {
-            _dimPath.Fill = _idleDimBrush;
-            _dimPath.Data = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
+            var outer = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
+            if (_hoveredSnapDipRect is { Width: >= 5, Height: >= 5 } snap)
+            {
+                _dimPath.Fill = _selectionDimBrush;
+                var inner = new RectangleGeometry(snap);
+                _dimPath.Data = new CombinedGeometry(GeometryCombineMode.Xor, outer, inner);
+                Canvas.SetLeft(_snapPreviewRect, snap.X);
+                Canvas.SetTop(_snapPreviewRect, snap.Y);
+                _snapPreviewRect.Width = snap.Width;
+                _snapPreviewRect.Height = snap.Height;
+                _snapPreviewRect.Visibility = Visibility.Visible;
+            }
+            else
+            {
+                _dimPath.Fill = _idleDimBrush;
+                _dimPath.Data = outer;
+                _snapPreviewRect.Visibility = Visibility.Collapsed;
+            }
+
             _dimPath.Visibility = Visibility.Visible;
             _annoCanvas.Visibility = Visibility.Collapsed;
             _toolbar.Visibility = Visibility.Collapsed;
@@ -690,6 +743,11 @@ public sealed class SnipWindow : Window
         if (_hasSelection && !_dragCreating && !_dragMovingHandle)
         {
             _magnifierHud.Visibility = Visibility.Collapsed;
+        }
+
+        if (ShouldShowSelectionVignette())
+        {
+            _snapPreviewRect.Visibility = Visibility.Collapsed;
         }
 
         _adorner.Selection = _selection;
@@ -801,6 +859,57 @@ public sealed class SnipWindow : Window
                 e.Handled = true;
             }
         }
+
+        if (!_hasSelection && !_dragCreating
+            && (e.Key == Key.Tab || e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl))
+        {
+            UpdateHoverWindowSnap(_lastHoverDipPoint);
+            if (e.Key == Key.Tab)
+            {
+                e.Handled = true;
+            }
+        }
+    }
+
+    private void OnKeyUp(object sender, KeyEventArgs e)
+    {
+        if (!_hasSelection && !_dragCreating
+            && (e.Key == Key.Tab || e.Key == Key.LeftCtrl || e.Key == Key.RightCtrl))
+        {
+            UpdateHoverWindowSnap(_lastHoverDipPoint);
+        }
+    }
+
+    private void UpdateHoverWindowSnap(Point dipPoint)
+    {
+        int screenX = _physicalBounds.X + (int)Math.Round(dipPoint.X * _dpiScale);
+        int screenY = _physicalBounds.Y + (int)Math.Round(dipPoint.Y * _dpiScale);
+
+        bool uiaSubElementMode = (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
+            || Keyboard.IsKeyDown(Key.Tab);
+
+        Int32Rect? targetScreenRect = null;
+        if (uiaSubElementMode
+            && WindowSnapService.TryFindSubElementBounds(
+                _windowCandidates,
+                TryGetHwnd(),
+                screenX,
+                screenY,
+                out Int32Rect subBounds))
+        {
+            targetScreenRect = subBounds;
+            _snapPreviewRect.Stroke = new SolidColorBrush(Color.FromRgb(72, 210, 110));
+        }
+        else if (WindowSnapService.FindHoveredWindow(_windowCandidates, screenX, screenY) is { } win)
+        {
+            targetScreenRect = win.ScreenBounds;
+            _snapPreviewRect.Stroke = new SolidColorBrush(Color.FromRgb(0, 183, 255));
+        }
+
+        _hoveredSnapDipRect = targetScreenRect.HasValue
+            ? WindowSnapService.ScreenRectToOverlayDip(targetScreenRect.Value, _physicalBounds, _logicalSize)
+            : null;
+        UpdateSelectionVisuals();
     }
 
     // -----------------------------------------------------------------------------------
