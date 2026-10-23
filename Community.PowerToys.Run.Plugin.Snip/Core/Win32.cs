@@ -407,4 +407,12 @@ internal static class Win32
 
     [DllImport(User32, EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
     public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
+    public const int VkEscape = 0x1B;
+    public const int VkSpace = 0x20;
+    public const int WmHotkey = 0x0312;
+
+    /// <summary>High bit set while the key is down.</summary>
+    [DllImport(User32)]
+    public static extern short GetAsyncKeyState(int vKey);
 }

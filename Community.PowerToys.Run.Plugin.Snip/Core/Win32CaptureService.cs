@@ -585,6 +585,8 @@ public sealed class Win32CaptureService : ICaptureService
     /// WS_EX_TRANSPARENT hit-test was not the blocking factor; a Topmost WPF
     /// window can still prevent Chromium from accepting scroll input.
     /// Restores with <c>SW_SHOWNOACTIVATE</c> so Edge keeps focus.
+    /// Prefer <see cref="BeginScrollSessionOverlayHide"/> for the whole scroll
+    /// session to avoid per-cycle flicker.
     /// </summary>
     public static IDisposable TemporaryHideOverlayWindow(IntPtr overlayHwnd)
     {
@@ -593,7 +595,43 @@ public sealed class Win32CaptureService : ICaptureService
             return TemporaryHideScope.None;
         }
 
+        HideOverlayWindowCore(overlayHwnd, flushDwm: true);
+        return new TemporaryHideScope(overlayHwnd);
+    }
+
+    /// <summary>
+    /// Hide the snip overlay once for the entire scroll session (no per-cycle
+    /// SW_SHOW). Pair with <see cref="EndScrollSessionOverlayHide"/>.
+    /// </summary>
+    public static void BeginScrollSessionOverlayHide(IntPtr overlayHwnd)
+    {
+        if (overlayHwnd == IntPtr.Zero || !Win32.IsWindowVisible(overlayHwnd))
+        {
+            return;
+        }
+
+        HideOverlayWindowCore(overlayHwnd, flushDwm: true);
+    }
+
+    /// <summary>Restore the snip overlay after a session-long hide (no activate).</summary>
+    public static void EndScrollSessionOverlayHide(IntPtr overlayHwnd)
+    {
+        if (overlayHwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
+        RestoreOverlayWindowCore(overlayHwnd);
+    }
+
+    private static void HideOverlayWindowCore(IntPtr overlayHwnd, bool flushDwm)
+    {
         _ = Win32.ShowWindow(overlayHwnd, Win32.SwHide);
+
+        if (!flushDwm)
+        {
+            return;
+        }
 
         // Let DWM drop the topmost surface before SendInput / BitBlt.
         Thread.Sleep(16);
@@ -605,8 +643,19 @@ public sealed class Win32CaptureService : ICaptureService
         {
             // DwmFlush is best-effort on some sessions.
         }
+    }
 
-        return new TemporaryHideScope(overlayHwnd);
+    private static void RestoreOverlayWindowCore(IntPtr hwnd)
+    {
+        _ = Win32.ShowWindow(hwnd, Win32.SwShowNoActivate);
+        _ = Win32.SetWindowPos(
+            hwnd,
+            Win32.HwndTopmost,
+            0,
+            0,
+            0,
+            0,
+            Win32.SwpNoMove | Win32.SwpNoSize | Win32.SwpNoActivate);
     }
 
     /// <summary>
@@ -657,15 +706,7 @@ public sealed class Win32CaptureService : ICaptureService
                 return;
             }
 
-            _ = Win32.ShowWindow(_hwnd, Win32.SwShowNoActivate);
-            _ = Win32.SetWindowPos(
-                _hwnd,
-                Win32.HwndTopmost,
-                0,
-                0,
-                0,
-                0,
-                Win32.SwpNoMove | Win32.SwpNoSize | Win32.SwpNoActivate);
+            RestoreOverlayWindowCore(_hwnd);
         }
     }
 

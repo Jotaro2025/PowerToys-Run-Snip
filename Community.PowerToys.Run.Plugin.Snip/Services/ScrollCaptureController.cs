@@ -60,6 +60,8 @@ public sealed class ScrollCaptureController
     private bool _heightCapReached;
     private int _maxHeightPx;
     private volatile bool _paused;
+    private ScrollCaptureStopGuard _stopGuard;
+    private bool _sessionOverlayHidden;
 
     public event Action<int> CapturingStopped;
 
@@ -134,6 +136,7 @@ public sealed class ScrollCaptureController
         SnipVerbose.Scroll("[scroll] auto-scroll started");
 
         _cts = new CancellationTokenSource();
+        StartStopGuard();
         _ = AutoScrollLoopAsync(_cts.Token);
     }
 
@@ -147,13 +150,14 @@ public sealed class ScrollCaptureController
         int scrollHint = 0;
         string autoStopReason = null;
 
-        // Hide the Topmost snip window for first capture + focus click. #88 left the
-        // overlay visible (hole + WS_EX_TRANSPARENT); logs still had overlayCovers=False
-        // with 8× SendInput and 1 tile — Chromium needs the overlay gone, not punched.
-        using (Win32CaptureService.TemporaryHideOverlayWindow(_overlayHwnd))
+        // Session-long SW_HIDE: #89 needed the Topmost snip gone for Chromium to
+        // accept SendInput, but per-cycle hide/show flickered. Keep hidden until
+        // stop; mid-stop via ScrollCaptureStopGuard (Esc/Space/「停止」strip).
+        BeginSessionOverlayHide();
+        try
         {
             Log.Info(
-                "Snip scroll: overlay SW_HIDE for first capture + focus",
+                "Snip scroll: overlay session SW_HIDE for Edge wheel/capture",
                 typeof(ScrollCaptureController));
             var first = await CaptureOnceSafeAsync().ConfigureAwait(false);
             if (first != null && _active && !ct.IsCancellationRequested)
@@ -161,6 +165,7 @@ public sealed class ScrollCaptureController
                 _tiles.Add(first);
                 projectedHeight = first.Height;
                 maxHeight = ScrollStitcher.ResolveMaxStitchedHeight(first.Width);
+                _stopGuard?.SetTileCount(_tiles.Count);
             }
             else if (first == null)
             {
@@ -169,50 +174,46 @@ public sealed class ScrollCaptureController
 
             // Focus underlay + hold cursor while overlay is hidden so the click hits Edge.
             BeginPointerHoldAtCenter();
-        }
 
-        // Mouse guard arms once the cursor has been inside the selection, so starting
-        // from the toolbar (outside the selection) does not pause immediately.
-        bool guardArmed = false;
-        while (!ct.IsCancellationRequested && _active && _tiles.Count < _maxTiles)
-        {
-            // Programmatic hold keeps the cursor at selection center; do not false-pause.
-            bool inside = Win32CaptureService.IsScrollPointerHeld || IsCursorInsideCapture();
-            guardArmed |= inside;
-            if (guardArmed && !inside)
+            // Mouse guard arms once the cursor has been inside the selection, so starting
+            // from the toolbar (outside the selection) does not pause immediately.
+            bool guardArmed = false;
+            while (!ct.IsCancellationRequested && _active && _tiles.Count < _maxTiles)
             {
-                if (!_paused)
-                {
-                    _paused = true;
-                    PostToOverlay(() => _overlay.ShowPaused());
-                    SnipVerbose.Scroll("[scroll] paused — cursor left selection");
-                }
-
-                try
-                {
-                    await Task.Delay(_scrollIntervalMs, ct).ConfigureAwait(false);
-                }
-                catch (TaskCanceledException)
+                if (_stopGuard != null && _stopGuard.PollStopKeys())
                 {
                     break;
                 }
 
-                continue;
-            }
+                // Programmatic hold keeps the cursor at selection center; do not false-pause.
+                bool inside = Win32CaptureService.IsScrollPointerHeld || IsCursorInsideCapture();
+                guardArmed |= inside;
+                if (guardArmed && !inside)
+                {
+                    if (!_paused)
+                    {
+                        _paused = true;
+                        PostToOverlay(() => _overlay.ShowPaused());
+                        SnipVerbose.Scroll("[scroll] paused — cursor left selection");
+                    }
 
-            if (_paused)
-            {
-                _paused = false;
-                SnipVerbose.Scroll("[scroll] resumed — cursor back in selection");
-            }
+                    if (!await DelayCancelableAsync(_scrollIntervalMs, ct).ConfigureAwait(false))
+                    {
+                        break;
+                    }
 
-            PostToOverlay(() => _overlay.ShowCapturing(_tiles.Count + 1));
+                    continue;
+                }
 
-            bool wheeled;
-            ScrollTilePixels bmp = null;
-            using (Win32CaptureService.TemporaryHideOverlayWindow(_overlayHwnd))
-            {
-                wheeled = SimulateWheelAtCenter();
+                if (_paused)
+                {
+                    _paused = false;
+                    SnipVerbose.Scroll("[scroll] resumed — cursor back in selection");
+                }
+
+                PostToOverlay(() => _overlay.ShowCapturing(_tiles.Count + 1));
+
+                bool wheeled = SimulateWheelAtCenter();
                 if (wheeled)
                 {
                     consecutiveWheelFails = 0;
@@ -231,101 +232,103 @@ public sealed class ScrollCaptureController
                     }
                 }
 
-                try
+                int settleMs = _scrollIntervalMs;
+                if (successfulWheels > 0 && successfulWheels <= MinSuccessfulWheelsBeforeDuplicateStop)
                 {
-                    int settleMs = _scrollIntervalMs;
-                    if (successfulWheels > 0 && successfulWheels <= MinSuccessfulWheelsBeforeDuplicateStop)
-                    {
-                        settleMs += EarlyTileExtraSettleMs;
-                    }
-
-                    await Task.Delay(settleMs, ct).ConfigureAwait(false);
+                    settleMs += EarlyTileExtraSettleMs;
                 }
-                catch (TaskCanceledException)
+
+                if (!await DelayCancelableAsync(settleMs, ct).ConfigureAwait(false))
                 {
                     break;
                 }
 
-                // Capture while still hidden so BitBlt reads live Edge pixels (no hole/white).
-                bmp = await CaptureOnceSafeAsync().ConfigureAwait(false);
-            }
+                // Capture while overlay stays session-hidden so BitBlt reads live Edge.
+                ScrollTilePixels bmp = await CaptureOnceSafeAsync().ConfigureAwait(false);
 
-            if (bmp == null || ct.IsCancellationRequested || !_active)
-            {
-                break;
-            }
-
-            bool duplicate = false;
-            if (_tiles.Count > 0)
-            {
-                duplicate = ScrollStitcher.IsNearlyIdentical(_tiles[_tiles.Count - 1], bmp);
-            }
-
-            if (duplicate)
-            {
-                bmp.Dispose();
-
-                // Failed wheels produce identical tiles; never count those toward end-of-page stop.
-                if (!ShouldCountDuplicateTowardAutoStop(wheeled, successfulWheels))
+                if (bmp == null || ct.IsCancellationRequested || !_active)
                 {
-                    consecutiveDups = 0;
-                    SnipVerbose.Scroll("[scroll] duplicate after failed wheel — streak not counted");
+                    break;
+                }
+
+                bool duplicate = false;
+                if (_tiles.Count > 0)
+                {
+                    duplicate = ScrollStitcher.IsNearlyIdentical(_tiles[_tiles.Count - 1], bmp);
+                }
+
+                if (duplicate)
+                {
+                    bmp.Dispose();
+
+                    // Failed wheels produce identical tiles; never count those toward end-of-page stop.
+                    if (!ShouldCountDuplicateTowardAutoStop(wheeled, successfulWheels))
+                    {
+                        consecutiveDups = 0;
+                        SnipVerbose.Scroll("[scroll] duplicate after failed wheel — streak not counted");
+                        continue;
+                    }
+
+                    consecutiveDups++;
+                    SnipVerbose.Scroll($"[scroll] duplicate tile (streak={consecutiveDups}) — not kept");
+                    if (consecutiveDups >= ConsecutiveDuplicateStopThreshold)
+                    {
+                        autoStopReason =
+                            $"page no longer scrolling (dup streak={consecutiveDups}/{ConsecutiveDuplicateStopThreshold}, wheels={successfulWheels})";
+                        Log.Warn(
+                            $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
+                            typeof(ScrollCaptureController));
+                        SnipVerbose.Scroll($"[scroll] auto-stop — {autoStopReason}");
+                        break;
+                    }
+
                     continue;
                 }
 
-                consecutiveDups++;
-                SnipVerbose.Scroll($"[scroll] duplicate tile (streak={consecutiveDups}) — not kept");
-                if (consecutiveDups >= ConsecutiveDuplicateStopThreshold)
+                consecutiveDups = 0;
+
+                // Scroll-up: newest tile sits on top, so measure older-below-newer (same row count).
+                int contributed = _tiles.Count == 0
+                    ? bmp.Height
+                    : _scrollUp
+                        ? ScrollStitcher.EstimateContributedRows(bmp, _tiles[_tiles.Count - 1], scrollHint)
+                        : ScrollStitcher.EstimateContributedRows(_tiles[_tiles.Count - 1], bmp, scrollHint);
+                if (contributed > 0 && contributed < bmp.Height)
                 {
-                    autoStopReason =
-                        $"page no longer scrolling (dup streak={consecutiveDups}/{ConsecutiveDuplicateStopThreshold}, wheels={successfulWheels})";
+                    scrollHint = contributed;
+                }
+
+                _tiles.Add(bmp);
+                projectedHeight += contributed;
+                PostToOverlay(() => _overlay.ShowManualCapturing(_tiles.Count));
+                _stopGuard?.SetTileCount(_tiles.Count);
+                SnipVerbose.Scroll($"[scroll] tile #{_tiles.Count} captured (projected h={projectedHeight}/{maxHeight})");
+
+                if (projectedHeight >= maxHeight)
+                {
+                    _heightCapReached = true;
+                    _maxHeightPx = maxHeight;
+                    autoStopReason = $"stitched height cap ({maxHeight}px)";
                     Log.Warn(
                         $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
                         typeof(ScrollCaptureController));
-                    SnipVerbose.Scroll($"[scroll] auto-stop — {autoStopReason}");
+                    SnipVerbose.Scroll("[scroll] auto-stop — stitched height cap reached");
                     break;
                 }
+        }
 
-                continue;
-            }
-
-            consecutiveDups = 0;
-
-            // Scroll-up: newest tile sits on top, so measure older-below-newer (same row count).
-            int contributed = _tiles.Count == 0
-                ? bmp.Height
-                : _scrollUp
-                    ? ScrollStitcher.EstimateContributedRows(bmp, _tiles[_tiles.Count - 1], scrollHint)
-                    : ScrollStitcher.EstimateContributedRows(_tiles[_tiles.Count - 1], bmp, scrollHint);
-            if (contributed > 0 && contributed < bmp.Height)
+            if (autoStopReason == null && !ct.IsCancellationRequested && _tiles.Count >= _maxTiles)
             {
-                scrollHint = contributed;
-            }
-
-            _tiles.Add(bmp);
-            projectedHeight += contributed;
-            PostToOverlay(() => _overlay.ShowManualCapturing(_tiles.Count));
-            SnipVerbose.Scroll($"[scroll] tile #{_tiles.Count} captured (projected h={projectedHeight}/{maxHeight})");
-
-            if (projectedHeight >= maxHeight)
-            {
-                _heightCapReached = true;
-                _maxHeightPx = maxHeight;
-                autoStopReason = $"stitched height cap ({maxHeight}px)";
+                autoStopReason = $"max tiles ({_maxTiles})";
                 Log.Warn(
                     $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
                     typeof(ScrollCaptureController));
-                SnipVerbose.Scroll("[scroll] auto-stop — stitched height cap reached");
-                break;
             }
         }
-
-        if (autoStopReason == null && !ct.IsCancellationRequested && _tiles.Count >= _maxTiles)
+        finally
         {
-            autoStopReason = $"max tiles ({_maxTiles})";
-            Log.Warn(
-                $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
-                typeof(ScrollCaptureController));
+            EndSessionOverlayHide();
+            DisposeStopGuard();
         }
 
         _active = false;
@@ -339,6 +342,131 @@ public sealed class ScrollCaptureController
     /// </summary>
     internal static bool ShouldCountDuplicateTowardAutoStop(bool lastWheelSucceeded, int successfulWheelCount)
         => lastWheelSucceeded && successfulWheelCount >= MinSuccessfulWheelsBeforeDuplicateStop;
+
+    private void StartStopGuard()
+    {
+        DisposeStopGuard();
+        try
+        {
+            double dpi = 1.0;
+            try
+            {
+                dpi = _dispatcher.Invoke(() =>
+                {
+                    var src = PresentationSource.FromVisual(_overlayHost);
+                    return src?.CompositionTarget?.TransformToDevice.M11 ?? 1.0;
+                });
+            }
+            catch (Exception)
+            {
+                dpi = 1.0;
+            }
+
+            _stopGuard = new ScrollCaptureStopGuard(
+                onStop: RequestManualStopFromGuard,
+                capturePhysicalPx: _captureRect,
+                dpiScale: dpi,
+                dispatcher: _dispatcher);
+            _stopGuard.Start();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip scroll stop guard start failed: {ex.Message}", ex, typeof(ScrollCaptureController));
+            _stopGuard = null;
+        }
+    }
+
+    private void RequestManualStopFromGuard()
+    {
+        try
+        {
+            _cts?.Cancel();
+            _active = false;
+            SnipVerbose.Scroll("[scroll] stop guard cancelled CTS (keep tiles)");
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll stop guard cancel failed: {ex.Message}", typeof(ScrollCaptureController));
+        }
+    }
+
+    private void DisposeStopGuard()
+    {
+        var g = _stopGuard;
+        _stopGuard = null;
+        try
+        {
+            g?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll stop guard dispose failed: {ex.Message}", typeof(ScrollCaptureController));
+        }
+    }
+
+    private void BeginSessionOverlayHide()
+    {
+        if (_overlayHwnd == IntPtr.Zero || _sessionOverlayHidden)
+        {
+            return;
+        }
+
+        Win32CaptureService.BeginScrollSessionOverlayHide(_overlayHwnd);
+        _sessionOverlayHidden = true;
+    }
+
+    private void EndSessionOverlayHide()
+    {
+        if (!_sessionOverlayHidden)
+        {
+            return;
+        }
+
+        _sessionOverlayHidden = false;
+        try
+        {
+            Win32CaptureService.EndScrollSessionOverlayHide(_overlayHwnd);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll EndScrollSessionOverlayHide failed: {ex.Message}", typeof(ScrollCaptureController));
+        }
+    }
+
+    /// <summary>
+    /// Delay in short slices so Esc/Space mid-stop is responsive during settle.
+    /// Returns false when cancelled or stop key fired.
+    /// </summary>
+    private async Task<bool> DelayCancelableAsync(int totalMs, CancellationToken ct)
+    {
+        int remaining = Math.Max(0, totalMs);
+        while (remaining > 0)
+        {
+            if (ct.IsCancellationRequested || !_active)
+            {
+                return false;
+            }
+
+            if (_stopGuard != null && _stopGuard.PollStopKeys())
+            {
+                return false;
+            }
+
+            int slice = Math.Min(40, remaining);
+            try
+            {
+                await Task.Delay(slice, ct).ConfigureAwait(false);
+            }
+            catch (TaskCanceledException)
+            {
+                return false;
+            }
+
+            remaining -= slice;
+        }
+
+        return !ct.IsCancellationRequested && _active;
+    }
 
     private bool IsCursorInsideCapture()
     {
@@ -439,6 +567,8 @@ public sealed class ScrollCaptureController
             _cts?.Dispose();
             _cts = null;
             _active = false;
+            DisposeStopGuard();
+            EndSessionOverlayHide();
             EndPointerHold();
             SnipVerbose.Scroll($"[scroll] stopped — {_tiles.Count} raw tile(s) kept");
             await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
@@ -578,6 +708,8 @@ public sealed class ScrollCaptureController
             _cts = null;
             _active = false;
             _stoppedPending = false;
+            DisposeStopGuard();
+            EndSessionOverlayHide();
             EndPointerHold();
             HideOverlay();
             DisposeTiles();

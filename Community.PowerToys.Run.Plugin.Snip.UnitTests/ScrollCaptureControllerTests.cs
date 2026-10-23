@@ -167,4 +167,25 @@ public class ScrollCaptureControllerTests
         Assert.AreEqual(2u, Win32.GaRoot);
         Assert.AreEqual(unchecked((IntPtr)(-1)), Win32.HwndTopmost);
     }
+
+    [TestMethod]
+    public void StopGuard_IsKeyDown_DoesNotThrowForEscape()
+    {
+        // Smoke: P/Invoke shape; on Linux the call may return 0.
+        _ = ScrollCaptureStopGuard.IsKeyDown(Win32.VkEscape);
+        _ = ScrollCaptureStopGuard.IsKeyDown(Win32.VkSpace);
+        Assert.AreEqual(0x1B, Win32.VkEscape);
+        Assert.AreEqual(0x20, Win32.VkSpace);
+        Assert.AreEqual(0x0312, Win32.WmHotkey);
+    }
+
+    [TestMethod]
+    public void SessionOverlayHide_ApisExistOnCaptureService()
+    {
+        Win32CaptureService.BeginScrollSessionOverlayHide(IntPtr.Zero);
+        Win32CaptureService.EndScrollSessionOverlayHide(IntPtr.Zero);
+        using var scope = Win32CaptureService.TemporaryHideOverlayWindow(IntPtr.Zero);
+        Assert.IsNotNull(scope);
+    }
 }
+
