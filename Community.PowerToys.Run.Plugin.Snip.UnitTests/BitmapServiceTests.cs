@@ -365,4 +365,18 @@ public class BitmapServiceTests
             Assert.AreEqual(48, pin.PixelHeight);
         });
     }
+
+    [TestMethod]
+    public void BitmapPreviewForPinPreservesFullResolutionForLargeScrolledImage()
+    {
+        RunOnStaThread(() =>
+        {
+            var bitmap = CreateTestBitmap(800, 3200);
+            var pin = BitmapPreview.ForPin(bitmap);
+            Assert.AreNotSame(bitmap, pin);
+            Assert.IsTrue(pin.IsFrozen);
+            Assert.AreEqual(800, pin.PixelWidth);
+            Assert.AreEqual(3200, pin.PixelHeight);
+        });
+    }
 }
