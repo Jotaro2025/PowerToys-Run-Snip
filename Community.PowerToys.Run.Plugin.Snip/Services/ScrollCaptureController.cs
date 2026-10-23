@@ -36,6 +36,9 @@ public sealed class ScrollCaptureController
     /// <summary>Extra settle after wheel before capture for the first few tiles (ms).</summary>
     internal const int EarlyTileExtraSettleMs = 250;
 
+    /// <summary>Floor for the adaptive settle trim once scrolling is stable (ms).</summary>
+    internal const int MinStableScrollIntervalMs = 120;
+
     /// <summary>Stop when this many consecutive wheel deliveries fail (no underlay HWND).</summary>
     internal const int ConsecutiveWheelFailStopThreshold = 5;
 
@@ -271,6 +274,12 @@ public sealed class ScrollCaptureController
                 if (successfulWheels > 0 && successfulWheels <= MinSuccessfulWheelsBeforeDuplicateStop)
                 {
                     settleMs += EarlyTileExtraSettleMs;
+                }
+                else if (consecutiveDups == 0 && successfulWheels > MinSuccessfulWheelsBeforeDuplicateStop)
+                {
+                    // Scroll rhythm is stable and pages keep advancing: trim the base
+                    // interval instead of paying the full conservative settle per tick.
+                    settleMs = Math.Max(MinStableScrollIntervalMs, (settleMs * 3) / 4);
                 }
 
                 if (!await DelayCancelableAsync(settleMs, ct).ConfigureAwait(false))

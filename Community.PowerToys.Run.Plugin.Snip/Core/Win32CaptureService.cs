@@ -443,7 +443,9 @@ public sealed class Win32CaptureService : ICaptureService
         }
 
         // Chromium often ignores a wheel that arrives before hit-testing settles.
-        Thread.Sleep(ScrollPointerSettleMs);
+        // Pointer already held at center → the cursor never moved; a short settle
+        // suffices and the per-tick cadence stays out of hard Sleep territory.
+        Thread.Sleep(holding ? ScrollPointerSettleMs / 4 : ScrollPointerSettleMs);
 
         bool overlayCovers = IsOverlayCoveringPoint(pt, skipOverlayHwnd);
         _ = TryActivateScrollTarget(target);
@@ -453,7 +455,10 @@ public sealed class Win32CaptureService : ICaptureService
             using (TemporaryOverlayTransparent(skipOverlayHwnd, force: skipOverlayHwnd != IntPtr.Zero))
             {
                 _ = Win32.SetCursorPos(physicalX, physicalY);
-                Thread.Sleep(ScrollPointerSettleMs / 4);
+                if (!holding)
+                {
+                    Thread.Sleep(ScrollPointerSettleMs / 4);
+                }
 
                 if (TrySendInputWheel(delta))
                 {
