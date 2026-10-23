@@ -187,5 +187,13 @@ public class ScrollCaptureControllerTests
         using var scope = Win32CaptureService.TemporaryHideOverlayWindow(IntPtr.Zero);
         Assert.IsNotNull(scope);
     }
+
+    [TestMethod]
+    public void ShouldKeepFrozenScrollPreview_OnlyWhenWindowCapturePreferred()
+    {
+        // #100 keeps overlay visible; blanking the frozen preview leaves a white/blank hole.
+        Assert.IsTrue(ScrollCaptureController.ShouldKeepFrozenScrollPreview(preferWindowCapture: true));
+        Assert.IsFalse(ScrollCaptureController.ShouldKeepFrozenScrollPreview(preferWindowCapture: false));
+    }
 }
 

@@ -65,6 +65,7 @@ public sealed class ScrollCaptureController
     private IntPtr _windowCaptureHwnd;
     private bool _preferWindowCapture;
     private int _windowCaptureFailStreak;
+    private bool _windowCaptureProbed;
 
     public event Action<int> CapturingStopped;
 
@@ -87,6 +88,13 @@ public sealed class ScrollCaptureController
 
     /// <summary>True while capture is paused because the cursor left the selection.</summary>
     public bool IsPaused => _paused;
+
+    /// <summary>
+    /// True when this session uses window-local capture (CreateForWindow/PrintWindow) and keeps
+    /// the snip overlay visible. UI must keep the frozen selection preview (no Opacity=0 hole)
+    /// so the selection does not go blank while the overlay stays on top.
+    /// </summary>
+    public bool PreferWindowCapture => _preferWindowCapture;
 
     public ScrollCaptureController(
         ICaptureService capture,
@@ -117,7 +125,10 @@ public sealed class ScrollCaptureController
     public Rect? OverlayArea { get; set; }
 
     /// <summary>
-    /// Begin auto-scroll capture. Caller must hole-punch and hide adorners first.
+    /// Begin auto-scroll capture. Caller should prepare dim/adorners first; when
+    /// <see cref="PreferWindowCapture"/> is true keep the frozen selection preview
+    /// (do not blank Opacity / punch a white hole). Call <see cref="ProbeWindowCapture"/>
+    /// beforehand so the UI can branch before <see cref="Begin"/>.
     /// </summary>
     public void Begin()
     {
@@ -154,10 +165,11 @@ public sealed class ScrollCaptureController
         string autoStopReason = null;
 
         // Prefer window-local capture (WinRT CreateForWindow / PrintWindow) so the
-        // overlay can stay visible (selection hole + stop strip). Fall back to
+        // overlay can stay visible (stop strip, less flicker). Fall back to
         // session SW_HIDE + desktop BitBlt when window capture is unavailable —
-        // required for Edge reliability (#89/#90).
-        ProbeWindowCapturePreference();
+        // required for Edge reliability (#89/#90). Probe may already have run from
+        // SnipWindow so the frozen preview was kept for the window-capture path.
+        EnsureWindowCaptureProbed();
         if (!_preferWindowCapture)
         {
             BeginSessionOverlayHide();
@@ -844,8 +856,32 @@ public sealed class ScrollCaptureController
         }
     }
 
-    private void ProbeWindowCapturePreference()
+    /// <summary>
+    /// Probe underlay WinRT/PrintWindow once before <see cref="Begin"/> so the overlay UI
+    /// can keep the frozen selection preview when window capture will be used (#100 + 白屏).
+    /// Safe to call multiple times; subsequent calls return the cached result.
+    /// </summary>
+    public bool ProbeWindowCapture()
     {
+        EnsureWindowCaptureProbed();
+        return _preferWindowCapture;
+    }
+
+    /// <summary>
+    /// When true, StartScrollCapture must keep the frozen screenshot (no Opacity=0 / Collapsed)
+    /// and must not rely on a SetWindowRgn hole for live content — the hole shows blank while
+    /// the Topmost overlay stays visible on the window-capture path.
+    /// </summary>
+    internal static bool ShouldKeepFrozenScrollPreview(bool preferWindowCapture) => preferWindowCapture;
+
+    private void EnsureWindowCaptureProbed()
+    {
+        if (_windowCaptureProbed)
+        {
+            return;
+        }
+
+        _windowCaptureProbed = true;
         _preferWindowCapture = false;
         _windowCaptureHwnd = IntPtr.Zero;
         _windowCaptureFailStreak = 0;

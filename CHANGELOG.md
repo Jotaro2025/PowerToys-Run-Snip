@@ -14,6 +14,8 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 修复 / Fixed
 
+- 滚动截屏：#100 窗口捕获成功时遮罩保持可见，但 StartScrollCapture 仍 Opacity=0 打孔 → 选区持续白屏（拼接仍正常）；探测到窗口捕获后保留冻结预览、不打白洞，SW_HIDE 回退路径仍走 #87 隐藏+打孔 — Keep frozen selection preview on window-capture path (no white hole); SW_HIDE fallback still hides+punches (@Jotaro2025)
+
 - 滚动截屏：会话内一次 SW_HIDE（消除每轮闪烁）；浮动「停止」条 + 全局 Esc/空格 可中途停止并保留已截帧（#89 后遮罩隐藏导致 Esc/工具条不可用）— Session-long overlay hide to cut flicker; floating Stop strip + global Esc/Space mid-stop keeping tiles (@Jotaro2025)
 
 - 滚动截屏：每轮滚轮+截帧前 SW_HIDE 整个截屏窗（#88 日志 overlayCovers=False 仍 1 tile，洞/透明命中理论不足）；SW_SHOWNOACTIVATE 恢复以保持 Edge 前台；PostMessage 辅投 parent/root — Hide snip window for each wheel+capture cycle; restore without activating; PostMessage parent/root nudge (@Jotaro2025)
