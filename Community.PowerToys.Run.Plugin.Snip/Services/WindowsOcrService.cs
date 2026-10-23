@@ -31,14 +31,21 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// no per-line confidence or rotated quad: <see cref="OcrTextLine.Confidence"/> is 1 and
 /// <see cref="OcrTextLine.Corners"/> is null (renderer uses the axis-aligned box).
 /// Images taller / wider than <see cref="OcrEngine.MaxImageDimension"/> (long scroll captures)
-/// are recognized in overlapping horizontal strips.
+/// are recognized in overlapping horizontal strips. Each strip is decoded from the source
+/// region (not a full-height ScaledHeight transform) so &gt;10k px stitches do not OOM / fail.
+/// Source height beyond <see cref="MaxStripPasses"/> × MaxImageDimension is truncated with a tip.
 /// </remarks>
 public static class WindowsOcrService
 {
     /// <summary>Vertical overlap between strips so a line cut by a strip edge is whole in one strip.</summary>
     internal const int StripOverlap = 256;
 
+    /// <summary>Max number of MaxImageDimension-tall passes before truncating very tall stitches.</summary>
+    internal const int MaxStripPasses = 6;
+
     private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
+
+    private static string _tallImageHint;
 
     /// <summary>True when another Windows OCR recognition is running.</summary>
     public static bool IsBusy => Gate.CurrentCount == 0;
@@ -84,6 +91,35 @@ public static class WindowsOcrService
                 }
             },
             cancellationToken);
+    }
+
+    /// <summary>Hard cap on source rows processed for one recognition call.</summary>
+    internal static int ResolveOcrSourceHeightCap(int maxImageDimension)
+        => Math.Max(maxImageDimension, checked(maxImageDimension * MaxStripPasses));
+
+    /// <summary>
+    /// Soft tip when the PNG is taller than one MaxImageDimension (Windows tiles; WeChat may struggle).
+    /// </summary>
+    internal static string TryBuildTallPreferWindowsHint(int pixelHeight, int maxImageDimension = 0)
+    {
+        int max = maxImageDimension > 0 ? maxImageDimension : 10000;
+        if (pixelHeight <= max)
+        {
+            return null;
+        }
+
+        return Properties.Resources.ocr_hint_tall_prefer_windows.Replace(
+            "{0}",
+            pixelHeight.ToString(System.Globalization.CultureInfo.CurrentCulture),
+            StringComparison.Ordinal);
+    }
+
+    /// <summary>Consumes the last truncate tip from <see cref="RecognizeLinesAsync"/> (UI status).</summary>
+    public static string ConsumeTallImageHint()
+    {
+        var tip = _tallImageHint;
+        _tallImageHint = null;
+        return tip;
     }
 
     /// <summary>
@@ -274,41 +310,60 @@ public static class WindowsOcrService
         var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellationToken).ConfigureAwait(false);
 
         int max = (int)OcrEngine.MaxImageDimension;
-        uint srcW = decoder.PixelWidth;
-        uint srcH = decoder.PixelHeight;
+        int srcW = (int)decoder.PixelWidth;
+        int srcH = (int)decoder.PixelHeight;
+        _tallImageHint = null;
 
-        // Too wide: scale the whole image down to the max width; then strip the (scaled) height.
-        double scale = srcW > max ? (double)max / srcW : 1.0;
-        uint scaledW = (uint)Math.Max(1, Math.Round(srcW * scale));
-        uint scaledH = (uint)Math.Max(1, Math.Round(srcH * scale));
+        // Width fit into MaxImageDimension; strip height in SOURCE rows so each scaled strip fits.
+        double scaleW = srcW > max ? (double)max / srcW : 1.0;
+        int maxSrcStripH = Math.Max(1, (int)Math.Floor(max / scaleW));
+        int heightCap = ResolveOcrSourceHeightCap(max);
+        int processH = Math.Min(srcH, heightCap);
+        if (processH < srcH)
+        {
+            _tallImageHint = Properties.Resources.ocr_hint_tall_truncated
+                .Replace("{0}", srcH.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)
+                .Replace("{1}", processH.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal);
+            Log.Warn(
+                $"Snip Windows OCR: truncating tall image {srcW}x{srcH} to height {processH} (cap {heightCap})",
+                typeof(WindowsOcrService));
+        }
 
         var result = new List<OcrTextLine>();
-        foreach (var strip in PlanStrips((int)scaledH, max, StripOverlap))
+        foreach (var strip in PlanStrips(processH, maxSrcStripH, StripOverlap))
         {
             cancellationToken.ThrowIfCancellationRequested();
-            var transform = new BitmapTransform
-            {
-                ScaledWidth = scaledW,
-                ScaledHeight = scaledH,
-                InterpolationMode = BitmapInterpolationMode.Fant,
-                Bounds = new BitmapBounds { X = 0, Y = (uint)strip.Top, Width = scaledW, Height = (uint)strip.Height },
-            };
+            using var stripBmp = await DecodeSourceStripAsync(
+                decoder,
+                strip,
+                (uint)srcW,
+                cancellationToken).ConfigureAwait(false);
 
-            using var bitmap = await decoder.GetSoftwareBitmapAsync(
-                BitmapPixelFormat.Bgra8,
-                BitmapAlphaMode.Premultiplied,
-                transform,
-                ExifOrientationMode.IgnoreExifOrientation,
-                ColorManagementMode.DoNotColorManage).AsTask(cancellationToken).ConfigureAwait(false);
-
-            var ocr = await engine.RecognizeAsync(bitmap).AsTask(cancellationToken).ConfigureAwait(false);
-            foreach (var line in ocr.Lines)
+            SoftwareBitmap forOcr = stripBmp;
+            SoftwareBitmap scaled = null;
+            try
             {
-                var mapped = MapLine(line, strip, scale);
-                if (mapped != null)
+                if (scaleW < 0.999)
                 {
-                    result.Add(mapped);
+                    int dw = Math.Max(1, (int)Math.Round(srcW * scaleW));
+                    int dh = Math.Max(1, (int)Math.Round(strip.Height * scaleW));
+                    scaled = await ScaleSoftwareBitmapAsync(stripBmp, dw, dh, cancellationToken).ConfigureAwait(false);
+                    forOcr = scaled;
                 }
+
+                var ocr = await engine.RecognizeAsync(forOcr).AsTask(cancellationToken).ConfigureAwait(false);
+                foreach (var line in ocr.Lines)
+                {
+                    var mapped = MapLine(line, strip, scaleW);
+                    if (mapped != null)
+                    {
+                        result.Add(mapped);
+                    }
+                }
+            }
+            finally
+            {
+                scaled?.Dispose();
             }
         }
 
@@ -316,6 +371,53 @@ public static class WindowsOcrService
             .OrderBy(l => l.Box.Top)
             .ThenBy(l => l.Box.Left)
             .ToList();
+    }
+
+    /// <summary>Decode one source-pixel strip without scaling the full image height.</summary>
+    private static async Task<SoftwareBitmap> DecodeSourceStripAsync(
+        BitmapDecoder decoder,
+        OcrStrip strip,
+        uint srcW,
+        CancellationToken cancellationToken)
+    {
+        var transform = new BitmapTransform
+        {
+            Bounds = new BitmapBounds
+            {
+                X = 0,
+                Y = (uint)strip.Top,
+                Width = srcW,
+                Height = (uint)strip.Height,
+            },
+        };
+
+        return await decoder.GetSoftwareBitmapAsync(
+            BitmapPixelFormat.Bgra8,
+            BitmapAlphaMode.Premultiplied,
+            transform,
+            ExifOrientationMode.IgnoreExifOrientation,
+            ColorManagementMode.DoNotColorManage).AsTask(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static async Task<SoftwareBitmap> ScaleSoftwareBitmapAsync(
+        SoftwareBitmap source,
+        int width,
+        int height,
+        CancellationToken cancellationToken)
+    {
+        using var stream = new InMemoryRandomAccessStream();
+        var encoder = await BitmapEncoder.CreateAsync(BitmapEncoder.PngEncoderId, stream)
+            .AsTask(cancellationToken).ConfigureAwait(false);
+        encoder.SetSoftwareBitmap(source);
+        encoder.BitmapTransform.ScaledWidth = (uint)width;
+        encoder.BitmapTransform.ScaledHeight = (uint)height;
+        encoder.BitmapTransform.InterpolationMode = BitmapInterpolationMode.Fant;
+        await encoder.FlushAsync().AsTask(cancellationToken).ConfigureAwait(false);
+        stream.Seek(0);
+        var decoder = await BitmapDecoder.CreateAsync(stream).AsTask(cancellationToken).ConfigureAwait(false);
+        return await decoder.GetSoftwareBitmapAsync(
+            BitmapPixelFormat.Bgra8,
+            BitmapAlphaMode.Premultiplied).AsTask(cancellationToken).ConfigureAwait(false);
     }
 
     private static OcrTextLine MapLine(OcrLine line, OcrStrip strip, double scale)
@@ -341,8 +443,10 @@ public static class WindowsOcrService
             return null;
         }
 
-        double centerInScaled = strip.Top + ((top + bottom) / 2);
-        if (centerInScaled < strip.KeepTop || centerInScaled >= strip.KeepBottom)
+        // Line boxes are in the (possibly width-scaled) strip bitmap; strip.Top is source Y.
+        double inv = scale > 0.0001 ? 1.0 / scale : 1.0;
+        double centerInSource = strip.Top + (((top + bottom) / 2) * inv);
+        if (centerInSource < strip.KeepTop || centerInSource >= strip.KeepBottom)
         {
             return null; // reported by the neighbouring strip
         }
@@ -353,10 +457,9 @@ public static class WindowsOcrService
             return null;
         }
 
-        double inv = 1.0 / scale;
         var box = new WpfRect(
             left * inv,
-            (strip.Top + top) * inv,
+            strip.Top + (top * inv),
             (right - left) * inv,
             (bottom - top) * inv);
         return new OcrTextLine(text, box, 1f);

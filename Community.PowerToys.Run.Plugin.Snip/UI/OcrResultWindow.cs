@@ -37,6 +37,7 @@ public sealed class OcrResultWindow : Window, IDisposable
     private readonly Button _copyAllButton;
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private readonly SnipSettings _settings;
+    private readonly int _sourceHeight;
     private bool _closed;
     private bool _disposed;
 
@@ -47,6 +48,7 @@ public sealed class OcrResultWindow : Window, IDisposable
 
         _png = png;
         _settings = settings ?? new SnipSettings();
+        _sourceHeight = image.PixelHeight;
 
         Title = Properties.Resources.ocr_window_title;
         Width = 760;
@@ -211,6 +213,7 @@ public sealed class OcrResultWindow : Window, IDisposable
             _textBox.IsEnabled = true;
             _overlay.Visibility = Visibility.Collapsed;
             UpdateCopyButtons();
+            ApplyTallImageStatusHint();
             _textBox.Focus();
         }
         catch (OperationCanceledException)
@@ -238,6 +241,24 @@ public sealed class OcrResultWindow : Window, IDisposable
             Log.Exception($"Snip text extraction failed: {ex.Message}", ex, GetType());
             ShowMessage(WeChatOcrService.FailedMessage(ex.Message), isError: true);
         }
+    }
+
+    private void ApplyTallImageStatusHint()
+    {
+        string tip = WindowsOcrService.ConsumeTallImageHint();
+        if (tip == null
+            && OcrService.ResolveEngine(_settings) == Models.OcrEngineKind.WeChat)
+        {
+            tip = WindowsOcrService.TryBuildTallPreferWindowsHint(_sourceHeight);
+        }
+
+        if (string.IsNullOrEmpty(tip) || _status == null)
+        {
+            return;
+        }
+
+        _status.Foreground = new SolidColorBrush(Color.FromRgb(180, 120, 40));
+        _status.Text = tip;
     }
 
     private void SetBusy(string message)
