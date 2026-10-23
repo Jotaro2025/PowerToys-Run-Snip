@@ -50,6 +50,13 @@ public static class WeChatOcrService
     /// <summary>WeChatOcr keeps process-wide state; run one recognition at a time.</summary>
     private static readonly SemaphoreSlim Gate = new SemaphoreSlim(1, 1);
 
+    /// <summary>
+    /// Reused OCR component: launching WeChatOCR.exe and loading the recognition
+    /// model per call costs seconds. Owned by <see cref="Gate"/>; a task that
+    /// silently drops is retried on the same healthy instance.
+    /// </summary>
+    private static ImageOcr _sharedOcr;
+
     /// <summary>True when another recognition currently holds the process-wide gate.</summary>
     public static bool IsBusy => Gate.CurrentCount == 0;
 
@@ -274,12 +281,18 @@ public static class WeChatOcrService
                 ?? PluginDirectory;
             DataLocation.SetBaseDirectory(baseDir);
 
-            // No path: use the bundled component instead of an installed WeChat.
-            using (var ocr = new ImageOcr())
+            // Reuse the OCR component across calls: (re)create only when missing
+            // or after a hard failure. Its WeChatOCR.exe child process stays warm.
+            if (_sharedOcr == null)
+            {
+                _sharedOcr = new ImageOcr();
+            }
+
+            try
             {
                 for (int attempt = 0; attempt < MaxAttempts && !tcs.Task.IsCompleted; attempt++)
                 {
-                    ocr.Run(imagePath, (path, result) =>
+                    _sharedOcr.Run(imagePath, (path, result) =>
                     {
                         // WeChatOcr may report progress with a null result; wait for the real one.
                         if (result != null)
@@ -291,6 +304,12 @@ public static class WeChatOcrService
                     await Task.WhenAny(tcs.Task, Task.Delay(AttemptTimeout, cancellationToken)).ConfigureAwait(false);
                     cancellationToken.ThrowIfCancellationRequested();
                 }
+            }
+            catch (Exception ex) when (ex is not OcrException && ex is not OperationCanceledException)
+            {
+                // The component (or its child process) is broken; rebuild next call.
+                TryDisposeSharedOcr();
+                throw;
             }
 
             if (!tcs.Task.IsCompleted)
@@ -313,6 +332,42 @@ public static class WeChatOcrService
 
     private static string PluginDirectory
         => Path.GetDirectoryName(typeof(WeChatOcrService).Assembly.Location) ?? AppContext.BaseDirectory;
+
+    /// <summary>
+    /// Disposes the shared OCR component (killing its WeChatOCR.exe child process).
+    /// Call on plugin teardown. Safe to call multiple times; a later recognition
+    /// simply recreates the component.
+    /// </summary>
+    public static void ShutdownOcr()
+    {
+        if (!Gate.Wait(0))
+        {
+            // A recognition is in flight; let it finish and dispose its own way.
+            return;
+        }
+
+        try
+        {
+            TryDisposeSharedOcr();
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
+    private static void TryDisposeSharedOcr()
+    {
+        var ocr = Interlocked.Exchange(ref _sharedOcr, null);
+        try
+        {
+            ocr?.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip WeChat OCR component dispose: {ex.Message}", typeof(WeChatOcrService));
+        }
+    }
 
     private static void TryDelete(string path)
     {

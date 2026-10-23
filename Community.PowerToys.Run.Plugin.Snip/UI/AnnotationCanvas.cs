@@ -6,6 +6,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
@@ -29,6 +30,13 @@ public sealed class AnnotationCanvas : FrameworkElement
     private static readonly Typeface TextTypeface = new Typeface("Segoe UI");
     private readonly List<Point> _penPoints = new();
     private readonly Stack<Annotation> _redoStack = new();
+
+    /// <summary>
+    /// Rendered mosaic bitmaps keyed per annotation instance. Annotations are
+    /// immutable records (edits create new instances), so the instance reference
+    /// uniquely identifies region+effect+block size; entries die with the annotation.
+    /// </summary>
+    private readonly ConditionalWeakTable<MosaicAnnotation, StrongBox<WriteableBitmap>> _mosaicCache = new();
 
     private Point? _start;
     private bool _dragging;
@@ -227,32 +235,24 @@ public sealed class AnnotationCanvas : FrameworkElement
                     return;
                 }
 
-                var p = new Pen(new SolidColorBrush(pen.Stroke), pen.StrokeWidth)
-                {
-                    StartLineCap = PenLineCap.Round,
-                    EndLineCap = PenLineCap.Round,
-                    LineJoin = PenLineJoin.Round,
-                };
-                drawingContext.DrawGeometry(null, p, CreatePolyline(pen.Points, false));
+                drawingContext.DrawGeometry(null, GetAnnotationPen(pen), CreatePolyline(pen.Points, false));
                 break;
             case ArrowAnnotation arr:
                 DrawArrow(drawingContext, arr);
                 break;
             case LineAnnotation line:
                 {
-                    var pen = new Pen(new SolidColorBrush(line.Stroke), line.StrokeWidth)
-                    {
-                        StartLineCap = PenLineCap.Round,
-                        EndLineCap = PenLineCap.Round,
-                    };
-                    drawingContext.DrawGeometry(null, pen, CreatePolyline([line.Start, line.End], false));
+                    var p = GetAnnotationPen(line);
+                    p.StartLineCap = PenLineCap.Round;
+                    p.EndLineCap = PenLineCap.Round;
+                    drawingContext.DrawGeometry(null, p, CreatePolyline([line.Start, line.End], false));
                     break;
                 }
 
             case HighlightAnnotation hi:
                 {
                     var fill = Color.FromArgb(hi.FillAlpha, hi.Stroke.R, hi.Stroke.G, hi.Stroke.B);
-                    drawingContext.DrawRectangle(new SolidColorBrush(fill), null, hi.Rect);
+                    drawingContext.DrawRectangle(GetFillBrush(hi, fill), null, hi.Rect);
                     break;
                 }
 
@@ -260,15 +260,12 @@ public sealed class AnnotationCanvas : FrameworkElement
                 DrawStep(drawingContext, step);
                 break;
             case RectAnnotation r:
-                drawingContext.DrawRectangle(
-                    null,
-                    new Pen(new SolidColorBrush(r.Stroke), r.StrokeWidth),
-                    r.Rect);
+                drawingContext.DrawRectangle(null, GetAnnotationPen(r), r.Rect);
                 break;
             case EllipseAnnotation e:
                 drawingContext.DrawEllipse(
                     null,
-                    new Pen(new SolidColorBrush(e.Stroke), e.StrokeWidth),
+                    GetAnnotationPen(e),
                     new Point(e.Rect.X + (e.Rect.Width / 2), e.Rect.Y + (e.Rect.Height / 2)),
                     e.Rect.Width / 2,
                     e.Rect.Height / 2);
@@ -281,7 +278,7 @@ public sealed class AnnotationCanvas : FrameworkElement
                         FlowDirection.LeftToRight,
                         TextTypeface,
                         t.FontSize,
-                        new SolidColorBrush(t.Stroke),
+                        GetAnnotationBrush(t),
                         1.0);
                     drawingContext.DrawText(ft, t.Origin);
                     break;
@@ -297,6 +294,59 @@ public sealed class AnnotationCanvas : FrameworkElement
                 DrawMosaic(drawingContext, m, preview);
                 break;
         }
+    }
+
+    /// <summary>
+    /// Shared frozen pens/brushes keyed by (color, width). Annotations are immutable
+    /// records, so the key fully identifies the visual; freezing also lets WPF
+    /// skip per-render change tracking.
+    /// </summary>
+    private static readonly Dictionary<(Color Stroke, double Width), Pen> SharedPens = new();
+
+    private static readonly Dictionary<Color, SolidColorBrush> SharedBrushes = new();
+
+    private static Pen GetAnnotationPen(Annotation a)
+    {
+        var key = (a.Stroke, a.StrokeWidth);
+        if (!SharedPens.TryGetValue(key, out var pen))
+        {
+            pen = new Pen(new SolidColorBrush(a.Stroke), a.StrokeWidth)
+            {
+                // Round joins/caps match the old per-annotation pens (pen strokes
+                // used them explicitly; harmless for lines/rects).
+                StartLineCap = PenLineCap.Round,
+                EndLineCap = PenLineCap.Round,
+                LineJoin = PenLineJoin.Round,
+            };
+            pen.Freeze();
+            SharedPens[key] = pen;
+        }
+
+        return pen;
+    }
+
+    private static SolidColorBrush GetAnnotationBrush(Annotation a)
+    {
+        if (!SharedBrushes.TryGetValue(a.Stroke, out var brush))
+        {
+            brush = new SolidColorBrush(a.Stroke);
+            brush.Freeze();
+            SharedBrushes[a.Stroke] = brush;
+        }
+
+        return brush;
+    }
+
+    private static SolidColorBrush GetFillBrush(Annotation a, Color fill)
+    {
+        if (!SharedBrushes.TryGetValue(fill, out var brush))
+        {
+            brush = new SolidColorBrush(fill);
+            brush.Freeze();
+            SharedBrushes[fill] = brush;
+        }
+
+        return brush;
     }
 
     private static StreamGeometry CreatePolyline(IReadOnlyList<Point> points, bool isFilled)
@@ -451,8 +501,41 @@ public sealed class AnnotationCanvas : FrameworkElement
             ? MosaicBlocks.SampleMode.Preview2x2
             : MosaicBlocks.SampleMode.FullAverage;
 
-        EnsureMosaicOverlay(regionW, regionH);
-        _mosaicOverlay.Lock();
+        // Committed mosaics are immutable: cache the rendered region and skip the
+        // pixel work on every later render pass. Drag previews stay on the shared
+        // scratch overlay because their rect shrinks/grows continuously.
+        StrongBox<WriteableBitmap> box = null;
+        if (!preview
+            && _mosaicCache.TryGetValue(m, out box)
+            && box?.Value is WriteableBitmap cached
+            && cached.PixelWidth == regionW
+            && cached.PixelHeight == regionH)
+        {
+            dc.DrawImage(cached, dest);
+            return;
+        }
+
+        WriteableBitmap target;
+        if (preview)
+        {
+            EnsureMosaicOverlay(regionW, regionH);
+            target = _mosaicOverlay;
+        }
+        else
+        {
+            box ??= new StrongBox<WriteableBitmap>();
+            target = box.Value;
+            if (target == null
+                || target.PixelWidth != regionW
+                || target.PixelHeight != regionH
+                || target.Format != PixelFormats.Bgra32)
+            {
+                target = new WriteableBitmap(regionW, regionH, 96, 96, PixelFormats.Bgra32, null);
+                box.Value = target;
+            }
+        }
+
+        target.Lock();
         src.Lock();
         try
         {
@@ -466,8 +549,8 @@ public sealed class AnnotationCanvas : FrameworkElement
                         src.BackBufferStride,
                         sw,
                         sh,
-                        (byte*)_mosaicOverlay.BackBuffer,
-                        _mosaicOverlay.BackBufferStride,
+                        (byte*)target.BackBuffer,
+                        target.BackBufferStride,
                         x0,
                         y0,
                         x1,
@@ -481,8 +564,8 @@ public sealed class AnnotationCanvas : FrameworkElement
                         src.BackBufferStride,
                         sw,
                         sh,
-                        (byte*)_mosaicOverlay.BackBuffer,
-                        _mosaicOverlay.BackBufferStride,
+                        (byte*)target.BackBuffer,
+                        target.BackBufferStride,
                         x0,
                         y0,
                         x1,
@@ -492,17 +575,24 @@ public sealed class AnnotationCanvas : FrameworkElement
                 }
             }
 
-            _mosaicOverlay.AddDirtyRect(new Int32Rect(0, 0, regionW, regionH));
+            target.AddDirtyRect(new Int32Rect(0, 0, regionW, regionH));
         }
         finally
         {
             src.Unlock();
-            _mosaicOverlay.Unlock();
+            target.Unlock();
         }
 
-        // Draw only the used sub-rect when the scratch bitmap is larger.
-        var crop = new CroppedBitmap(_mosaicOverlay, new Int32Rect(0, 0, regionW, regionH));
-        dc.DrawImage(crop, dest);
+        if (preview)
+        {
+            // Draw only the used sub-rect when the scratch bitmap is larger.
+            var crop = new CroppedBitmap(_mosaicOverlay, new Int32Rect(0, 0, regionW, regionH));
+            dc.DrawImage(crop, dest);
+        }
+        else
+        {
+            dc.DrawImage(target, dest);
+        }
     }
 
     private void EnsureMosaicOverlay(int width, int height)

@@ -30,6 +30,10 @@ public sealed class SnipWindow : Window
 {
     private static readonly Color ChromeColor = Color.FromRgb(80, 220, 100);
 
+    private static readonly SolidColorBrush SnapHoverStroke = new SolidColorBrush(Color.FromRgb(72, 210, 110));
+
+    private static readonly SolidColorBrush SnapWindowStroke = new SolidColorBrush(Color.FromRgb(0, 183, 255));
+
     /// <summary>Subtle hint that screenshot mode is active (no selection yet).</summary>
     private readonly SolidColorBrush _idleDimBrush = new SolidColorBrush(Color.FromArgb(88, 0, 0, 0));
 
@@ -78,6 +82,17 @@ public sealed class SnipWindow : Window
     private bool _hasSampledPixel;
     private Rect? _hoveredSnapDipRect;
     private Point _lastHoverDipPoint;
+    private MouseEventArgs _lastHandledMouseMove;
+
+    // Reusable selection geometries — mutated in place per mouse move instead of
+    // reallocating (and re-tessellating the XOR) on every drag frame.
+    private RectangleGeometry _dimOuterGeometry;
+
+    private RectangleGeometry _dimInnerGeometry = new RectangleGeometry();
+
+    private CombinedGeometry _dimCombinedGeometry;
+
+    private RectangleGeometry _annoCanvasClipGeometry;
     private bool _disposed;
     private bool _exportBusy;
 
@@ -577,11 +592,19 @@ public sealed class SnipWindow : Window
 
     private void OnRootPointerMoved(object sender, MouseEventArgs e)
     {
+        // Handler is registered on both _inputCatcher and _root; the event bubbles
+        // from the catcher through the root, so skip the second hop of the same move.
+        if (ReferenceEquals(e, _lastHandledMouseMove))
+        {
+            return;
+        }
+
+        _lastHandledMouseMove = e;
         var p = e.GetPosition(_root);
-        UpdateMagnifierAt(p);
-        _lastHoverDipPoint = p;
         if (!_dragCreating)
         {
+            UpdateMagnifierAt(p);
+            _lastHoverDipPoint = p;
             if (!_hasSelection)
             {
                 UpdateHoverWindowSnap(p);
@@ -590,10 +613,13 @@ public sealed class SnipWindow : Window
             return;
         }
 
+        _lastHoverDipPoint = p;
         _hoveredSnapDipRect = null;
         _selection = NormalizeRect(_dragStartPoint, p);
-        UpdateSelectionVisuals();
+
+        // After the selection update so the HUD shows the current selection size.
         UpdateMagnifierAt(p);
+        UpdateSelectionVisuals();
         e.Handled = true;
     }
 
@@ -694,9 +720,28 @@ public sealed class SnipWindow : Window
         if (ShouldShowSelectionVignette())
         {
             _dimPath.Fill = _selectionDimBrush;
-            var outer = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
-            var inner = new RectangleGeometry(_selection);
-            _dimPath.Data = new CombinedGeometry(GeometryCombineMode.Xor, outer, inner);
+
+            // Reuse mutable geometries: allocating a full-screen RectangleGeometry +
+            // CombinedGeometry(Xor) per mouse move forces a re-tessellation each drag.
+            if (_dimOuterGeometry == null)
+            {
+                _dimOuterGeometry = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
+            }
+            else
+            {
+                _dimOuterGeometry.Rect = new Rect(0, 0, _logicalSize.Width, _logicalSize.Height);
+            }
+
+            _dimInnerGeometry.Rect = _selection;
+            if (_dimCombinedGeometry == null)
+            {
+                _dimCombinedGeometry = new CombinedGeometry(
+                    GeometryCombineMode.Xor,
+                    _dimOuterGeometry,
+                    _dimInnerGeometry);
+                _dimPath.Data = _dimCombinedGeometry;
+            }
+
             _dimPath.Visibility = Visibility.Visible;
 
             // Annotations live in capture/screen coordinates; clip to the selection for display.
@@ -705,7 +750,16 @@ public sealed class SnipWindow : Window
             Canvas.SetLeft(_annoCanvas, 0);
             Canvas.SetTop(_annoCanvas, 0);
             _annoCanvas.SourceOffset = new Point(0, 0);
-            _annoCanvas.Clip = new RectangleGeometry(_selection);
+            if (_annoCanvasClipGeometry == null)
+            {
+                _annoCanvasClipGeometry = new RectangleGeometry(_selection);
+                _annoCanvas.Clip = _annoCanvasClipGeometry;
+            }
+            else
+            {
+                _annoCanvasClipGeometry.Rect = _selection;
+            }
+
             _annoCanvas.Visibility = Visibility.Visible;
 
             _toolbar.Visibility = _hasSelection ? Visibility.Visible : Visibility.Collapsed;
@@ -716,12 +770,28 @@ public sealed class SnipWindow : Window
         }
         else
         {
-            var outer = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
+            if (_dimOuterGeometry == null)
+            {
+                _dimOuterGeometry = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
+            }
+            else
+            {
+                _dimOuterGeometry.Rect = new Rect(0, 0, _logicalSize.Width, _logicalSize.Height);
+            }
+
             if (_hoveredSnapDipRect is { Width: >= 5, Height: >= 5 } snap)
             {
                 _dimPath.Fill = _selectionDimBrush;
-                var inner = new RectangleGeometry(snap);
-                _dimPath.Data = new CombinedGeometry(GeometryCombineMode.Xor, outer, inner);
+                _dimInnerGeometry.Rect = snap;
+                if (_dimCombinedGeometry == null)
+                {
+                    _dimCombinedGeometry = new CombinedGeometry(
+                        GeometryCombineMode.Xor,
+                        _dimOuterGeometry,
+                        _dimInnerGeometry);
+                    _dimPath.Data = _dimCombinedGeometry;
+                }
+
                 Canvas.SetLeft(_snapPreviewRect, snap.X);
                 Canvas.SetTop(_snapPreviewRect, snap.Y);
                 _snapPreviewRect.Width = snap.Width;
@@ -731,7 +801,7 @@ public sealed class SnipWindow : Window
             else
             {
                 _dimPath.Fill = _idleDimBrush;
-                _dimPath.Data = outer;
+                _dimPath.Data = _dimOuterGeometry;
                 _snapPreviewRect.Visibility = Visibility.Collapsed;
             }
 
@@ -880,6 +950,16 @@ public sealed class SnipWindow : Window
         }
     }
 
+    /// <summary>Min interval between UIA sub-element hit queries (cross-process COM round-trip).</summary>
+    private static readonly TimeSpan UiaSnapThrottle = TimeSpan.FromMilliseconds(50);
+
+    private DateTime _lastUiaSnapUtc = DateTime.MinValue;
+
+    private Int32Rect? _lastUiaTargetScreenRect;
+
+    /// <summary>Magnifier color swatch brush, created once and recolored per move.</summary>
+    private SolidColorBrush _magnifierSwatchBrush;
+
     private void UpdateHoverWindowSnap(Point dipPoint)
     {
         int screenX = _physicalBounds.X + (int)Math.Round(dipPoint.X * _dpiScale);
@@ -889,21 +969,38 @@ public sealed class SnipWindow : Window
             || Keyboard.IsKeyDown(Key.Tab);
 
         Int32Rect? targetScreenRect = null;
-        if (uiaSubElementMode
-            && WindowSnapService.TryFindSubElementBounds(
-                _windowCandidates,
-                TryGetHwnd(),
-                screenX,
-                screenY,
-                out Int32Rect subBounds))
+        if (uiaSubElementMode)
         {
-            targetScreenRect = subBounds;
-            _snapPreviewRect.Stroke = new SolidColorBrush(Color.FromRgb(72, 210, 110));
+            // UIA FromPoint is a 10-100ms cross-proc COM call; throttle per-move repeats.
+            var now = DateTime.UtcNow;
+            if ((now - _lastUiaSnapUtc) >= UiaSnapThrottle)
+            {
+                _lastUiaSnapUtc = now;
+                if (WindowSnapService.TryFindSubElementBounds(
+                        _windowCandidates,
+                        TryGetHwnd(),
+                        screenX,
+                        screenY,
+                        out Int32Rect subBounds))
+                {
+                    targetScreenRect = subBounds;
+                    _snapPreviewRect.Stroke = SnapHoverStroke;
+                }
+            }
+            else
+            {
+                targetScreenRect = _lastUiaTargetScreenRect;
+            }
         }
         else if (WindowSnapService.FindHoveredWindow(_windowCandidates, screenX, screenY) is { } win)
         {
             targetScreenRect = win.ScreenBounds;
-            _snapPreviewRect.Stroke = new SolidColorBrush(Color.FromRgb(0, 183, 255));
+            _snapPreviewRect.Stroke = SnapWindowStroke;
+        }
+
+        if (uiaSubElementMode)
+        {
+            _lastUiaTargetScreenRect = targetScreenRect;
         }
 
         _hoveredSnapDipRect = targetScreenRect.HasValue
@@ -2066,7 +2163,17 @@ public sealed class SnipWindow : Window
             return;
         }
 
-        _magnifierSwatch.Background = new SolidColorBrush(Color.FromRgb(_lastSampledR, _lastSampledG, _lastSampledB));
+        // Swatch brush is frozen and reused; only the color changes per move.
+        if (_magnifierSwatchBrush == null)
+        {
+            _magnifierSwatchBrush = new SolidColorBrush(Color.FromRgb(_lastSampledR, _lastSampledG, _lastSampledB));
+            _magnifierSwatch.Background = _magnifierSwatchBrush;
+        }
+        else
+        {
+            _magnifierSwatchBrush.Color = Color.FromRgb(_lastSampledR, _lastSampledG, _lastSampledB);
+        }
+
         if (_dragCreating || _dragMovingHandle)
         {
             int selW = Math.Max(1, (int)Math.Round(_selection.Width * _dpiScale));
@@ -2078,9 +2185,7 @@ public sealed class SnipWindow : Window
             _magnifierCoordText.Text = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"({px}, {py})");
         }
 
-        string hex = PixelMagnifier.FormatHex(_lastSampledR, _lastSampledG, _lastSampledB);
-        string rgb = PixelMagnifier.FormatRgb(_lastSampledR, _lastSampledG, _lastSampledB);
-        _magnifierColorText.Text = $"{hex}  {rgb}";
+        _magnifierColorText.Text = $"{PixelMagnifier.FormatHex(_lastSampledR, _lastSampledG, _lastSampledB)}  {PixelMagnifier.FormatRgb(_lastSampledR, _lastSampledG, _lastSampledB)}";
 
         _magnifierHud.Visibility = Visibility.Visible;
         _magnifierHud.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
