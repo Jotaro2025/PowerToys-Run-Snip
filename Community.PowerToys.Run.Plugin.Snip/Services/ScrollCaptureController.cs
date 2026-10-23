@@ -51,6 +51,7 @@ public sealed class ScrollCaptureController
     private readonly Dispatcher _dispatcher;
 
     private readonly List<ScrollTilePixels> _tiles = new();
+    private readonly List<ScrollStitcher.TileAlignment> _alignments = new();
     private CancellationTokenSource _cts;
     private bool _active;
     private int _captureBusy;
@@ -68,6 +69,8 @@ public sealed class ScrollCaptureController
     private bool _windowCaptureProbed;
 
     public event Action<int> CapturingStopped;
+
+    internal event Action<ScrollTilePixels> LatestTileCaptured;
 
     public event Action Cancelled;
 
@@ -144,6 +147,7 @@ public sealed class ScrollCaptureController
         Interlocked.Exchange(ref _stopNotified, 0);
         Interlocked.Exchange(ref _captureBusy, 0);
         _tiles.Clear();
+        _alignments.Clear();
 
         ShowOverlay();
         PostToOverlay(() => _overlay.ShowManualCapturing(0));
@@ -193,6 +197,7 @@ public sealed class ScrollCaptureController
                 projectedHeight = first.Height;
                 maxHeight = ScrollStitcher.ResolveMaxStitchedHeight(first.Width);
                 _stopGuard?.SetTileCount(_tiles.Count);
+                NotifyLatestTileCaptured(first);
             }
             else if (first == null)
             {
@@ -318,11 +323,20 @@ public sealed class ScrollCaptureController
                 consecutiveDups = 0;
 
                 // Scroll-up: newest tile sits on top, so measure older-below-newer (same row count).
-                int contributed = _tiles.Count == 0
-                    ? bmp.Height
-                    : _scrollUp
-                        ? ScrollStitcher.EstimateContributedRows(bmp, _tiles[_tiles.Count - 1], scrollHint)
-                        : ScrollStitcher.EstimateContributedRows(_tiles[_tiles.Count - 1], bmp, scrollHint);
+                int contributed;
+                if (_tiles.Count == 0)
+                {
+                    contributed = bmp.Height;
+                }
+                else
+                {
+                    var alignment = _scrollUp
+                        ? ScrollStitcher.AlignTiles(bmp, _tiles[_tiles.Count - 1], scrollHint)
+                        : ScrollStitcher.AlignTiles(_tiles[_tiles.Count - 1], bmp, scrollHint);
+                    _alignments.Add(alignment);
+                    contributed = alignment.ContributedRows(bmp.Height);
+                }
+
                 if (contributed > 0 && contributed < bmp.Height)
                 {
                     scrollHint = contributed;
@@ -330,6 +344,7 @@ public sealed class ScrollCaptureController
 
                 _tiles.Add(bmp);
                 projectedHeight += contributed;
+                NotifyLatestTileCaptured(bmp);
                 PostToOverlay(() => _overlay.ShowManualCapturing(_tiles.Count));
                 _stopGuard?.SetTileCount(_tiles.Count);
                 SnipVerbose.Scroll($"[scroll] tile #{_tiles.Count} captured (projected h={projectedHeight}/{maxHeight})");
@@ -765,8 +780,11 @@ public sealed class ScrollCaptureController
             else
             {
                 var tilesCopy = OrderTilesForStitch(_tiles, _scrollUp);
-                SnipVerbose.Scroll($"[scroll] stitching {tilesCopy.Length} raw tile(s) — pixel buffers on pool");
-                using var stitchResult = await Task.Run(() => ScrollStitcher.Stitch(tilesCopy)).ConfigureAwait(true);
+                var alignmentsCopy = _alignments.Count == tilesCopy.Length - 1
+                    ? OrderTilesForStitch(_alignments, _scrollUp)
+                    : null;
+                SnipVerbose.Scroll($"[scroll] stitching {tilesCopy.Length} raw tile(s) — cachedAlignments={alignmentsCopy != null}");
+                using var stitchResult = await Task.Run(() => ScrollStitcher.Stitch(tilesCopy, alignmentsCopy)).ConfigureAwait(true);
                 resultBitmap = await _dispatcher.InvokeAsync(stitchResult.ToWriteableBitmap).Task.ConfigureAwait(true);
                 SnipVerbose.Scroll($"[scroll] stitch complete — {tilesCopy.Length} tiles → h={resultBitmap.PixelHeight} truncated={stitchResult.Truncated}");
             }
@@ -987,6 +1005,7 @@ public sealed class ScrollCaptureController
         }
 
         _tiles.Clear();
+        _alignments.Clear();
         _stoppedPending = false;
     }
 
@@ -1070,6 +1089,22 @@ public sealed class ScrollCaptureController
                 SnipVerbose.Scroll($"[scroll] overlay update skipped: {ex.Message}");
             }
         });
+    }
+
+    private void NotifyLatestTileCaptured(ScrollTilePixels tile)
+    {
+        if (!_preferWindowCapture || tile == null)
+        {
+            return;
+        }
+
+        var handler = LatestTileCaptured;
+        if (handler == null)
+        {
+            return;
+        }
+
+        PostToOverlay(() => handler(tile));
     }
 
     private async Task NotifyCapturingStoppedOnceAsync()

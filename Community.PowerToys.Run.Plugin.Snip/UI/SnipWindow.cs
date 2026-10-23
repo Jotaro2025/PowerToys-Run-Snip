@@ -73,6 +73,8 @@ public sealed class SnipWindow : Window
     private bool _hiddenForSessionChild;
 
     private ScrollCaptureController _scrollController;
+    private System.Windows.Media.Imaging.WriteableBitmap _scrollLivePreview;
+    private Int32Rect _scrollLivePreviewRect;
 
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
@@ -760,15 +762,26 @@ public sealed class SnipWindow : Window
 
         if (keepFrozenPreview)
         {
-            // Window-capture path: overlay stays visible — show frozen Edge in the selection
-            // (no Opacity=0 / no SetWindowRgn hole). Wheel still reaches underlay via
-            // temporary WS_EX_TRANSPARENT in SendInput.
+            // Window-capture path: overlay stays visible — show live-updated window frames
+            // inside the selection without punching a hole or mutating _source.
+            _scrollLivePreviewRect = new Int32Rect(
+                Math.Max(0, physicalRect.X - _physicalBounds.X),
+                Math.Max(0, physicalRect.Y - _physicalBounds.Y),
+                physicalRect.Width,
+                physicalRect.Height);
+            _scrollLivePreview = _source?.Clone();
+            if (_scrollLivePreview != null)
+            {
+                _screenshotImage.Source = _scrollLivePreview;
+            }
+
+            _scrollController.LatestTileCaptured += OnScrollLatestTileCaptured;
             _screenshotImage.Opacity = 1;
             _screenshotImage.Visibility = Visibility.Visible;
             ClearScrollCaptureHole();
             UpdateLayout();
             Log.Info(
-                "Snip scroll UI: keep frozen selection preview (window-capture; avoid white hole)",
+                "Snip scroll UI: keep live selection preview (window-capture; avoid white hole)",
                 GetType());
         }
         else
@@ -942,7 +955,7 @@ public sealed class SnipWindow : Window
                 ClearScrollCaptureHole();
                 if (_source != null)
                 {
-                    _screenshotImage.Source = BitmapPreview.ForOverlay(_source);
+                    _screenshotImage.Source = (System.Windows.Media.Imaging.BitmapSource)_scrollLivePreview ?? BitmapPreview.ForOverlay(_source);
                     _annoCanvas.SourceBitmap = _source;
                     _screenshotImage.Opacity = 1;
                     _screenshotImage.Visibility = Visibility.Visible;
@@ -1028,8 +1041,61 @@ public sealed class SnipWindow : Window
         }
     }
 
+    private unsafe void OnScrollLatestTileCaptured(ScrollTilePixels tile)
+    {
+        try
+        {
+            var preview = _scrollLivePreview;
+            if (preview == null || tile == null)
+            {
+                return;
+            }
+
+            var srcArr = tile.DangerousGetArray();
+            if (srcArr == null)
+            {
+                return;
+            }
+
+            int dstX = _scrollLivePreviewRect.X;
+            int dstY = _scrollLivePreviewRect.Y;
+            int copyW = Math.Min(tile.Width, preview.PixelWidth - dstX);
+            int copyH = Math.Min(tile.Height, preview.PixelHeight - dstY);
+            if (copyW <= 0 || copyH <= 0)
+            {
+                return;
+            }
+
+            int rowBytes = copyW * 4;
+            int srcStride = tile.Stride;
+            preview.Lock();
+            try
+            {
+                byte* dstBase = (byte*)preview.BackBuffer;
+                int dstStride = preview.BackBufferStride;
+                for (int y = 0; y < copyH; y++)
+                {
+                    var srcRow = srcArr.AsSpan(y * srcStride, rowBytes);
+                    var dstRow = new Span<byte>(dstBase + ((long)(dstY + y) * dstStride) + (dstX * 4), rowBytes);
+                    srcRow.CopyTo(dstRow);
+                }
+
+                preview.AddDirtyRect(new Int32Rect(dstX, dstY, copyW, copyH));
+            }
+            finally
+            {
+                preview.Unlock();
+            }
+        }
+        catch (Exception ex)
+        {
+            SnipVerbose.Scroll($"[scroll] live preview update skipped: {ex.Message}");
+        }
+    }
+
     private void RestorePassthroughUi()
     {
+        _scrollLivePreview = null;
         ClearScrollCaptureHole();
         _dimPath.IsHitTestVisible = false;
         if (_source != null)

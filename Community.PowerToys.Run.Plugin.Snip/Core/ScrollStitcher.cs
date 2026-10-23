@@ -34,20 +34,40 @@ public static class ScrollStitcher
     }
 
     /// <summary>
+    /// Cached pairwise vertical alignment result between two consecutive tiles.
+    /// Computed during capture so final stitching can reuse it without re-running FFT/SAD scans.
+    /// </summary>
+    internal readonly record struct TileAlignment(
+        int TopSkip,
+        string Mode,
+        TileRelation Relation,
+        int StickyBottomRows = 0)
+    {
+        public int ContributedRows(int tileHeight) => Relation switch
+        {
+            TileRelation.FullDuplicate => 0,
+            TileRelation.NoOverlap => tileHeight,
+            _ => Math.Max(0, tileHeight - TopSkip),
+        };
+    }
+
+    /// <summary>
+    /// Aligns <paramref name="prev"/> and <paramref name="next"/> and returns a reusable <see cref="TileAlignment"/>.
+    /// </summary>
+    internal static TileAlignment AlignTiles(ScrollTilePixels prev, ScrollTilePixels next, int scrollHintPx = 0)
+    {
+        ArgumentNullException.ThrowIfNull(prev);
+        ArgumentNullException.ThrowIfNull(next);
+        return AlignVerticalTilesPixelsWithFooter(prev, next, scrollHintPx);
+    }
+
+    /// <summary>
     /// Rows <paramref name="next"/> would add below <paramref name="prev"/> (0 for full duplicate).
     /// Thread-pool safe; used during capture to track the projected stitched height.
     /// </summary>
     internal static int EstimateContributedRows(ScrollTilePixels prev, ScrollTilePixels next, int scrollHintPx = 0)
     {
-        ArgumentNullException.ThrowIfNull(prev);
-        ArgumentNullException.ThrowIfNull(next);
-        var (topSkip, _, relation) = AlignVerticalTilesPixels(prev, next, scrollHintPx);
-        return relation switch
-        {
-            TileRelation.FullDuplicate => 0,
-            TileRelation.NoOverlap => next.Height,
-            _ => Math.Max(0, next.Height - topSkip),
-        };
+        return AlignTiles(prev, next, scrollHintPx).ContributedRows(next.Height);
     }
 
     public sealed class StitchOffset
@@ -188,13 +208,18 @@ public static class ScrollStitcher
 
     /// <summary>Thread-pool safe: stitches owned BGRA tiles into a pixel buffer (no WriteableBitmap).</summary>
     public static PixelStitchResult Stitch(IReadOnlyList<ScrollTilePixels> tiles)
-        => StitchPixelsCore(tiles, 0, null);
+        => StitchPixelsCore(tiles, 0, null, null);
 
     public static PixelStitchResult Stitch(
         IReadOnlyList<ScrollTilePixels> tiles,
         int estimatedScrollPxPerTile,
         IReadOnlyList<int> perTileScrollPx = null)
-        => StitchPixelsCore(tiles, estimatedScrollPxPerTile, perTileScrollPx);
+        => StitchPixelsCore(tiles, estimatedScrollPxPerTile, perTileScrollPx, null);
+
+    internal static PixelStitchResult Stitch(
+        IReadOnlyList<ScrollTilePixels> tiles,
+        IReadOnlyList<TileAlignment> precomputedAlignments)
+        => StitchPixelsCore(tiles, 0, null, precomputedAlignments);
 
     /// <summary>
     /// Legacy UI-thread helper: copies WriteableBitmap tiles into pixel buffers, stitches off any thread
@@ -212,7 +237,7 @@ public static class ScrollStitcher
                 owned.Add(CopyWriteableBitmapToTile(wb));
             }
 
-            using var pixels = StitchPixelsCore(owned, 0, null);
+            using var pixels = StitchPixelsCore(owned, 0, null, null);
             return new StitchResult
             {
                 Bitmap = pixels.ToWriteableBitmap(),
@@ -243,7 +268,7 @@ public static class ScrollStitcher
                 owned.Add(CopyWriteableBitmapToTile(wb));
             }
 
-            using var pixels = StitchPixelsCore(owned, estimatedScrollPxPerTile, perTileScrollPx);
+            using var pixels = StitchPixelsCore(owned, estimatedScrollPxPerTile, perTileScrollPx, null);
             return new StitchResult
             {
                 Bitmap = pixels.ToWriteableBitmap(),
@@ -293,7 +318,8 @@ public static class ScrollStitcher
     private static PixelStitchResult StitchPixelsCore(
         IReadOnlyList<ScrollTilePixels> tiles,
         int estimatedScrollPxPerTile,
-        IReadOnlyList<int> perTileScrollPx)
+        IReadOnlyList<int> perTileScrollPx,
+        IReadOnlyList<TileAlignment> precomputedAlignments)
     {
         ArgumentNullException.ThrowIfNull(tiles);
         if (tiles.Count == 0) throw new ArgumentException("At least one tile is required.", nameof(tiles));
@@ -325,6 +351,7 @@ public static class ScrollStitcher
             DestY = 0,
             Mode = "anchor",
         };
+        int lastContributingIdx = 0;
 
         for (int i = 1; i < tiles.Count; i++)
         {
@@ -348,7 +375,14 @@ public static class ScrollStitcher
             if (perTileScrollPx != null && i - 1 < perTileScrollPx.Count && perTileScrollPx[i - 1] > 0)
                 scrollHintPx = perTileScrollPx[i - 1];
 
-            var (topSkip, mode, relation) = AlignVerticalTilesPixels(prev, cur, scrollHintPx);
+            TileAlignment alignment = (precomputedAlignments != null && i - 1 < precomputedAlignments.Count)
+                ? precomputedAlignments[i - 1]
+                : AlignVerticalTilesPixelsWithFooter(prev, cur, scrollHintPx);
+
+            int topSkip = alignment.TopSkip;
+            string mode = alignment.Mode;
+            TileRelation relation = alignment.Relation;
+            int stickyFooterRows = alignment.StickyBottomRows;
 
             if (relation == TileRelation.FullDuplicate)
             {
@@ -364,7 +398,30 @@ public static class ScrollStitcher
                 continue;
             }
 
-            int contributed = relation == TileRelation.NoOverlap ? curHeight : curHeight - topSkip;
+            int rawShift = relation == TileRelation.NoOverlap ? curHeight : curHeight - topSkip;
+            int effectiveTopSkip = relation == TileRelation.NoOverlap ? 0 : topSkip;
+
+            // Trim static sticky-footer rows from the bottom of the previous contributing tile
+            // so the footer only appears once at the bottom of the final stitched image.
+            if (relation == TileRelation.PartialOverlap && stickyFooterRows > 0 && effectiveTopSkip >= stickyFooterRows)
+            {
+                var prevOff = offsets[lastContributingIdx];
+                if (prevOff.RowsContributed > stickyFooterRows)
+                {
+                    offsets[lastContributingIdx] = new StitchOffset
+                    {
+                        TileIndex = prevOff.TileIndex,
+                        TopSkip = prevOff.TopSkip,
+                        RowsContributed = prevOff.RowsContributed - stickyFooterRows,
+                        DestY = prevOff.DestY,
+                        Mode = prevOff.Mode,
+                    };
+                    totalHeight -= stickyFooterRows;
+                    effectiveTopSkip -= stickyFooterRows;
+                }
+            }
+
+            int contributed = relation == TileRelation.NoOverlap ? curHeight : curHeight - effectiveTopSkip;
             if (totalHeight + contributed > maxHeight)
             {
                 contributed = Math.Max(0, maxHeight - totalHeight);
@@ -375,19 +432,24 @@ public static class ScrollStitcher
             offsets[i] = new StitchOffset
             {
                 TileIndex = i,
-                TopSkip = relation == TileRelation.NoOverlap ? 0 : topSkip,
+                TopSkip = effectiveTopSkip,
                 RowsContributed = contributed,
                 DestY = totalHeight,
                 Mode = mode,
             };
-            totalHeight += contributed;
-            if (relation == TileRelation.PartialOverlap && contributed >= MinHintContribPx)
+            if (contributed > 0)
             {
-                recentDh.Add(contributed);
+                lastContributingIdx = i;
+            }
+
+            totalHeight += contributed;
+            if (relation == TileRelation.PartialOverlap && rawShift >= MinHintContribPx)
+            {
+                recentDh.Add(rawShift);
                 if (recentDh.Count > 6) recentDh.RemoveAt(0);
                 scrollHintPx = Median(recentDh);
             }
-            SnipVerbose.Scroll($"[stitch] tile {i}: {relation} skip={offsets[i].TopSkip} contrib={contributed} mode={mode} totalH={totalHeight} hint={scrollHintPx}");
+            SnipVerbose.Scroll($"[stitch] tile {i}: {relation} skip={offsets[i].TopSkip} contrib={contributed} footer={stickyFooterRows} mode={mode} totalH={totalHeight} hint={scrollHintPx}");
         }
 
         return ComposeStitchedPixels(tiles, offsets, width, totalHeight, truncated);
@@ -434,18 +496,25 @@ public static class ScrollStitcher
     private static (int topSkip, string mode, TileRelation relation) AlignVerticalTilesPixels(
         ScrollTilePixels prev, ScrollTilePixels next, int scrollHintPx = 0)
     {
+        var res = AlignVerticalTilesPixelsWithFooter(prev, next, scrollHintPx);
+        return (res.TopSkip, res.Mode, res.Relation);
+    }
+
+    private static TileAlignment AlignVerticalTilesPixelsWithFooter(
+        ScrollTilePixels prev, ScrollTilePixels next, int scrollHintPx = 0)
+    {
         int width = prev.Width;
         int prevH = prev.Height;
         int nextH = next.Height;
         if (prevH <= 0 || nextH <= 0 || width <= 0)
-            return (0, "no-overlap", TileRelation.NoOverlap);
+            return new TileAlignment(0, "no-overlap", TileRelation.NoOverlap, 0);
 
         unsafe
         {
             fixed (byte* prevBase = prev.DangerousGetArray())
             fixed (byte* nextBase = next.DangerousGetArray())
             {
-                return AlignVerticalTilesFromPointers(
+                return AlignVerticalTilesWithFooterFromPointers(
                     prevBase, prev.Stride, prevH,
                     nextBase, next.Stride, nextH,
                     width, scrollHintPx);
@@ -586,13 +655,25 @@ public static class ScrollStitcher
         byte* nextBase, int nextStride, int nextH,
         int width, int scrollHintPx = 0)
     {
+        var res = AlignVerticalTilesWithFooterFromPointers(
+            prevBase, prevStride, prevH,
+            nextBase, nextStride, nextH,
+            width, scrollHintPx);
+        return (res.TopSkip, res.Mode, res.Relation);
+    }
+
+    internal static unsafe TileAlignment AlignVerticalTilesWithFooterFromPointers(
+        byte* prevBase, int prevStride, int prevH,
+        byte* nextBase, int nextStride, int nextH,
+        int width, int scrollHintPx = 0)
+    {
         if (prevH <= 0 || nextH <= 0 || width <= 0)
-            return (0, "no-overlap", TileRelation.NoOverlap);
+            return new TileAlignment(0, "no-overlap", TileRelation.NoOverlap, 0);
 
         int h = Math.Min(prevH, nextH);
         int maxDh = h - MinPartialOverlapPx;
         if (maxDh < MinPartialOverlapPx)
-            return (0, "no-overlap", TileRelation.NoOverlap);
+            return new TileAlignment(0, "no-overlap", TileRelation.NoOverlap, 0);
 
         // FullDuplicate：两 tile 同行逐像素几乎相同（Raw≥99.9%），说明滚动未生效或重复截图。
         double rawIdentical = ComputeRawMatchRatio(
@@ -600,7 +681,37 @@ public static class ScrollStitcher
             nextBase, nextStride, nextH, 0,
             h, width, stepX: 1, stepY: 1);
         if (rawIdentical >= 0.999)
-            return (nextH, "raw-dup", TileRelation.FullDuplicate);
+            return new TileAlignment(nextH, "raw-dup", TileRelation.FullDuplicate, 0);
+
+        // Exclude static left/right sidebars or scrollbars so stationary chrome does not bias dh=0 / false matches.
+        DetectScrollableColumnBounds(
+            prevBase, prevStride, nextBase, nextStride, h, width,
+            out int activeX0, out int activeWidth);
+        byte* activePrevBase = prevBase + (activeX0 * 4);
+        byte* activeNextBase = nextBase + (activeX0 * 4);
+
+        // If the scrollable interior is itself identical while only a tiny dynamic widget changed, treat as duplicate.
+        if (activeWidth < width)
+        {
+            double activeIdentical = ComputeRawMatchRatio(
+                activePrevBase, prevStride, prevH, 0,
+                activeNextBase, nextStride, nextH, 0,
+                h, activeWidth, stepX: 1, stepY: 1);
+            if (activeIdentical >= 0.999)
+                return new TileAlignment(nextH, "raw-dup", TileRelation.FullDuplicate, 0);
+        }
+
+        // Detect static bottom sticky-footer rows so they neither skew overlap scoring nor repeat across mid tiles.
+        int stickyFooterRows = DetectStickyBottomRows(
+            activePrevBase, prevStride, activeNextBase, nextStride, h, activeWidth);
+        int usableH = h - stickyFooterRows;
+        int usableMaxDh = usableH - MinPartialOverlapPx;
+        if (usableMaxDh < MinPartialOverlapPx)
+        {
+            stickyFooterRows = 0;
+            usableH = h;
+            usableMaxDh = maxDh;
+        }
 
         int effectiveHint = scrollHintPx;
         List<int> candidates;
@@ -610,30 +721,182 @@ public static class ScrollStitcher
         {
             // 有 hint 时跳过 FFT——hint 窗口 + SAD 已足够，FFT 是 tile#1 无 hint 时的冷启动路径。
             modeTag = "hint";
-            candidates = BuildHintWindowCandidates(maxDh, scrollHintPx);
+            candidates = BuildHintWindowCandidates(usableMaxDh, scrollHintPx);
         }
         else
         {
             var phase = ScrollPhaseCorrelator.EstimateVerticalShift(
-                prevBase, prevStride, prevH, nextBase, nextStride, nextH,
-                width, MinPartialOverlapPx, maxDh, scrollHintPx: 0);
+                activePrevBase, prevStride, usableH, activeNextBase, nextStride, usableH,
+                activeWidth, MinPartialOverlapPx, usableMaxDh, scrollHintPx: 0);
             effectiveHint = phase.Success ? phase.Dh : 0;
             modeTag = phase.Success ? "fft" : "fft-scan";
-            candidates = BuildAllDhCandidates(maxDh);
+            candidates = BuildAllDhCandidates(usableMaxDh);
         }
 
         var finals = ScoreAndClassify(
-            prevBase, prevStride, prevH, nextBase, nextStride, nextH,
-            width, h, maxDh, effectiveHint, candidates, modeTag);
+            activePrevBase, prevStride, usableH, activeNextBase, nextStride, usableH,
+            activeWidth, usableH, usableMaxDh, effectiveHint, candidates, modeTag);
 
         if (finals.relation == TileRelation.NoOverlap && scrollHintPx > 0)
         {
             SnipVerbose.Scroll(
                 $"[stitch] hint-fallback: dh={scrollHintPx} (avoid full-tile stack after weak match)");
-            return (h - scrollHintPx, "hint-fallback", TileRelation.PartialOverlap);
+            return new TileAlignment(h - scrollHintPx, "hint-fallback", TileRelation.PartialOverlap, stickyFooterRows);
         }
 
-        return finals;
+        if (finals.relation == TileRelation.PartialOverlap)
+        {
+            int bestDh = usableH - finals.topSkip;
+            return new TileAlignment(h - bestDh, finals.mode, TileRelation.PartialOverlap, stickyFooterRows);
+        }
+
+        return new TileAlignment(finals.topSkip, finals.mode, finals.relation, 0);
+    }
+
+    /// <summary>
+    /// Detects stationary left/right columns (e.g. fixed navigation sidebars or scrollbars)
+    /// that remain unchanged at dh=0 while the central viewport scrolls.
+    /// </summary>
+    internal static unsafe void DetectScrollableColumnBounds(
+        byte* prevBase, int prevStride,
+        byte* nextBase, int nextStride,
+        int h, int width,
+        out int activeX0, out int activeWidth)
+    {
+        activeX0 = 0;
+        activeWidth = width;
+        if (width < 24 || h < 8)
+        {
+            return;
+        }
+
+        int maxSideTrim = width * 2 / 5;
+        int stepY = Math.Max(1, h / 32);
+
+        int leftStatic = 0;
+        for (int x = 0; x < maxSideTrim; x++)
+        {
+            if (IsColumnStatic(prevBase, prevStride, nextBase, nextStride, h, x, stepY))
+            {
+                leftStatic = x + 1;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        int rightStatic = 0;
+        for (int i = 0; i < maxSideTrim; i++)
+        {
+            int x = width - 1 - i;
+            if (x <= leftStatic)
+            {
+                break;
+            }
+
+            if (IsColumnStatic(prevBase, prevStride, nextBase, nextStride, h, x, stepY))
+            {
+                rightStatic = i + 1;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        int candidateWidth = width - leftStatic - rightStatic;
+        if (candidateWidth >= Math.Max(12, width / 4) && (leftStatic > 0 || rightStatic > 0))
+        {
+            activeX0 = leftStatic;
+            activeWidth = candidateWidth;
+        }
+    }
+
+    private static unsafe bool IsColumnStatic(
+        byte* prevBase, int prevStride,
+        byte* nextBase, int nextStride,
+        int h, int x, int stepY)
+    {
+        int matches = 0;
+        int total = 0;
+        int byteOffset = x * 4;
+        for (int y = 0; y < h; y += stepY)
+        {
+            byte* p = prevBase + ((long)y * prevStride) + byteOffset;
+            byte* n = nextBase + ((long)y * nextStride) + byteOffset;
+            total++;
+            if (p[0] == n[0] && p[1] == n[1] && p[2] == n[2])
+            {
+                matches++;
+            }
+        }
+
+        return total > 0 && (double)matches / total >= 0.96;
+    }
+
+    /// <summary>
+    /// Detects stationary bottom rows (e.g. sticky footer / status bar) that stay identical at dh=0
+    /// while the viewport above them scrolls.
+    /// </summary>
+    internal static unsafe int DetectStickyBottomRows(
+        byte* prevBase, int prevStride,
+        byte* nextBase, int nextStride,
+        int h, int width)
+    {
+        const int minStickyRows = 4;
+        if (h < 24 || width < 8)
+        {
+            return 0;
+        }
+
+        int maxFooter = Math.Min(h / 4, 160);
+        int footerRows = 0;
+        for (int r = 1; r <= maxFooter; r++)
+        {
+            int y = h - r;
+            double rowMatch = ComputeRawMatchRatio(
+                prevBase, prevStride, h, y,
+                nextBase, nextStride, h, y,
+                1, width, stepX: 1, stepY: 1);
+            if (rowMatch >= 0.985)
+            {
+                footerRows = r;
+            }
+            else
+            {
+                break;
+            }
+        }
+
+        if (footerRows < minStickyRows)
+        {
+            return 0;
+        }
+
+        int bodyH = h - footerRows;
+        double bodyMatchAtZero = ComputeRawMatchRatio(
+            prevBase, prevStride, h, 0,
+            nextBase, nextStride, h, 0,
+            bodyH, width, stepX: 2, stepY: 2);
+        if (bodyMatchAtZero >= 0.85)
+        {
+            return 0;
+        }
+
+        // Guard against uniform background margins at the bottom: a true sticky footer differs
+        // from the content band immediately above it in the same frame.
+        int aboveStart = Math.Max(0, bodyH - footerRows);
+        double selfSimilarityAbove = ComputeRawMatchRatio(
+            prevBase, prevStride, h, aboveStart,
+            prevBase, prevStride, h, bodyH,
+            footerRows, width, stepX: 1, stepY: 1);
+        if (selfSimilarityAbove >= 0.95)
+        {
+            return 0;
+        }
+
+        return footerRows;
     }
 
     private static List<int> BuildHintWindowCandidates(int maxDh, int scrollHintPx)
