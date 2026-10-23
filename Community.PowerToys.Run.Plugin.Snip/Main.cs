@@ -488,6 +488,18 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         _settings.VerboseScrollLogging = options.FirstOrDefault(x => x.Key == OptionVerboseScrollLogging)?.Value ?? false;
         SnipVerbose.ScrollLogging = _settings.VerboseScrollLogging;
 
+        var strokeHex = options.FirstOrDefault(x => x.Key == "LastStrokeColorHex")?.TextValue;
+        if (!string.IsNullOrWhiteSpace(strokeHex))
+        {
+            _settings.LastStrokeColorHex = strokeHex.Trim();
+        }
+
+        var strokeWidth = options.FirstOrDefault(x => x.Key == "LastStrokeWidth")?.NumberValue;
+        if (strokeWidth.HasValue && strokeWidth.Value > 0)
+        {
+            _settings.LastStrokeWidth = Math.Clamp(strokeWidth.Value, 1.0, 24.0);
+        }
+
         var unloadHyMt = options.FirstOrDefault(x => x.Key == OptionUnloadHyMt);
         if (unloadHyMt is { Value: true })
         {

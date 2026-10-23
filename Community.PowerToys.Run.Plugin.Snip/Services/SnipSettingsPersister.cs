@@ -122,6 +122,8 @@ internal static class SnipSettingsPersister
             OptionPatch.Number("HyMtIdleUnloadMinutes", settings.HyMtIdleUnloadMinutes),
             OptionPatch.ComboBox("HyMtBackend", (int)settings.HyMtBackend),
             OptionPatch.Bool("DownloadRecommendedHyMtModel", false),
+            OptionPatch.Text("LastStrokeColorHex", string.IsNullOrWhiteSpace(settings.LastStrokeColorHex) ? "#EE204D" : settings.LastStrokeColorHex),
+            OptionPatch.Number("LastStrokeWidth", settings.LastStrokeWidth > 0 ? settings.LastStrokeWidth : 3.0),
         ];
     }
 

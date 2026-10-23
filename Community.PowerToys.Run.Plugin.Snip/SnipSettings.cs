@@ -3,7 +3,9 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Globalization;
 using System.IO;
+using System.Windows.Media;
 
 using Community.PowerToys.Run.Plugin.Snip.Models;
 
@@ -98,6 +100,41 @@ public sealed class SnipSettings
     /// </summary>
     public bool VerboseScrollLogging { get; set; }
 
+    /// <summary>Last used annotation stroke color in <c>#RRGGBB</c> format.</summary>
+    public string LastStrokeColorHex { get; set; } = "#EE204D";
+
+    /// <summary>Last used annotation stroke width in DIPs.</summary>
+    public double LastStrokeWidth { get; set; } = 3.0;
+
+    /// <summary>Formats a <see cref="Color"/> as <c>#RRGGBB</c>.</summary>
+    public static string FormatColorHex(Color color)
+        => string.Create(CultureInfo.InvariantCulture, $"#{color.R:X2}{color.G:X2}{color.B:X2}");
+
+    /// <summary>Parses a <c>#RRGGBB</c> string or returns <paramref name="fallback"/>.</summary>
+    public static Color ParseColorHexOrDefault(string hex, Color fallback)
+    {
+        if (string.IsNullOrWhiteSpace(hex))
+        {
+            return fallback;
+        }
+
+        ReadOnlySpan<char> span = hex.AsSpan().Trim();
+        if (span.Length > 0 && span[0] == '#')
+        {
+            span = span.Slice(1);
+        }
+
+        if (span.Length == 6
+            && byte.TryParse(span.Slice(0, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte r)
+            && byte.TryParse(span.Slice(2, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte g)
+            && byte.TryParse(span.Slice(4, 2), NumberStyles.HexNumber, CultureInfo.InvariantCulture, out byte b))
+        {
+            return Color.FromRgb(r, g, b);
+        }
+
+        return fallback;
+    }
+
     /// <summary>Fallback directory when <see cref="SaveDirectory"/> is not set.</summary>
     public static string DefaultSaveFolder
         => Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.MyPictures), "Snip");
@@ -128,6 +165,8 @@ public sealed class SnipSettings
             HyMtIdleUnloadMinutes = HyMtIdleUnloadMinutes,
             CheckForUpdates = CheckForUpdates,
             VerboseScrollLogging = VerboseScrollLogging,
+            LastStrokeColorHex = LastStrokeColorHex,
+            LastStrokeWidth = LastStrokeWidth,
         };
     }
 
@@ -156,5 +195,7 @@ public sealed class SnipSettings
         HyMtIdleUnloadMinutes = other.HyMtIdleUnloadMinutes;
         CheckForUpdates = other.CheckForUpdates;
         VerboseScrollLogging = other.VerboseScrollLogging;
+        LastStrokeColorHex = other.LastStrokeColorHex;
+        LastStrokeWidth = other.LastStrokeWidth;
     }
 }

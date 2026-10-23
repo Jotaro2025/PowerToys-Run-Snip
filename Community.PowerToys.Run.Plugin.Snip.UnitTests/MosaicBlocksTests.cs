@@ -116,6 +116,47 @@ public class MosaicBlocksTests
         }
     }
 
+
+    [TestMethod]
+    public void FillGaussianBlurSmoothsSharpEdgeAndWritesOpaqueAlpha()
+    {
+        var src = new byte[Stride * Height];
+        for (int y = 0; y < Height; y++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                byte v = x < 8 ? (byte)0 : (byte)255;
+                int o = (y * Stride) + (x * 4);
+                src[o] = v;
+                src[o + 1] = v;
+                src[o + 2] = v;
+                src[o + 3] = 255;
+            }
+        }
+
+        var dest = new byte[Stride * Height];
+        MosaicBlocks.FillGaussianBlur(src, Stride, Width, Height, dest, Stride, 0, 0, Width, Height, radius: 3);
+
+        int boundaryOff = (8 * Stride) + (8 * 4);
+        Assert.IsTrue(dest[boundaryOff] > 20 && dest[boundaryOff] < 235, "Edge pixel should be blended by Gaussian/box blur.");
+        Assert.AreEqual(255, dest[boundaryOff + 3]);
+    }
+
+    [TestMethod]
+    public void FillSolidWritesExactColorAcrossBuffer()
+    {
+        int w = 6, h = 4;
+        var dest = new byte[w * 4 * h];
+        MosaicBlocks.FillSolid(dest, w * 4, w, h, b: 12, g: 34, r: 56, a: 255);
+        for (int i = 0; i < dest.Length; i += 4)
+        {
+            Assert.AreEqual(12, dest[i + 0]);
+            Assert.AreEqual(34, dest[i + 1]);
+            Assert.AreEqual(56, dest[i + 2]);
+            Assert.AreEqual(255, dest[i + 3]);
+        }
+    }
+
     private static byte[] CreateGradient()
     {
         var src = new byte[Stride * Height];

@@ -428,7 +428,16 @@ public static class SnipController
         Action<string, string> notify,
         System.Windows.Rect? initialSelection = null)
     {
-        var request = new EditRequest { InitialSelection = initialSelection };
+        var defaultStroke = SnipSettings.ParseColorHexOrDefault(
+            settings?.LastStrokeColorHex,
+            System.Windows.Media.Color.FromRgb(238, 32, 77));
+        double defaultWidth = settings is { LastStrokeWidth: > 0 } ? settings.LastStrokeWidth : 3.0;
+        var request = new EditRequest
+        {
+            InitialSelection = initialSelection,
+            DefaultStroke = defaultStroke,
+            DefaultStrokeWidth = defaultWidth,
+        };
         var window = new SnipWindow(bitmap, screen, request, settings, monitors);
         window.ShowDialog();
 

@@ -142,14 +142,18 @@ public sealed class SnipWindow : Window
             Height = _logicalSize.Height,
         };
 
+        var initialStroke = request.DefaultStroke
+            ?? SnipSettings.ParseColorHexOrDefault(_settings.LastStrokeColorHex, Color.FromRgb(238, 32, 77));
+        double initialWidth = request.DefaultStrokeWidth > 0 ? request.DefaultStrokeWidth : (_settings.LastStrokeWidth > 0 ? _settings.LastStrokeWidth : 3.0);
+
         _annoCanvas = new AnnotationCanvas
         {
             SourceBitmap = source,
             SourceOffset = new Point(0, 0),
             SourceDpiScale = _dpiScale,
             ActiveTool = request.InitialTool,
-            CurrentStroke = request.DefaultStroke ?? Color.FromRgb(238, 32, 77),
-            CurrentStrokeWidth = request.DefaultStrokeWidth,
+            CurrentStroke = initialStroke,
+            CurrentStrokeWidth = initialWidth,
             Width = _logicalSize.Width,
             Height = _logicalSize.Height,
             ClipToBounds = true,
@@ -161,8 +165,17 @@ public sealed class SnipWindow : Window
             _toolbar.NotifyHistory(_annoCanvas.UndoDepth, _annoCanvas.RedoDepth);
         _toolbar = new SnipToolbar(request) { Visibility = Visibility.Collapsed };
         _toolbar.ToolChanged += OnToolbarToolChanged;
-        _toolbar.ColorChanged += (sender, c) => _annoCanvas.CurrentStroke = c;
-        _toolbar.StrokeWidthChanged += (sender, w) => _annoCanvas.CurrentStrokeWidth = w;
+        _toolbar.MosaicEffectChanged += (sender, effect) => _annoCanvas.CurrentMosaicEffect = effect;
+        _toolbar.ColorChanged += (sender, c) =>
+        {
+            _annoCanvas.CurrentStroke = c;
+            PersistAnnotationBrush(c, _annoCanvas.CurrentStrokeWidth);
+        };
+        _toolbar.StrokeWidthChanged += (sender, w) =>
+        {
+            _annoCanvas.CurrentStrokeWidth = w;
+            PersistAnnotationBrush(_annoCanvas.CurrentStroke, w);
+        };
         _toolbar.UndoClicked += (sender, e) => _annoCanvas.Undo();
         _toolbar.RedoClicked += (sender, e) => _annoCanvas.Redo();
         _toolbar.SaveClicked += async (sender, e) => await DoSaveAsync();
@@ -1752,5 +1765,27 @@ public sealed class SnipWindow : Window
         var w = Math.Max(1, Math.Abs(a.X - b.X));
         var h = Math.Max(1, Math.Abs(a.Y - b.Y));
         return new Rect(x, y, w, h);
+    }
+
+    private void PersistAnnotationBrush(Color stroke, double width)
+    {
+        string hex = SnipSettings.FormatColorHex(stroke);
+        _settings.LastStrokeColorHex = hex;
+        _settings.LastStrokeWidth = width;
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                SnipSettingsPersister.Persist(
+                [
+                    SnipSettingsPersister.OptionPatch.Text("LastStrokeColorHex", hex),
+                    SnipSettingsPersister.OptionPatch.Number("LastStrokeWidth", width),
+                ]);
+            }
+            catch
+            {
+                // Best-effort persistence of last brush style.
+            }
+        });
     }
 }
