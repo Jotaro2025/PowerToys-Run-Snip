@@ -69,6 +69,6 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 `plugin.json` 自 #6 起为 1.3.0，#1–#35 均在此版本号下合入且未单独打标签，主要包括：区域截屏与标注编辑器、文字提取（WeChatOcr，slim 包按需下载）、图片翻译（HTTP OpenAI 兼容 / 进程内 HyMT2Sharp，GGUF 下载、断点续传与 SHA-256 校验）、钉住图片、专用设置窗口与发布打包脚本，以及捕获 / 剪贴板 / 译图渲染的一系列性能优化（@Jotaro2025）。
 
-`plugin.json` has been 1.3.0 since #6; #1–#35 landed under that version without separate tags: region capture and annotation editor, text extraction (WeChatOcr, on-demand download for slim), image translation (HTTP OpenAI-compatible / in-process HyMT2Sharp with GGUF download, resume and SHA-256 check), pin image, the dedicated settings window and pack scripts, plus capture / clipboard / translate-render performance work (#83, @Jotaro2025).
+`plugin.json` has been 1.3.0 since #6; #1–#35 landed under that version without separate tags: region capture and annotation editor, text extraction (WeChatOcr, on-demand download for slim), image translation (HTTP OpenAI-compatible / in-process HyMT2Sharp with GGUF download, resume and SHA-256 check), pin image, the dedicated settings window and pack scripts, plus capture / clipboard / translate-render performance work (@Jotaro2025).
 
 [1.4.0]: https://github.com/Jotaro2025/PowerToys-Run-Snip/releases/tag/v1.4.0
