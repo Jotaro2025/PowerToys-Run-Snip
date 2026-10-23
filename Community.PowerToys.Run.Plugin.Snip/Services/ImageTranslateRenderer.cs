@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
@@ -257,30 +258,39 @@ public static class ImageTranslateRenderer
         int sw = src.PixelWidth;
         int sh = src.PixelHeight;
         int srcStride = sw * 4;
-        var srcBuf = new byte[srcStride * sh];
-        src.CopyPixels(srcBuf, srcStride, 0);
-
-        dest.Lock();
+        int byteCount = checked(srcStride * sh);
+        byte[] srcBuf = ArrayPool<byte>.Shared.Rent(byteCount);
         try
         {
-            int dstStride = dest.BackBufferStride;
-            int dw = dest.PixelWidth;
-            int dh = dest.PixelHeight;
-            Span<byte> dst;
-            unsafe
-            {
-                dst = new Span<byte>((void*)dest.BackBuffer, checked(dstStride * dh));
-            }
+            src.CopyPixels(srcBuf, srcStride, 0);
 
-            var dirty = BlendPremultipliedOver(srcBuf, srcStride, sw, sh, dst, dstStride, dw, dh, destX, destY);
-            if (!dirty.IsEmpty)
+            dest.Lock();
+            try
             {
-                dest.AddDirtyRect(dirty);
+                int dstStride = dest.BackBufferStride;
+                int dw = dest.PixelWidth;
+                int dh = dest.PixelHeight;
+                Span<byte> dst;
+                unsafe
+                {
+                    dst = new Span<byte>((void*)dest.BackBuffer, checked(dstStride * dh));
+                }
+
+                var dirty = BlendPremultipliedOver(
+                    srcBuf.AsSpan(0, byteCount), srcStride, sw, sh, dst, dstStride, dw, dh, destX, destY);
+                if (!dirty.IsEmpty)
+                {
+                    dest.AddDirtyRect(dirty);
+                }
+            }
+            finally
+            {
+                dest.Unlock();
             }
         }
         finally
         {
-            dest.Unlock();
+            ArrayPool<byte>.Shared.Return(srcBuf);
         }
     }
 
