@@ -348,7 +348,10 @@
     <value>隐藏</value>
   </data>
   <data name="opt_tr_http_key_desc" xml:space="preserve">
-    <value>非空时作为 Bearer Token 发送。</value>
+    <value>非空时作为 Bearer 发送。留空则保留已保存的密钥；请在 Snip 设置窗口清空密钥。此处不显示 DPAPI 密文。</value>
+  </data>
+  <data name="opt_tr_http_key_placeholder" xml:space="preserve">
+    <value>留空则保留已保存的密钥</value>
   </data>
   <data name="opt_tr_http_model_label" xml:space="preserve">
     <value>HTTP · 模型名称</value>

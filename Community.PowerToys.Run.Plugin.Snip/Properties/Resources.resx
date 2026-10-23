@@ -348,7 +348,10 @@
     <value>Hide</value>
   </data>
   <data name="opt_tr_http_key_desc" xml:space="preserve">
-    <value>Sent as Bearer token when non-empty.</value>
+    <value>Sent as Bearer when set. Leave empty to keep the saved key; clear the key in the Snip settings window. Never shows DPAPI ciphertext here.</value>
+  </data>
+  <data name="opt_tr_http_key_placeholder" xml:space="preserve">
+    <value>Leave empty to keep the saved key</value>
   </data>
   <data name="opt_tr_http_model_label" xml:space="preserve">
     <value>HTTP · Model name</value>

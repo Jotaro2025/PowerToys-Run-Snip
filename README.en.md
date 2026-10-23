@@ -151,7 +151,7 @@ Uses the [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/) NuGet package (s
 - **Full pack**: ships `wco_data\` for offline OCR (~61 MB larger)
 
 - **Download sources**: prefer the [nuget.org](https://www.nuget.org/) flat container; on failure fall back to the [Azure CN mirror](https://nuget.cdn.azure.cn/) (`nuget.cdn.azure.cn`). **Every** source must pass the pinned SHA-256 (`OcrAssetsDownloader.ExpectedSha256`); a mirror whose bytes differ from that nuget.org package is rejected. Do not reorder to prefer the CN mirror unless nuget.org is unreachable long-term and you have confirmed the hash still matches.
-- Managed DLLs (`WeChatOcr.dll`, etc., ~1.3 MB) ship in both packs
+> **PowerToys Additional Options · API key**: the box stays empty with a “leave empty to keep the saved key” placeholder and **never** shows `dpapi:v1:` ciphertext. Empty on save keeps the key; clear it only in the **Snip settings window**.- Managed DLLs (`WeChatOcr.dll`, etc., ~1.3 MB) ship in both packs
 - **x64 only**; missing / timeout / failed OCR shows a message in the result window
 - Closing the result window cancels in-flight recognition; a busy engine shows a wait hint
 
