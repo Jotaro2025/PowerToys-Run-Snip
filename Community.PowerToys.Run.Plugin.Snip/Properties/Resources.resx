@@ -341,6 +341,12 @@
   <data name="opt_tr_http_key_label" xml:space="preserve">
     <value>HTTP · API key (optional)</value>
   </data>
+  <data name="settings_http_key_show" xml:space="preserve">
+    <value>Show</value>
+  </data>
+  <data name="settings_http_key_hide" xml:space="preserve">
+    <value>Hide</value>
+  </data>
   <data name="opt_tr_http_key_desc" xml:space="preserve">
     <value>Sent as Bearer token when non-empty.</value>
   </data>
