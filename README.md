@@ -183,6 +183,10 @@ ARM64 版 PowerToys 中始终使用 Windows OCR（微信 OCR 只有 x64 原生�
 
 未配置或配置错误时，点击「图片翻译」会提示，不会关闭截屏窗口。
 
+## winget（草稿）
+
+仓库内 [`winget/`](winget/) 提供 `Jotaro2025.PowerToysRunSnip` 清单草稿，指向 GitHub Release 的 `Snip-Setup-<ver>-{x64,arm64}-slim.exe`。**上传安装包并填入真实 SHA256 后**再向 [winget-pkgs](https://github.com/microsoft/winget-pkgs) 提交；详见 [`winget/README.md`](winget/README.md)。
+
 ## 构建与测试
 
 需要 .NET 10 SDK 和已安装的 PowerToys（引用其 `Wox.Plugin` 等）。CI / 无完整安装时可用仓库内 `build/PowerToysRefs` 作为 `-p:PowerToysInstallDir=...`（见 `.github/workflows/ci.yml`）。
