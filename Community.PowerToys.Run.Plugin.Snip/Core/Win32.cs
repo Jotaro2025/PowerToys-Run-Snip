@@ -251,9 +251,15 @@ internal static class Win32
 
     public const uint InputMouse = 0;
     public const uint MouseEventFMove = 0x0001;
+    public const uint MouseEventFLeftDown = 0x0002;
+    public const uint MouseEventFLeftUp = 0x0004;
     public const uint MouseEventFWheel = 0x0800;
     public const uint MouseEventFAbsolute = 0x8000;
 
+    /// <summary>
+    /// Native <c>MOUSEINPUT</c>. On x64 <c>dwExtraInfo</c> forces 8-byte alignment
+    /// (4 bytes padding after <c>time</c>) so the struct is 32 bytes.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct MOUSEINPUT
     {
@@ -270,13 +276,57 @@ internal static class Win32
         public IntPtr DwExtraInfo;
     }
 
+    /// <summary>
+    /// Keyboard half of the INPUT union (needed so the union is sized like Win32).
+    /// </summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct KEYBDINPUT
+    {
+        public ushort WVk;
+
+        public ushort WScan;
+
+        public uint DwFlags;
+
+        public uint Time;
+
+        public IntPtr DwExtraInfo;
+    }
+
+    /// <summary>Hardware half of the INPUT union.</summary>
+    [StructLayout(LayoutKind.Sequential)]
+    public struct HARDWAREINPUT
+    {
+        public uint UMsg;
+
+        public ushort WParamL;
+
+        public ushort WParamH;
+    }
+
+    /// <summary>
+    /// Win32 INPUT union. Explicit overlay of mi/ki/hi; size follows the largest
+    /// member (<see cref="MOUSEINPUT"/> = 32 on x64).
+    /// </summary>
     [StructLayout(LayoutKind.Explicit)]
     public struct INPUTUNION
     {
         [FieldOffset(0)]
         public MOUSEINPUT Mi;
+
+        [FieldOffset(0)]
+        public KEYBDINPUT Ki;
+
+        [FieldOffset(0)]
+        public HARDWAREINPUT Hi;
     }
 
+    /// <summary>
+    /// Win32 <c>INPUT</c>. Sequential layout adds 4 bytes of padding after
+    /// <c>type</c> on x64 so the union is 8-byte aligned (total 40). On x86
+    /// there is no padding (total 28). Always pass <see cref="InputSize"/> to
+    /// <c>SendInput</c>.
+    /// </summary>
     [StructLayout(LayoutKind.Sequential)]
     public struct INPUT
     {
@@ -284,6 +334,9 @@ internal static class Win32
 
         public INPUTUNION U;
     }
+
+    /// <summary>Cached <c>sizeof(INPUT)</c> for <c>SendInput</c> cbSize.</summary>
+    public static readonly int InputSize = Marshal.SizeOf<INPUT>();
 
     [DllImport(User32, SetLastError = true)]
     public static extern uint SendInput(uint nInputs, INPUT[] pInputs, int cbSize);

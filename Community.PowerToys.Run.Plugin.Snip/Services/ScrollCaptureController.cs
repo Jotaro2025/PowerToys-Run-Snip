@@ -28,7 +28,13 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 public sealed class ScrollCaptureController
 {
     /// <summary>Stop when this many consecutive full-duplicate tiles are seen.</summary>
-    internal const int ConsecutiveDuplicateStopThreshold = 2;
+    internal const int ConsecutiveDuplicateStopThreshold = 4;
+
+    /// <summary>Ignore duplicate streak until this many wheels have succeeded (Edge settle).</summary>
+    internal const int MinSuccessfulWheelsBeforeDuplicateStop = 3;
+
+    /// <summary>Extra settle after wheel before capture for the first few tiles (ms).</summary>
+    internal const int EarlyTileExtraSettleMs = 120;
 
     /// <summary>Stop when this many consecutive wheel deliveries fail (no underlay HWND).</summary>
     internal const int ConsecutiveWheelFailStopThreshold = 5;
@@ -152,12 +158,16 @@ public sealed class ScrollCaptureController
             Log.Warn("Snip scroll: first tile capture failed", typeof(ScrollCaptureController));
         }
 
+        // Focus underlay + hold cursor at center (off UI thread after first await).
+        BeginPointerHoldAtCenter();
+
         // Mouse guard arms once the cursor has been inside the selection, so starting
         // from the toolbar (outside the selection) does not pause immediately.
         bool guardArmed = false;
         while (!ct.IsCancellationRequested && _active && _tiles.Count < _maxTiles)
         {
-            bool inside = IsCursorInsideCapture();
+            // Programmatic hold keeps the cursor at selection center; do not false-pause.
+            bool inside = Win32CaptureService.IsScrollPointerHeld || IsCursorInsideCapture();
             guardArmed |= inside;
             if (guardArmed && !inside)
             {
@@ -209,7 +219,13 @@ public sealed class ScrollCaptureController
 
             try
             {
-                await Task.Delay(_scrollIntervalMs, ct).ConfigureAwait(false);
+                int settleMs = _scrollIntervalMs;
+                if (successfulWheels > 0 && successfulWheels <= MinSuccessfulWheelsBeforeDuplicateStop)
+                {
+                    settleMs += EarlyTileExtraSettleMs;
+                }
+
+                await Task.Delay(settleMs, ct).ConfigureAwait(false);
             }
             catch (TaskCanceledException)
             {
@@ -244,11 +260,12 @@ public sealed class ScrollCaptureController
                 SnipVerbose.Scroll($"[scroll] duplicate tile (streak={consecutiveDups}) — not kept");
                 if (consecutiveDups >= ConsecutiveDuplicateStopThreshold)
                 {
-                    autoStopReason = "page no longer scrolling";
+                    autoStopReason =
+                        $"page no longer scrolling (dup streak={consecutiveDups}/{ConsecutiveDuplicateStopThreshold}, wheels={successfulWheels})";
                     Log.Warn(
                         $"Snip scroll auto-stop: {autoStopReason} ({_tiles.Count} tile(s))",
                         typeof(ScrollCaptureController));
-                    SnipVerbose.Scroll("[scroll] auto-stop — page no longer scrolling");
+                    SnipVerbose.Scroll($"[scroll] auto-stop — {autoStopReason}");
                     break;
                 }
 
@@ -299,11 +316,12 @@ public sealed class ScrollCaptureController
     }
 
     /// <summary>
-    /// Duplicate tiles only count toward end-of-page auto-stop after at least one successful
-    /// wheel and when the latest wheel also succeeded.
+    /// Duplicate tiles only count toward end-of-page auto-stop after enough successful
+    /// wheels (Chromium often needs a few ticks before pixels move) and when the latest
+    /// wheel also succeeded.
     /// </summary>
     internal static bool ShouldCountDuplicateTowardAutoStop(bool lastWheelSucceeded, int successfulWheelCount)
-        => lastWheelSucceeded && successfulWheelCount > 0;
+        => lastWheelSucceeded && successfulWheelCount >= MinSuccessfulWheelsBeforeDuplicateStop;
 
     private bool IsCursorInsideCapture()
     {
@@ -343,6 +361,12 @@ public sealed class ScrollCaptureController
         int cy = _captureRect.Y + (_captureRect.Height / 2);
         int delta = (_scrollUp ? 1 : -1) * Win32.WheelDelta * _stepsPerTick;
 
+        // Keep cursor over the hole for the whole session (Chromium needs it).
+        if (!Win32CaptureService.IsScrollPointerHeld)
+        {
+            BeginPointerHoldAtCenter();
+        }
+
         if (!Win32CaptureService.TrySendWheelAt(cx, cy, delta, _overlayHwnd))
         {
             Log.Warn(
@@ -353,6 +377,32 @@ public sealed class ScrollCaptureController
         }
 
         return true;
+    }
+
+    private void BeginPointerHoldAtCenter()
+    {
+        int cx = _captureRect.X + (_captureRect.Width / 2);
+        int cy = _captureRect.Y + (_captureRect.Height / 2);
+        try
+        {
+            Win32CaptureService.BeginScrollPointerHold(cx, cy, injectFocusClick: true);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll BeginScrollPointerHold failed: {ex.Message}", typeof(ScrollCaptureController));
+        }
+    }
+
+    private static void EndPointerHold()
+    {
+        try
+        {
+            Win32CaptureService.EndScrollPointerHold();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip scroll EndScrollPointerHold failed: {ex.Message}", typeof(ScrollCaptureController));
+        }
     }
 
     public async Task StopCapturingAsync()
@@ -368,6 +418,7 @@ public sealed class ScrollCaptureController
             _cts?.Dispose();
             _cts = null;
             _active = false;
+            EndPointerHold();
             SnipVerbose.Scroll($"[scroll] stopped — {_tiles.Count} raw tile(s) kept");
             await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
@@ -382,6 +433,7 @@ public sealed class ScrollCaptureController
     /// <summary>Show stopped hint (keep overlay) and raise CapturingStopped once.</summary>
     private async Task FinishCapturingUiAsync(bool autoStopped)
     {
+        EndPointerHold();
         if (_tiles.Count > 0)
         {
             _stoppedPending = true;
@@ -505,6 +557,7 @@ public sealed class ScrollCaptureController
             _cts = null;
             _active = false;
             _stoppedPending = false;
+            EndPointerHold();
             HideOverlay();
             DisposeTiles();
             await InvokeCancelledAsync().ConfigureAwait(false);
