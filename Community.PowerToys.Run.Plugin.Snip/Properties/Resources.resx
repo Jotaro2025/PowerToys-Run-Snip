@@ -741,4 +741,16 @@
   <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
     <value>Elevated target — Esc/Space/Stop still work; wheel may be blocked by UIPI</value>
   </data>
+  <data name="tr_copy_source" xml:space="preserve">
+    <value>Copy Source</value>
+  </data>
+  <data name="tr_copy_bilingual" xml:space="preserve">
+    <value>Copy Bilingual</value>
+  </data>
+  <data name="tr_pin_image" xml:space="preserve">
+    <value>Pin</value>
+  </data>
+  <data name="tr_status_partial_fallback" xml:space="preserve">
+    <value>Partially translated ({0}/{1} lines kept original text due to timeout/error)</value>
+  </data>
 </root>

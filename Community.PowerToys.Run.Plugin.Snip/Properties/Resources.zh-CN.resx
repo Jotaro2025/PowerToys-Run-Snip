@@ -741,4 +741,16 @@
   <data name="scroll_stop_strip_uipi_tip" xml:space="preserve">
     <value>目标已提升 — Esc/空格/停止仍可用；滚轮可能被 UIPI 拦截</value>
   </data>
+  <data name="tr_copy_source" xml:space="preserve">
+    <value>复制原文</value>
+  </data>
+  <data name="tr_copy_bilingual" xml:space="preserve">
+    <value>复制双语对照</value>
+  </data>
+  <data name="tr_pin_image" xml:space="preserve">
+    <value>贴图置顶</value>
+  </data>
+  <data name="tr_status_partial_fallback" xml:space="preserve">
+    <value>已完成部分翻译（{0}/{1} 行因超时或错误保留原文）</value>
+  </data>
 </root>

@@ -1976,5 +1976,40 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
 
+        /// <summary>
+        ///   Looks up a localized string similar to Copy Source.
+        /// </summary>
+        internal static string tr_copy_source {
+            get {
+                return ResourceManager.GetString("tr_copy_source", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Copy Bilingual.
+        /// </summary>
+        internal static string tr_copy_bilingual {
+            get {
+                return ResourceManager.GetString("tr_copy_bilingual", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Pin.
+        /// </summary>
+        internal static string tr_pin_image {
+            get {
+                return ResourceManager.GetString("tr_pin_image", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Partially translated.
+        /// </summary>
+        internal static string tr_status_partial_fallback {
+            get {
+                return ResourceManager.GetString("tr_status_partial_fallback", resourceCulture);
+            }
+        }
     }
 }

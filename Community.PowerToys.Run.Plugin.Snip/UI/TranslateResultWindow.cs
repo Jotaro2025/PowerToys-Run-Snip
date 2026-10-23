@@ -55,6 +55,9 @@ public sealed class TranslateResultWindow : Window, IDisposable
     private readonly ScrollViewer _linesScroll;
     private readonly TextBlock _status;
     private readonly Button _copyAllButton;
+    private readonly Button _copySourceButton;
+    private readonly Button _copyBilingualButton;
+    private readonly Button _pinImageButton;
     private readonly Button _copyImageButton;
     private readonly Button _reapplyButton;
     private readonly Button _saveImageButton;
@@ -91,7 +94,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
         _sourceHeight = _originalImage.PixelHeight;
 
         Title = Properties.Resources.tr_window_title;
-        Width = 760;
+        Width = 860;
         Height = 560;
         MinWidth = 420;
         MinHeight = 280;
@@ -279,6 +282,10 @@ public sealed class TranslateResultWindow : Window, IDisposable
         _reapplyButton.Click += async (sender, e) => await ReapplyAsync();
         buttons.Children.Add(_reapplyButton);
 
+        _pinImageButton = CreateButton(Properties.Resources.tr_pin_image, isDefault: false);
+        _pinImageButton.Click += (sender, e) => PinTranslatedImage();
+        buttons.Children.Add(_pinImageButton);
+
         _saveImageButton = CreateButton(Properties.Resources.tr_save_image, isDefault: false);
         _saveImageButton.Click += async (sender, e) => await SaveImageAsync();
         buttons.Children.Add(_saveImageButton);
@@ -286,6 +293,14 @@ public sealed class TranslateResultWindow : Window, IDisposable
         _copyImageButton = CreateButton(Properties.Resources.tr_copy_image, isDefault: true);
         _copyImageButton.Click += async (sender, e) => await CopyImageAsync();
         buttons.Children.Add(_copyImageButton);
+
+        _copySourceButton = CreateButton(Properties.Resources.tr_copy_source, isDefault: false);
+        _copySourceButton.Click += (sender, e) => CopyText(JoinSources());
+        buttons.Children.Add(_copySourceButton);
+
+        _copyBilingualButton = CreateButton(Properties.Resources.tr_copy_bilingual, isDefault: false);
+        _copyBilingualButton.Click += (sender, e) => CopyText(JoinBilingual());
+        buttons.Children.Add(_copyBilingualButton);
 
         _copyAllButton = CreateButton(Properties.Resources.tr_copy_all, isDefault: false);
         _copyAllButton.Click += (sender, e) => CopyText(JoinTranslations());
@@ -391,6 +406,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
             BuildTranslationEditors(_lines, _translations);
             await ShowFinishedImageAsync(rendered);
             UpdateActionButtons(enabled: true);
+            string partialWarning = TranslatorBatch.ConsumePartialFallbackWarning();
             string tallTip = WindowsOcrService.ConsumeTallImageHint();
             if (tallTip == null
                 && OcrService.ResolveEngine(_settings) == Models.OcrEngineKind.WeChat)
@@ -398,13 +414,14 @@ public sealed class TranslateResultWindow : Window, IDisposable
                 tallTip = WindowsOcrService.TryBuildTallPreferWindowsHint(_sourceHeight);
             }
 
+            string warningText = !string.IsNullOrEmpty(partialWarning) ? partialWarning : tallTip;
             _status.Foreground = new SolidColorBrush(
-                string.IsNullOrEmpty(tallTip) ? Color.FromRgb(100, 100, 108) : Color.FromRgb(180, 120, 40));
-            _status.Text = string.IsNullOrEmpty(tallTip)
+                string.IsNullOrEmpty(warningText) ? Color.FromRgb(100, 100, 108) : Color.FromRgb(180, 120, 40));
+            _status.Text = string.IsNullOrEmpty(warningText)
                 ? Properties.Resources.tr_status_done
                     .Replace("{0}", _lines.Count.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)
                     .Replace("{1}", _settings.TargetLanguage ?? string.Empty, StringComparison.Ordinal)
-                : tallTip;
+                : warningText;
         }
         catch (OperationCanceledException)
         {
@@ -526,6 +543,25 @@ public sealed class TranslateResultWindow : Window, IDisposable
 
     private string JoinTranslations()
         => string.Join(Environment.NewLine, CollectTranslations());
+
+    private string JoinSources()
+        => string.Join(Environment.NewLine, _lines.Select(l => l.Text ?? string.Empty));
+
+    private string JoinBilingual()
+        => TranslatorBatch.FormatBilingualText(
+            _lines.Select(l => l.Text ?? string.Empty).ToList(),
+            CollectTranslations());
+
+    private void PinTranslatedImage()
+    {
+        if (_closed || _actionBusy || _imageView.Source is not BitmapSource bmp)
+        {
+            return;
+        }
+
+        var pinWindow = new PinImageWindow(bmp);
+        pinWindow.Show();
+    }
 
     private void OnModelLoading(object sender, EventArgs e)
     {
@@ -653,13 +689,18 @@ public sealed class TranslateResultWindow : Window, IDisposable
     private void UpdateActionButtons(bool enabled)
     {
         if (_copyAllButton == null || _copyImageButton == null
-            || _reapplyButton == null || _saveImageButton == null)
+            || _reapplyButton == null || _saveImageButton == null
+            || _copySourceButton == null || _copyBilingualButton == null
+            || _pinImageButton == null)
         {
             return;
         }
 
         _reapplyButton.IsEnabled = enabled;
+        _pinImageButton.IsEnabled = enabled;
         _saveImageButton.IsEnabled = enabled;
+        _copySourceButton.IsEnabled = enabled;
+        _copyBilingualButton.IsEnabled = enabled;
         _copyAllButton.IsEnabled = enabled;
         _copyImageButton.IsEnabled = enabled;
     }
