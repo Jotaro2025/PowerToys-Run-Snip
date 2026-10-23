@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Threading;
 using System.Windows;
 using System.Windows.Media.Imaging;
 
@@ -274,12 +275,104 @@ public sealed class Win32CaptureService : ICaptureService
         }
     }
 
+    /// <summary>Settle delay after SetCursorPos / focus click before wheel (Chromium hit-test).</summary>
+    internal const int ScrollPointerSettleMs = 40;
+
+    /// <summary>Expected <c>sizeof(INPUT)</c>: 40 on x64, 28 on x86.</summary>
+    internal static int ExpectedSendInputStructSize
+        => IntPtr.Size == 8 ? 40 : 28;
+
+    private static readonly object ScrollPointerLock = new();
+    private static bool _scrollPointerHeld;
+    private static Win32.POINT _scrollPointerSaved;
+    private static bool _scrollPointerHadSaved;
+    private static bool _scrollFocusClickDone;
+
+    /// <summary>True while scroll capture holds the cursor over the selection center.</summary>
+    internal static bool IsScrollPointerHeld
+    {
+        get
+        {
+            lock (ScrollPointerLock)
+            {
+                return _scrollPointerHeld;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Move the cursor to the selection center and keep it there until
+    /// <see cref="EndScrollPointerHold"/>. Optionally injects a left click so
+    /// Chromium/Edge take focus before the first wheel.
+    /// </summary>
+    public static void BeginScrollPointerHold(int physicalX, int physicalY, bool injectFocusClick = true)
+    {
+        lock (ScrollPointerLock)
+        {
+            if (!_scrollPointerHeld)
+            {
+                _scrollPointerHadSaved = Win32.GetCursorPos(out _scrollPointerSaved);
+                _scrollPointerHeld = true;
+                _scrollFocusClickDone = false;
+            }
+        }
+
+        _ = Win32.SetCursorPos(physicalX, physicalY);
+        Thread.Sleep(ScrollPointerSettleMs);
+
+        if (injectFocusClick)
+        {
+            bool clicked;
+            lock (ScrollPointerLock)
+            {
+                clicked = !_scrollFocusClickDone;
+                if (clicked)
+                {
+                    _scrollFocusClickDone = true;
+                }
+            }
+
+            if (clicked && TrySendInputFocusClick())
+            {
+                Log.Info(
+                    $"Snip scroll focus click via SendInput at ({physicalX},{physicalY})",
+                    typeof(Win32CaptureService));
+                Thread.Sleep(ScrollPointerSettleMs);
+            }
+        }
+    }
+
+    /// <summary>Restore the cursor saved by <see cref="BeginScrollPointerHold"/> (no-op if not held).</summary>
+    public static void EndScrollPointerHold()
+    {
+        Win32.POINT saved = default;
+        bool restore = false;
+        lock (ScrollPointerLock)
+        {
+            if (!_scrollPointerHeld)
+            {
+                return;
+            }
+
+            restore = _scrollPointerHadSaved;
+            saved = _scrollPointerSaved;
+            _scrollPointerHeld = false;
+            _scrollPointerHadSaved = false;
+            _scrollFocusClickDone = false;
+        }
+
+        if (restore)
+        {
+            _ = Win32.SetCursorPos(saved.X, saved.Y);
+        }
+    }
+
     /// <summary>
     /// Deliver a mouse wheel tick at a screen point under the selection hole.
     /// Prefers <c>SendInput(MOUSEEVENTF_WHEEL)</c> (Chromium/Edge accept real input;
     /// <c>SendMessage(WM_MOUSEWHEEL)</c> alone often returns 0 with no scroll). Falls back
-    /// to SendMessage when SendInput fails. Briefly moves the cursor into the hole so
-    /// hit-testing reaches the underlay, then restores it.
+    /// to SendMessage when SendInput fails. When a scroll pointer hold is active the cursor
+    /// stays at the target; otherwise it is restored after the wheel (legacy one-shot path).
     /// </summary>
     public static bool TrySendWheelAt(
         int physicalX,
@@ -301,14 +394,34 @@ public sealed class Win32CaptureService : ICaptureService
             _ = Win32.GetWindowThreadProcessId(target, out targetPid);
         }
 
+        bool holding;
+        lock (ScrollPointerLock)
+        {
+            holding = _scrollPointerHeld;
+        }
+
         bool moved = false;
         Win32.POINT saved = default;
-        if (Win32.GetCursorPos(out saved)
-            && (saved.X != physicalX || saved.Y != physicalY)
-            && Win32.SetCursorPos(physicalX, physicalY))
+        if (!holding)
         {
-            moved = true;
+            if (Win32.GetCursorPos(out saved)
+                && (saved.X != physicalX || saved.Y != physicalY)
+                && Win32.SetCursorPos(physicalX, physicalY))
+            {
+                moved = true;
+            }
+            else if (saved.X != physicalX || saved.Y != physicalY)
+            {
+                _ = Win32.SetCursorPos(physicalX, physicalY);
+            }
         }
+        else
+        {
+            _ = Win32.SetCursorPos(physicalX, physicalY);
+        }
+
+        // Chromium often ignores a wheel that arrives before hit-testing settles.
+        Thread.Sleep(ScrollPointerSettleMs);
 
         try
         {
@@ -339,7 +452,7 @@ public sealed class Win32CaptureService : ICaptureService
         }
         finally
         {
-            if (moved)
+            if (moved && !holding)
             {
                 _ = Win32.SetCursorPos(saved.X, saved.Y);
             }
@@ -366,28 +479,46 @@ public sealed class Win32CaptureService : ICaptureService
     internal static uint PackSendInputWheelData(int delta)
         => unchecked((uint)delta);
 
-    /// <summary>Inject one wheel tick via <c>SendInput</c>. Returns false when the API reports no events.</summary>
-    internal static bool TrySendInputWheel(int delta)
-    {
-        var input = new Win32.INPUT
+    /// <summary>Build a mouse <see cref="Win32.INPUT"/> with the given flags / data.</summary>
+    internal static Win32.INPUT CreateMouseInput(uint flags, uint mouseData = 0, int dx = 0, int dy = 0)
+        => new()
         {
             Type = Win32.InputMouse,
             U = new Win32.INPUTUNION
             {
                 Mi = new Win32.MOUSEINPUT
                 {
-                    Dx = 0,
-                    Dy = 0,
-                    MouseData = PackSendInputWheelData(delta),
-                    DwFlags = Win32.MouseEventFWheel,
+                    Dx = dx,
+                    Dy = dy,
+                    MouseData = mouseData,
+                    DwFlags = flags,
                     Time = 0,
                     DwExtraInfo = IntPtr.Zero,
                 },
             },
         };
 
-        uint sent = Win32.SendInput(1, new[] { input }, Marshal.SizeOf<Win32.INPUT>());
-        return sent == 1;
+    /// <summary>Left click (DOWN+UP) via one <c>SendInput</c> array to focus the underlay.</summary>
+    internal static bool TrySendInputFocusClick()
+    {
+        var inputs = new[]
+        {
+            CreateMouseInput(Win32.MouseEventFLeftDown),
+            CreateMouseInput(Win32.MouseEventFLeftUp),
+        };
+        uint sent = Win32.SendInput((uint)inputs.Length, inputs, Win32.InputSize);
+        return sent == (uint)inputs.Length;
+    }
+
+    /// <summary>Inject one wheel tick via <c>SendInput</c>. Returns false when the API reports no events.</summary>
+    internal static bool TrySendInputWheel(int delta)
+    {
+        var inputs = new[]
+        {
+            CreateMouseInput(Win32.MouseEventFWheel, PackSendInputWheelData(delta)),
+        };
+        uint sent = Win32.SendInput((uint)inputs.Length, inputs, Win32.InputSize);
+        return sent == (uint)inputs.Length;
     }
 
     private static string DescribeHwndClass(IntPtr hwnd)

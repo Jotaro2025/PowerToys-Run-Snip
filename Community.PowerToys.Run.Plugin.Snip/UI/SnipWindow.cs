@@ -733,9 +733,9 @@ public sealed class SnipWindow : Window
         _scrollController.Cancelled += OnScrollCaptureCancelled;
         _toolbar.SetScrollCaptureActive(true, scrollUp);
 
-        // Keep the frozen screenshot visible. SetWindowRgn punches the selection so live
-        // content shows through the hole; collapsing the preview + transparent root caused
-        // a blank/white flash when the region failed or covered the full client.
+        // Hide the frozen screenshot so punching the hole does not flash white over the
+        // still-painted bitmap. Keep XOR dim around the selection (not a transparent root /
+        // full-client blank). Restore the screenshot if the hole cannot be applied.
         _dimPath.Fill = _selectionDimBrush;
         var outer = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
         var inner = new RectangleGeometry(_selection);
@@ -749,12 +749,14 @@ public sealed class SnipWindow : Window
         _toolbar.IsHitTestVisible = true;
         _adorner.IsVisible = false;
         _adorner.UpdateLayout();
+        _screenshotImage.Visibility = Visibility.Collapsed;
         UpdateLayout();
 
         if (!ApplyScrollCaptureHole())
         {
+            _screenshotImage.Visibility = Visibility.Visible;
             Log.Warn(
-                "Snip scroll: selection hole not applied (full-client or invalid); wheel uses Z-order underlay",
+                "Snip scroll: selection hole not applied (full-client or invalid); showing screenshot again; wheel uses Z-order underlay",
                 GetType());
         }
 

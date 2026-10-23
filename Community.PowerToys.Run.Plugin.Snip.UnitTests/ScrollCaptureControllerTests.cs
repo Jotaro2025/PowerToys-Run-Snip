@@ -49,7 +49,40 @@ public class ScrollCaptureControllerTests
         Assert.IsFalse(ScrollCaptureController.ShouldCountDuplicateTowardAutoStop(lastWheelSucceeded: false, successfulWheelCount: 0));
         Assert.IsFalse(ScrollCaptureController.ShouldCountDuplicateTowardAutoStop(lastWheelSucceeded: false, successfulWheelCount: 3));
         Assert.IsFalse(ScrollCaptureController.ShouldCountDuplicateTowardAutoStop(lastWheelSucceeded: true, successfulWheelCount: 0));
-        Assert.IsTrue(ScrollCaptureController.ShouldCountDuplicateTowardAutoStop(lastWheelSucceeded: true, successfulWheelCount: 1));
+        Assert.IsFalse(ScrollCaptureController.ShouldCountDuplicateTowardAutoStop(lastWheelSucceeded: true, successfulWheelCount: 1));
+        Assert.IsFalse(ScrollCaptureController.ShouldCountDuplicateTowardAutoStop(
+            lastWheelSucceeded: true,
+            successfulWheelCount: ScrollCaptureController.MinSuccessfulWheelsBeforeDuplicateStop - 1));
+        Assert.IsTrue(ScrollCaptureController.ShouldCountDuplicateTowardAutoStop(
+            lastWheelSucceeded: true,
+            successfulWheelCount: ScrollCaptureController.MinSuccessfulWheelsBeforeDuplicateStop));
+    }
+
+    [TestMethod]
+    public void DuplicateStopThresholds_AreSoftenedForChromiumSettle()
+    {
+        Assert.IsTrue(ScrollCaptureController.ConsecutiveDuplicateStopThreshold >= 4);
+        Assert.IsTrue(ScrollCaptureController.MinSuccessfulWheelsBeforeDuplicateStop >= 3);
+    }
+
+    [TestMethod]
+    public void SendInputStructSize_MatchesWin32Layout()
+    {
+        Assert.AreEqual(Win32CaptureService.ExpectedSendInputStructSize, Win32.InputSize);
+        Assert.AreEqual(Win32.InputSize, System.Runtime.InteropServices.Marshal.SizeOf<Win32.INPUT>());
+    }
+
+    [TestMethod]
+    public void CreateMouseInput_PacksWheelAndClickFlags()
+    {
+        var wheel = Win32CaptureService.CreateMouseInput(Win32.MouseEventFWheel, Win32CaptureService.PackSendInputWheelData(-120));
+        Assert.AreEqual(Win32.InputMouse, wheel.Type);
+        Assert.AreEqual(Win32.MouseEventFWheel, wheel.U.Mi.DwFlags);
+        Assert.AreEqual(unchecked((uint)(-120)), wheel.U.Mi.MouseData);
+
+        var down = Win32CaptureService.CreateMouseInput(Win32.MouseEventFLeftDown);
+        Assert.AreEqual(Win32.MouseEventFLeftDown, down.U.Mi.DwFlags);
+        Assert.AreEqual(0u, down.U.Mi.MouseData);
     }
 
     [TestMethod]
