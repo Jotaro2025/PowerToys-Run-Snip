@@ -953,8 +953,9 @@ public static class ImageTranslateRenderer
         for (int i = 0; i < 12; i++)
         {
             double mid = (lo + hi) / 2;
-            var ft = CreateLaidOutText(text, mid, maxWidth, maxHeight, Colors.Black, cache);
-            if (ft.Width <= maxWidth + 0.5 && ft.Height <= maxHeight + 0.5)
+            var display = WrapTextCore(text, maxWidth, mid, cache);
+            var size = MeasureUnclipped(display, mid, maxWidth, maxHeight);
+            if (size.Width <= maxWidth + 0.5 && size.Height <= maxHeight + 0.5)
             {
                 best = mid;
                 lo = mid;
@@ -991,6 +992,29 @@ public static class ImageTranslateRenderer
             MaxTextHeight = maxHeight,
             Trimming = TextTrimming.None,
         };
+    }
+
+    /// <summary>
+    /// True laid-out size of the wrapped text without MaxTextWidth/MaxTextHeight —
+    /// those clamp FormattedText.Width/Height to the box, hiding overflow from
+    /// FitFontSize's binary search (it then always "fits" and never shrinks).
+    /// </summary>
+    private static Size MeasureUnclipped(string display, double fontSize, double maxWidth, double maxHeight)
+    {
+        var ft = new FormattedText(
+            display,
+            CultureInfo.CurrentUICulture,
+            FlowDirection.LeftToRight,
+            Typeface,
+            fontSize,
+            Brushes.Black,
+            1.0)
+        {
+            MaxTextWidth = maxWidth,
+            Trimming = TextTrimming.None,
+        };
+
+        return new Size(ft.Width, ft.Height);
     }
 
     /// <summary>

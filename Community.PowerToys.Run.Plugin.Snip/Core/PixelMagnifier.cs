@@ -124,7 +124,9 @@ internal static class PixelMagnifier
         // Draw crisp 1px crosshair outline around the center cell (half, half).
         int c0 = half * zoomFactor;
         int c1 = c0 + zoomFactor - 1;
-        const uint accentPacked = 0xFF6ED248u; // ARGB(255, 72, 210, 110) in little-endian BGRA
+
+        // App-wide accent RGB(72, 210, 110) packed little-endian BGRA (B=110=0x6E, G=210=0xD2, R=72=0x48).
+        const uint accentPacked = 0xFF48D26Eu;
         for (int i = c0; i <= c1; i++)
         {
             *(uint*)(dest + (c0 * destStride) + (i * 4)) = accentPacked;

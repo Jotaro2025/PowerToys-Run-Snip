@@ -193,7 +193,86 @@ public static class LightInpaint
             nextFrontier = swap;
         }
 
-        return unknownCount == 0;
+        if (unknownCount != 0)
+        {
+            return false;
+        }
+
+        // Onion-peeling commits each band against the same known set, which leaves
+        // ring-shaped steps between bands (visible as high-frequency energy on smooth
+        // backgrounds). Two 3×3 averaging passes inside the region blend the steps;
+        // neighborhoods reach one pixel past the rect so the fill stays glued to the
+        // real border pixels. Linear gradients pass through unchanged (mean == self).
+        SmoothRegion(pixels, stride, width, height, x0, y0, x1, y1, passes: 8);
+        return true;
+    }
+
+    private static void SmoothRegion(
+        Span<byte> pixels,
+        int stride,
+        int width,
+        int height,
+        int x0,
+        int y0,
+        int x1,
+        int y1,
+        int passes)
+    {
+        int rw = x1 - x0;
+        int rh = y1 - y0;
+        var temp = new byte[rw * rh * 3];
+        for (int p = 0; p < passes; p++)
+        {
+            for (int y = 0; y < rh; y++)
+            {
+                int sy = y0 + y;
+                for (int x = 0; x < rw; x++)
+                {
+                    int sx = x0 + x;
+                    int sb = 0, sg = 0, sr = 0, n = 0;
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        int qy = sy + dy;
+                        if (qy < 0 || qy >= height)
+                        {
+                            continue;
+                        }
+
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            int qx = sx + dx;
+                            if (qx < 0 || qx >= width)
+                            {
+                                continue;
+                            }
+
+                            int qi = (qy * stride) + (qx * 4);
+                            sb += pixels[qi];
+                            sg += pixels[qi + 1];
+                            sr += pixels[qi + 2];
+                            n++;
+                        }
+                    }
+
+                    int ti = ((y * rw) + x) * 3;
+                    temp[ti] = (byte)(sb / n);
+                    temp[ti + 1] = (byte)(sg / n);
+                    temp[ti + 2] = (byte)(sr / n);
+                }
+            }
+
+            for (int y = 0; y < rh; y++)
+            {
+                for (int x = 0; x < rw; x++)
+                {
+                    int pi = ((y0 + y) * stride) + ((x0 + x) * 4);
+                    int ti = ((y * rw) + x) * 3;
+                    pixels[pi] = temp[ti];
+                    pixels[pi + 1] = temp[ti + 1];
+                    pixels[pi + 2] = temp[ti + 2];
+                }
+            }
+        }
     }
 
     /// <summary>Fill a rect with a solid BGRA color (median fallback).</summary>
