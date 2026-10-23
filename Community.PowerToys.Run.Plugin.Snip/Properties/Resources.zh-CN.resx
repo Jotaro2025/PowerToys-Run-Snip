@@ -156,7 +156,7 @@
     <value>保存截屏</value>
   </data>
   <data name="save_dialog_filter" xml:space="preserve">
-    <value>PNG 图片 (*.png)|*.png</value>
+    <value>PNG (*.png)|*.png|JPEG (*.jpg;*.jpeg)|*.jpg;*.jpeg|BMP (*.bmp)|*.bmp</value>
   </data>
   <data name="tip_ocr" xml:space="preserve">
     <value>文字提取</value>

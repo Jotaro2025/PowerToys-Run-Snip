@@ -62,6 +62,14 @@ public static class PngEncoder
         BitmapSource bitmap,
         string path,
         CancellationToken cancellationToken = default)
+        => EncodeToFileAsync(bitmap, path, FormatFromPath(path), cancellationToken);
+
+    /// <summary>Encodes to a file; format from extension (.png default, .jpg/.jpeg, .bmp).</summary>
+    public static Task EncodeToFileAsync(
+        BitmapSource bitmap,
+        string path,
+        ImageFileFormat format,
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(bitmap);
         ArgumentException.ThrowIfNullOrWhiteSpace(path);
@@ -78,10 +86,37 @@ public static class PngEncoder
                     FileShare.Read,
                     bufferSize: 64 * 1024,
                     FileOptions.Asynchronous);
-                EncodeToStream(frozen, fs);
+                EncodeToStream(frozen, fs, format);
                 fs.Flush();
             },
             cancellationToken);
+    }
+
+    /// <summary>Maps a file path extension to <see cref="ImageFileFormat"/> (default PNG).</summary>
+    public static ImageFileFormat FormatFromPath(string path)
+    {
+        var ext = Path.GetExtension(path)?.ToLowerInvariant();
+        return ext switch
+        {
+            ".jpg" or ".jpeg" => ImageFileFormat.Jpeg,
+            ".bmp" => ImageFileFormat.Bmp,
+            _ => ImageFileFormat.Png,
+        };
+    }
+
+    public static void EncodeToStream(BitmapSource bitmap, Stream stream, ImageFileFormat format)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+        ArgumentNullException.ThrowIfNull(stream);
+
+        BitmapEncoder encoder = format switch
+        {
+            ImageFileFormat.Jpeg => new JpegBitmapEncoder { QualityLevel = 92 },
+            ImageFileFormat.Bmp => new BmpBitmapEncoder(),
+            _ => new PngBitmapEncoder(),
+        };
+        encoder.Frames.Add(BitmapFrame.Create(bitmap));
+        encoder.Save(stream);
     }
 
     /// <summary>
@@ -126,4 +161,12 @@ public static class PngEncoder
         frozen.Freeze();
         return frozen;
     }
+}
+
+/// <summary>On-disk image formats supported by the save dialog (PNG remains default).</summary>
+public enum ImageFileFormat
+{
+    Png,
+    Jpeg,
+    Bmp,
 }
