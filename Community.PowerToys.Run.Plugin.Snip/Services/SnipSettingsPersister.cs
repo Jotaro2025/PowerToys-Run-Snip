@@ -110,6 +110,7 @@ internal static class SnipSettingsPersister
             OptionPatch.Number("ScrollMaxTiles", settings.ScrollMaxTiles),
             OptionPatch.Text("GlobalHotkey", settings.GlobalHotkey ?? string.Empty),
             OptionPatch.ComboBox("OcrEngine", (int)settings.OcrEngine),
+            OptionPatch.Text("WindowsOcrLanguage", string.IsNullOrWhiteSpace(settings.WindowsOcrLanguage) ? "auto" : settings.WindowsOcrLanguage),
             OptionPatch.ComboBox("TranslatorProvider", (int)settings.TranslatorProvider),
             OptionPatch.Text("TargetLanguage", settings.TargetLanguage ?? string.Empty),
             OptionPatch.Text("UiLanguage", UiLanguageHelper.ToPersistedValue(settings.UiLanguage)),

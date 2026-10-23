@@ -920,6 +920,33 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Windows OCR language.
+        /// </summary>
+        public static string opt_windows_ocr_lang_label {
+            get {
+                return ResourceManager.GetString("opt_windows_ocr_lang_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Auto uses the Windows language order, then Simplified Chinese if installed. Pick a specific installed OCR language to force it..
+        /// </summary>
+        public static string opt_windows_ocr_lang_desc {
+            get {
+                return ResourceManager.GetString("opt_windows_ocr_lang_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Auto.
+        /// </summary>
+        public static string opt_windows_ocr_lang_auto {
+            get {
+                return ResourceManager.GetString("opt_windows_ocr_lang_auto", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Auto.
         /// </summary>
         public static string opt_ocr_engine_auto {

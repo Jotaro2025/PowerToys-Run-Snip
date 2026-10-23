@@ -82,4 +82,23 @@ public class OcrServiceTests
             }
         }
     }
-}
+
+    [TestMethod]
+    public void ResolveLanguageTag_AutoPrefersProfileThenZhHans()
+    {
+        var tags = new[] { "en-US", "zh-Hans-CN", "ja" };
+        Assert.AreEqual("en-US", WindowsOcrService.ResolveLanguageTag("auto", tags, "en-US"));
+        Assert.AreEqual("zh-Hans-CN", WindowsOcrService.ResolveLanguageTag("auto", tags, null));
+        Assert.AreEqual("zh-Hans-CN", WindowsOcrService.ResolveLanguageTag("auto", tags, "fr-FR"));
+    }
+
+    [TestMethod]
+    public void ResolveLanguageTag_ExplicitTagMatchesInstalled()
+    {
+        var tags = new[] { "en-US", "zh-Hans-CN" };
+        Assert.AreEqual("zh-Hans-CN", WindowsOcrService.ResolveLanguageTag("zh-Hans-CN", tags, "en-US"));
+        Assert.AreEqual("zh-Hans-CN", WindowsOcrService.ResolveLanguageTag("zh-CN", tags, "en-US"));
+        Assert.AreEqual("en-US", WindowsOcrService.ResolveLanguageTag("en", tags, null));
+    }
+    }
+

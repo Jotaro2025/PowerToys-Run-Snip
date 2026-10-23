@@ -42,6 +42,12 @@ public sealed class SnipSettings
     /// <summary>OCR engine for text extraction and image translate (see <see cref="OcrEngineKind"/>).</summary>
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.Auto;
 
+    /// <summary>
+    /// Windows OCR recognizer language: <c>auto</c> (default) or a BCP-47 tag from installed
+    /// OCR languages (e.g. <c>zh-Hans-CN</c>, <c>en-US</c>).
+    /// </summary>
+    public string WindowsOcrLanguage { get; set; } = "auto";
+
     /// <summary>Translator used by the image-translate toolbar action.</summary>
     public TranslatorProvider TranslatorProvider { get; set; } = TranslatorProvider.Off;
 
@@ -97,6 +103,7 @@ public sealed class SnipSettings
             ScrollMaxTiles = ScrollMaxTiles,
             GlobalHotkey = GlobalHotkey,
             OcrEngine = OcrEngine,
+            WindowsOcrLanguage = WindowsOcrLanguage,
             TranslatorProvider = TranslatorProvider,
             TargetLanguage = TargetLanguage,
             UiLanguage = UiLanguage,
@@ -122,6 +129,7 @@ public sealed class SnipSettings
         ScrollMaxTiles = other.ScrollMaxTiles;
         GlobalHotkey = other.GlobalHotkey;
         OcrEngine = other.OcrEngine;
+        WindowsOcrLanguage = other.WindowsOcrLanguage;
         TranslatorProvider = other.TranslatorProvider;
         TargetLanguage = other.TargetLanguage;
         UiLanguage = other.UiLanguage;

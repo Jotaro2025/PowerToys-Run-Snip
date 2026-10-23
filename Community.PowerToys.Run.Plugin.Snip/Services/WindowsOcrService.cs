@@ -59,7 +59,10 @@ public static class WindowsOcrService
 
     /// <summary>Recognizes text lines (image pixel space, reading order) in a PNG.</summary>
     /// <exception cref="OcrException">No OCR language installed, or recognition failed.</exception>
-    public static Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(byte[] png, CancellationToken cancellationToken = default)
+    public static Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(
+        byte[] png,
+        string languagePreference = "auto",
+        CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(png);
         return Task.Run(
@@ -68,7 +71,7 @@ public static class WindowsOcrService
                 await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
                 {
-                    return await RunAsync(png, cancellationToken).ConfigureAwait(false);
+                    return await RunAsync(png, languagePreference, cancellationToken).ConfigureAwait(false);
                 }
                 catch (Exception ex) when (ex is not OcrException && ex is not OperationCanceledException)
                 {
@@ -158,7 +161,75 @@ public static class WindowsOcrService
             || (c >= '\uF900' && c <= '\uFAFF') // CJK Compatibility
             || (c >= '\uFF00' && c <= '\uFFEF'); // Full-width forms
 
-    private static OcrEngine CreateEngine()
+    /// <summary>
+    /// Installed OCR language tags (BCP-47), empty when WinRT OCR is unavailable.
+    /// </summary>
+    public static IReadOnlyList<string> GetInstalledLanguageTags()
+    {
+        try
+        {
+            return OcrEngine.AvailableRecognizerLanguages
+                .Select(l => l.LanguageTag)
+                .Where(t => !string.IsNullOrWhiteSpace(t))
+                .Distinct(StringComparer.OrdinalIgnoreCase)
+                .OrderBy(t => t, StringComparer.OrdinalIgnoreCase)
+                .ToList();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip Windows OCR language list failed: {ex.Message}", ex, typeof(WindowsOcrService));
+            return Array.Empty<string>();
+        }
+    }
+
+    /// <summary>
+    /// Picks which installed tag to use. <paramref name="preference"/> of <c>auto</c>/empty uses
+    /// the first user-profile tag when present, else Simplified Chinese if installed, else the
+    /// first available tag. A concrete tag must match an installed entry (prefix or exact).
+    /// </summary>
+    internal static string ResolveLanguageTag(
+        string preference,
+        IReadOnlyList<string> availableTags,
+        string userProfileTag)
+    {
+        availableTags ??= Array.Empty<string>();
+        if (availableTags.Count == 0)
+        {
+            return null;
+        }
+
+        bool auto = string.IsNullOrWhiteSpace(preference)
+            || preference.Equals("auto", StringComparison.OrdinalIgnoreCase);
+        if (!auto)
+        {
+            var match = availableTags.FirstOrDefault(t =>
+                t.Equals(preference, StringComparison.OrdinalIgnoreCase)
+                || t.StartsWith(preference + "-", StringComparison.OrdinalIgnoreCase)
+                || preference.StartsWith(t + "-", StringComparison.OrdinalIgnoreCase)
+                || (preference.StartsWith("zh", StringComparison.OrdinalIgnoreCase)
+                    && t.StartsWith("zh-Hans", StringComparison.OrdinalIgnoreCase)
+                    && (preference.Contains("Hans", StringComparison.OrdinalIgnoreCase)
+                        || preference.Equals("zh-CN", StringComparison.OrdinalIgnoreCase)
+                        || preference.Equals("zh", StringComparison.OrdinalIgnoreCase))));
+            if (match != null)
+            {
+                return match;
+            }
+        }
+
+        if (!string.IsNullOrWhiteSpace(userProfileTag)
+            && availableTags.Any(t => t.Equals(userProfileTag, StringComparison.OrdinalIgnoreCase)))
+        {
+            return availableTags.First(t => t.Equals(userProfileTag, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var zh = availableTags.FirstOrDefault(t =>
+            t.StartsWith("zh-Hans", StringComparison.OrdinalIgnoreCase)
+            || t.Equals("zh-CN", StringComparison.OrdinalIgnoreCase));
+        return zh ?? availableTags[0];
+    }
+
+    internal static OcrEngine CreateEngine(string languagePreference = "auto")
     {
         var languages = OcrEngine.AvailableRecognizerLanguages;
         if (languages.Count == 0)
@@ -166,22 +237,35 @@ public static class WindowsOcrService
             return null;
         }
 
-        // Respect the user's language order first; then prefer Simplified Chinese; then anything.
-        var engine = OcrEngine.TryCreateFromUserProfileLanguages();
-        if (engine != null)
+        var tags = languages.Select(l => l.LanguageTag).ToList();
+        string profileTag = null;
+        try
         {
-            return engine;
+            var profileEngine = OcrEngine.TryCreateFromUserProfileLanguages();
+            profileTag = profileEngine?.RecognizerLanguage?.LanguageTag;
+        }
+        catch (Exception)
+        {
+            // Fall through to ResolveLanguageTag defaults when profile engine fails.
         }
 
-        var zh = languages.FirstOrDefault(l =>
-            l.LanguageTag.StartsWith("zh-Hans", StringComparison.OrdinalIgnoreCase)
-            || l.LanguageTag.Equals("zh-CN", StringComparison.OrdinalIgnoreCase));
-        return OcrEngine.TryCreateFromLanguage(zh ?? languages[0]);
+        var chosen = ResolveLanguageTag(languagePreference, tags, profileTag);
+        if (chosen == null)
+        {
+            return null;
+        }
+
+        var lang = languages.FirstOrDefault(l =>
+            l.LanguageTag.Equals(chosen, StringComparison.OrdinalIgnoreCase));
+        return lang != null ? OcrEngine.TryCreateFromLanguage(lang) : OcrEngine.TryCreateFromUserProfileLanguages();
     }
 
-    private static async Task<IReadOnlyList<OcrTextLine>> RunAsync(byte[] png, CancellationToken cancellationToken)
+    private static async Task<IReadOnlyList<OcrTextLine>> RunAsync(
+        byte[] png,
+        string languagePreference,
+        CancellationToken cancellationToken)
     {
-        var engine = CreateEngine() ?? throw new OcrException(Properties.Resources.ocr_err_windows_no_language);
+        var engine = CreateEngine(languagePreference) ?? throw new OcrException(Properties.Resources.ocr_err_windows_no_language);
         Log.Info($"Snip Windows OCR language: {engine.RecognizerLanguage?.LanguageTag}", typeof(WindowsOcrService));
 
         using var stream = new InMemoryRandomAccessStream();

@@ -36,6 +36,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionGlobalHotkey = "GlobalHotkey";
     private const string OptionTranslatorProvider = "TranslatorProvider";
     private const string OptionOcrEngine = "OcrEngine";
+    private const string OptionWindowsOcrLanguage = "WindowsOcrLanguage";
     private const string OptionTargetLanguage = "TargetLanguage";
     private const string OptionUiLanguage = "UiLanguage";
     private const string OptionHttpBaseUrl = "HttpBaseUrl";
@@ -171,6 +172,15 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
                 new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_wechat, "1"),
                 new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_windows, "2"),
             ],
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionWindowsOcrLanguage,
+            DisplayLabel = Properties.Resources.opt_windows_ocr_lang_label,
+            DisplayDescription = Properties.Resources.opt_windows_ocr_lang_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = string.IsNullOrWhiteSpace(_settings.WindowsOcrLanguage) ? "auto" : _settings.WindowsOcrLanguage,
+            PlaceholderText = "auto | zh-Hans-CN | en-US",
         },
 
         // PowerToys Run AdditionalOptions has no IsVisible / conditional-fold API
@@ -456,6 +466,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         if (ocrOpt != null && Enum.IsDefined(typeof(OcrEngineKind), ocrOpt.ComboBoxValue))
         {
             _settings.OcrEngine = (OcrEngineKind)ocrOpt.ComboBoxValue;
+        }
+
+        var ocrLang = options.FirstOrDefault(x => x.Key == OptionWindowsOcrLanguage)?.TextValue?.Trim();
+        if (!string.IsNullOrEmpty(ocrLang))
+        {
+            _settings.WindowsOcrLanguage = ocrLang;
         }
 
         var providerOpt = options.FirstOrDefault(x => x.Key == OptionTranslatorProvider);
