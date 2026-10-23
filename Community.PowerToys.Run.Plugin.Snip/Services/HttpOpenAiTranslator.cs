@@ -62,6 +62,7 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
     public async Task<IReadOnlyList<string>> TranslateAsync(
         IReadOnlyList<string> texts,
         string targetLanguage,
+        IProgress<TranslatorProgress> progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(texts);
@@ -91,10 +92,12 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
             cancellationToken.ThrowIfCancellationRequested();
             results[work[0].Index] = await TranslateOneAsync(work[0].Text, targetLanguage, cancellationToken)
                 .ConfigureAwait(false);
+            progress?.Report(new TranslatorProgress(1, 1));
             return results;
         }
 
         LastPartialFallbackCount = 0;
+        int completed = 0;
         int failedLines = 0;
         TranslatorException firstFailure = null;
         var chunks = TranslatorBatch.Chunk(work, TranslatorBatch.HttpMaxLines, TranslatorBatch.HttpMaxChars);
@@ -116,6 +119,8 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
                         results[chunk[i].Index] = parsed[i];
                     }
 
+                    completed += chunk.Count;
+                    progress?.Report(new TranslatorProgress(completed, work.Count));
                     continue;
                 }
 
@@ -144,6 +149,9 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
                     failedLines++;
                     results[index] = text;
                 }
+
+                completed++;
+                progress?.Report(new TranslatorProgress(completed, work.Count));
             }
         }
 

@@ -384,7 +384,11 @@ public sealed class TranslateResultWindow : Window, IDisposable
             }
 
             var sources = _lines.Select(l => l.Text).ToList();
-            var translations = await translator.TranslateAsync(sources, _settings.TargetLanguage, _cts.Token);
+            var translateProgress = new Progress<TranslatorProgress>(p =>
+                SetBusy(Properties.Resources.tr_busy_translate_progress
+                    .Replace("{0}", p.Completed.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)
+                    .Replace("{1}", p.Total.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)));
+            var translations = await translator.TranslateAsync(sources, _settings.TargetLanguage, translateProgress, _cts.Token);
             if (_closed)
             {
                 return;

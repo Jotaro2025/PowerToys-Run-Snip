@@ -245,6 +245,9 @@
   <data name="tr_busy_translate" xml:space="preserve">
     <value>正在翻译文字…</value>
   </data>
+  <data name="tr_busy_translate_progress" xml:space="preserve">
+    <value>正在翻译文字…（{0}/{1}）</value>
+  </data>
   <data name="tr_busy_hymt_wait" xml:space="preserve">
     <value>翻译引擎忙碌中，请等待当前任务完成…</value>
   </data>

@@ -245,6 +245,9 @@
   <data name="tr_busy_translate" xml:space="preserve">
     <value>Translating text…</value>
   </data>
+  <data name="tr_busy_translate_progress" xml:space="preserve">
+    <value>Translating text… ({0}/{1})</value>
+  </data>
   <data name="tr_busy_hymt_wait" xml:space="preserve">
     <value>Translation engine busy — waiting for the current job to finish…</value>
   </data>

@@ -66,6 +66,7 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
     public async Task<IReadOnlyList<string>> TranslateAsync(
         IReadOnlyList<string> texts,
         string targetLanguage,
+        IProgress<TranslatorProgress> progress = null,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(texts);
@@ -105,6 +106,12 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
                 return results;
             }
 
+            int completed = 0;
+            void Report()
+            {
+                progress?.Report(new TranslatorProgress(completed, work.Count));
+            }
+
             if (work.Count == 1)
             {
                 cancellationToken.ThrowIfCancellationRequested();
@@ -112,6 +119,8 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
                     TranslatorPrompts.Build(targetLanguage, work[0].Text),
                     maxTokens: Math.Clamp(work[0].Text.Length * 4, 64, 512),
                     cancellationToken).ConfigureAwait(false);
+                completed = 1;
+                Report();
                 return results;
             }
 
@@ -137,6 +146,8 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
                             results[chunk[i].Index] = parsed[i];
                         }
 
+                        completed += chunk.Count;
+                        Report();
                         continue;
                     }
 
@@ -167,6 +178,9 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
                         failedLines++;
                         results[index] = text;
                     }
+
+                    completed++;
+                    Report();
                 }
             }
 

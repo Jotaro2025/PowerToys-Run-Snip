@@ -755,6 +755,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
             }
         }
         /// <summary>
+        ///   Looks up a localized string similar to Translating text… ({0}/{1})..
+        /// </summary>
+        public static string tr_busy_translate_progress {
+            get {
+                return ResourceManager.GetString("tr_busy_translate_progress", resourceCulture);
+            }
+        }
+        /// <summary>
         ///   Looks up a localized string similar to Translation engine busy — waiting….
         /// </summary>
         public static string tr_busy_hymt_wait {
