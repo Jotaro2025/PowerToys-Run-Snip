@@ -301,21 +301,110 @@ public sealed class Win32CaptureService : ICaptureService
         return true;
     }
 
-    private static IntPtr ResolveScrollTargetAt(Win32.POINT pt, IntPtr skipOverlayHwnd)
+    /// <summary>
+    /// HWND that should receive <c>WM_MOUSEWHEEL</c> at <paramref name="pt"/>.
+    /// When the snip overlay (or a child) is on top, walk Z-order / briefly mark the
+    /// overlay <c>WS_EX_TRANSPARENT</c> so the live window under the selection hole is used
+    /// instead of returning <see cref="IntPtr.Zero"/> (which made every wheel fail).
+    /// </summary>
+    internal static IntPtr ResolveScrollTargetAt(Win32.POINT pt, IntPtr skipOverlayHwnd)
     {
         IntPtr hit = Win32.WindowFromPoint(pt);
-        if (hit == IntPtr.Zero || hit == skipOverlayHwnd)
+        if (hit == IntPtr.Zero)
         {
             return IntPtr.Zero;
         }
 
+        if (skipOverlayHwnd != IntPtr.Zero && IsOwnedByOverlay(hit, skipOverlayHwnd))
+        {
+            hit = FindTopLevelBeneathOverlay(pt, skipOverlayHwnd);
+            if (hit == IntPtr.Zero)
+            {
+                hit = WindowFromPointWithOverlayTransparent(pt, skipOverlayHwnd);
+            }
+
+            if (hit == IntPtr.Zero || IsOwnedByOverlay(hit, skipOverlayHwnd))
+            {
+                return IntPtr.Zero;
+            }
+        }
+
         IntPtr root = Win32.GetAncestor(hit, Win32.GaRoot);
-        if (root == IntPtr.Zero || root == skipOverlayHwnd)
+        if (root == IntPtr.Zero)
+        {
+            return IntPtr.Zero;
+        }
+
+        if (skipOverlayHwnd != IntPtr.Zero && IsOwnedByOverlay(root, skipOverlayHwnd))
         {
             return IntPtr.Zero;
         }
 
         return FindDeepestChildAt(root, pt);
+    }
+
+    /// <summary>True when <paramref name="hwnd"/> is the overlay or lives under its root.</summary>
+    internal static bool IsOwnedByOverlay(IntPtr hwnd, IntPtr overlayHwnd)
+    {
+        if (hwnd == IntPtr.Zero || overlayHwnd == IntPtr.Zero)
+        {
+            return false;
+        }
+
+        if (hwnd == overlayHwnd)
+        {
+            return true;
+        }
+
+        IntPtr root = Win32.GetAncestor(hwnd, Win32.GaRoot);
+        return root == overlayHwnd;
+    }
+
+    /// <summary>
+    /// Next visible top-level window below <paramref name="overlayHwnd"/> whose rect contains <paramref name="pt"/>.
+    /// </summary>
+    internal static IntPtr FindTopLevelBeneathOverlay(Win32.POINT pt, IntPtr overlayHwnd)
+    {
+        for (IntPtr w = Win32.GetWindow(overlayHwnd, Win32.GwHwndNext);
+             w != IntPtr.Zero;
+             w = Win32.GetWindow(w, Win32.GwHwndNext))
+        {
+            if (!Win32.IsWindowVisible(w) || Win32.IsIconic(w))
+            {
+                continue;
+            }
+
+            if (!Win32.GetWindowRect(w, out Win32.RECT rc))
+            {
+                continue;
+            }
+
+            if (pt.X < rc.Left || pt.X >= rc.Right || pt.Y < rc.Top || pt.Y >= rc.Bottom)
+            {
+                continue;
+            }
+
+            return w;
+        }
+
+        return IntPtr.Zero;
+    }
+
+    private static IntPtr WindowFromPointWithOverlayTransparent(Win32.POINT pt, IntPtr overlayHwnd)
+    {
+        IntPtr prev = Win32.GetWindowLongPtr(overlayHwnd, Win32.GwlExStyle);
+        _ = Win32.SetWindowLongPtr(
+            overlayHwnd,
+            Win32.GwlExStyle,
+            (IntPtr)(prev.ToInt64() | Win32.WsExTransparent));
+        try
+        {
+            return Win32.WindowFromPoint(pt);
+        }
+        finally
+        {
+            _ = Win32.SetWindowLongPtr(overlayHwnd, Win32.GwlExStyle, prev);
+        }
     }
 
     private static IntPtr FindDeepestChildAt(IntPtr root, Win32.POINT screenPt)

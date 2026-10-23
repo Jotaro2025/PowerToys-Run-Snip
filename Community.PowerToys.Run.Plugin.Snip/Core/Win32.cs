@@ -259,4 +259,18 @@ internal static class Win32
 
     [DllImport("dwmapi.dll")]
     public static extern int DwmFlush();
+
+    public const int GwHwndNext = 2;
+    public const int GwlExStyle = -20;
+    public const int WsExTransparent = 0x00000020;
+
+    [DllImport(User32)]
+    public static extern IntPtr GetWindow(IntPtr hWnd, int uCmd);
+
+    [DllImport(User32, EntryPoint = "GetWindowLongPtrW", SetLastError = true)]
+    public static extern IntPtr GetWindowLongPtr(IntPtr hWnd, int nIndex);
+
+    [DllImport(User32, EntryPoint = "SetWindowLongPtrW", SetLastError = true)]
+    public static extern IntPtr SetWindowLongPtr(IntPtr hWnd, int nIndex, IntPtr dwNewLong);
+
 }

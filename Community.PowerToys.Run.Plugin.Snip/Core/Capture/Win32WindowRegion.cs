@@ -16,8 +16,11 @@ public static class Win32WindowRegion
 {
     /// <summary>
     /// Shrink the HWND to everything except <paramref name="holeX"/>… (client coords).
+    /// Returns <c>false</c> when no region was applied (invalid args, empty hole, or
+    /// hole would cover the entire client and leave a zero-area window — that blanked
+    /// the overlay as a white/empty flash).
     /// </summary>
-    public static void ApplySelectionHole(
+    public static bool ApplySelectionHole(
         IntPtr hwnd,
         int clientWidth,
         int clientHeight,
@@ -28,16 +31,19 @@ public static class Win32WindowRegion
     {
         if (hwnd == IntPtr.Zero || clientWidth <= 0 || clientHeight <= 0)
         {
-            return;
+            return false;
         }
 
-        int left = Math.Clamp(holeX, 0, clientWidth);
-        int top = Math.Clamp(holeY, 0, clientHeight);
-        int right = Math.Clamp(holeX + holeWidth, 0, clientWidth);
-        int bottom = Math.Clamp(holeY + holeHeight, 0, clientHeight);
-        if (right <= left || bottom <= top)
+        if (!TryClampHole(clientWidth, clientHeight, holeX, holeY, holeWidth, holeHeight,
+                out int left, out int top, out int right, out int bottom))
         {
-            return;
+            return false;
+        }
+
+        // Full-client hole → CombineRgn DIFF yields an empty region → window vanishes (白屏).
+        if (left == 0 && top == 0 && right == clientWidth && bottom == clientHeight)
+        {
+            return false;
         }
 
         IntPtr full = Win32.CreateRectRgn(0, 0, clientWidth, clientHeight);
@@ -47,6 +53,29 @@ public static class Win32WindowRegion
         _ = Win32.DeleteObject(full);
         _ = Win32.DeleteObject(hole);
         _ = Win32.SetWindowRgn(hwnd, result, true);
+        return true;
+    }
+
+    /// <summary>
+    /// Clamp hole to the client rect. Returns false when the clamped hole has no area.
+    /// </summary>
+    internal static bool TryClampHole(
+        int clientWidth,
+        int clientHeight,
+        int holeX,
+        int holeY,
+        int holeWidth,
+        int holeHeight,
+        out int left,
+        out int top,
+        out int right,
+        out int bottom)
+    {
+        left = Math.Clamp(holeX, 0, clientWidth);
+        top = Math.Clamp(holeY, 0, clientHeight);
+        right = Math.Clamp(holeX + holeWidth, 0, clientWidth);
+        bottom = Math.Clamp(holeY + holeHeight, 0, clientHeight);
+        return right > left && bottom > top;
     }
 
     /// <summary>Restore the HWND to its normal rectangular shape.</summary>
