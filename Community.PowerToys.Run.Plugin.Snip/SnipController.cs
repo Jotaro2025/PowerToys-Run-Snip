@@ -41,6 +41,9 @@ public static class SnipController
 
     private static bool _ownsApplication;
 
+    /// <summary>True while a snip editor overlay session is running (UI STA).</summary>
+    private static bool _sessionActive;
+
     /// <summary>
     /// Kicks off a screenshot. Returns immediately; <paramref name="notify"/> is
     /// invoked when the action finishes (success or failure).
@@ -50,7 +53,33 @@ public static class SnipController
         ArgumentNullException.ThrowIfNull(settings);
 
         Dispatcher dispatcher = EnsureUiDispatcher();
-        dispatcher.BeginInvoke(new Action(() => _ = RunAsync(settings, notify, kind)), DispatcherPriority.Normal);
+        dispatcher.BeginInvoke(new Action(() => _ = RunGuardedAsync(settings, notify, kind)), DispatcherPriority.Normal);
+    }
+
+    /// <summary>
+    /// Re-entry guard: while an editor overlay is already up, a second trigger
+    /// (hotkey double-fire, PowerToys Run command) must NOT capture the screen
+    /// again — the second capture would photograph the first overlay's dimmed
+    /// preview and stack a second overlay on top, which reads as "the selection
+    /// shows the whole screenshot window instead of the desktop".
+    /// </summary>
+    private static async Task RunGuardedAsync(SnipSettings settings, Action<string, string> notify, CaptureKind kind)
+    {
+        if (_sessionActive)
+        {
+            Log.Info("Snip session already active; ignoring duplicate trigger.", typeof(SnipController));
+            return;
+        }
+
+        _sessionActive = true;
+        try
+        {
+            await RunAsync(settings, notify, kind).ConfigureAwait(true);
+        }
+        finally
+        {
+            _sessionActive = false;
+        }
     }
 
     /// <summary>
@@ -148,6 +177,32 @@ public static class SnipController
             using var ready = new ManualResetEventSlim(false);
             var thread = new Thread(() =>
             {
+                // The PowerToys Run host process may be DPI-unaware; every
+                // GetMonitorInfo/GetDpiForMonitor/cursor coordinate this plugin
+                // reads would then come back virtualized (e.g. 2752x1152 instead
+                // of the physical 3440x1440) while the WPF window still renders
+                // at the real monitor DPI — stretching the overlay preview,
+                // selection and dim mask off the actual screen content. Promote
+                // before any window/coordinate work: process-wide when possible
+                // (host windows already exist, so this usually fails), else on
+                // this STA thread only, which still fixes every call the snip
+                // UI thread itself makes.
+                try
+                {
+                    if (!Core.Win32.SetProcessDpiAwarenessContext(Core.Win32.PerMonitorAwareV2))
+                    {
+                        IntPtr prev = Core.Win32.SetThreadDpiAwarenessContext(Core.Win32.PerMonitorAwareV2);
+                        if (prev == new IntPtr(-1))
+                        {
+                            Log.Warn("Snip STA: thread DPI promotion to PMv2 failed; coordinates may stay virtualized.", typeof(SnipController));
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"Snip STA: DPI awareness promotion threw: {ex.Message}", typeof(SnipController));
+                }
+
                 // Dispatcher.CurrentDispatcher creates this thread's dispatcher.
                 _uiDispatcher = Dispatcher.CurrentDispatcher;
 

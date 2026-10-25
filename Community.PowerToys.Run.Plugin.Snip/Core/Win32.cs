@@ -195,6 +195,17 @@ internal static class Win32
     [DllImport(Shcore, SetLastError = true)]
     public static extern int GetDpiForMonitor(IntPtr hMonitor, int dpiType, out uint dpiX, out uint dpiY);
 
+    [DllImport(User32, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    public static extern bool SetProcessDpiAwarenessContext(IntPtr value);
+
+    /// <summary>Sets per-thread DPI awareness; returns the previous context (-1 on failure).</summary>
+    [DllImport(User32, SetLastError = true)]
+    public static extern IntPtr SetThreadDpiAwarenessContext(IntPtr value);
+
+    /// <summary>DPI_AWARENESS_CONTEXT_PER_MONITOR_AWARE_V2 (-4).</summary>
+    public static readonly IntPtr PerMonitorAwareV2 = new(-4);
+
     public const uint MonitorDefaultToNearest = 2;
 
     [DllImport(User32)]

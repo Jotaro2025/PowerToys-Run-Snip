@@ -72,9 +72,19 @@ public sealed class SelectionAdorner
         _border = new Border
         {
             BorderBrush = new SolidColorBrush(Chrome),
-            BorderThickness = new Thickness(1.5),
+            BorderThickness = new Thickness(2),
             Background = Brushes.Transparent,
             IsHitTestVisible = false,
+
+            // Soft outer glow makes the selection edge pop against dark or
+            // low-contrast desktops where a thin 2px line alone is easy to miss.
+            Effect = new System.Windows.Media.Effects.DropShadowEffect
+            {
+                Color = Chrome,
+                BlurRadius = 10,
+                ShadowDepth = 0,
+                Opacity = 0.9,
+            },
         };
         _host.Children.Add(_border);
         Panel.SetZIndex(_border, 15);
