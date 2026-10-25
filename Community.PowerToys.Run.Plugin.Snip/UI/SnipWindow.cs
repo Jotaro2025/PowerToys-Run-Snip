@@ -55,13 +55,7 @@ public sealed class SnipWindow : Window
     private readonly AnnotationCanvas _annoCanvas;
     private readonly SelectionAdorner _adorner;
     private readonly SnipToolbar _toolbar;
-    private readonly Border _magnifierHud;
-    private readonly System.Windows.Controls.Image _magnifierImage;
-    private readonly Border _magnifierSwatch;
-    private readonly System.Windows.Controls.TextBlock _magnifierCoordText;
-    private readonly System.Windows.Controls.TextBlock _magnifierColorText;
-    private readonly System.Windows.Controls.TextBlock _magnifierHintText;
-    private readonly System.Windows.Media.Imaging.WriteableBitmap _magnifierBitmap;
+    private readonly MagnifierHud _magnifier;
     private readonly System.Windows.Shapes.Rectangle _snapPreviewRect;
     private readonly System.Collections.Generic.IReadOnlyList<WindowSnapService.SnapCandidate> _windowCandidates;
     private readonly SnipSettings _settings;
@@ -76,10 +70,6 @@ public sealed class SnipWindow : Window
     private Point _dragStartPoint;
     private Rect _dragStartSelection;
     private bool _dragMovingHandle;
-    private byte _lastSampledR;
-    private byte _lastSampledG;
-    private byte _lastSampledB;
-    private bool _hasSampledPixel;
     private Rect? _hoveredSnapDipRect;
     private Point _lastHoverDipPoint;
     private MouseEventArgs _lastHandledMouseMove;
@@ -103,8 +93,7 @@ public sealed class SnipWindow : Window
     private bool _hiddenForSessionChild;
 
     private ScrollCaptureController _scrollController;
-    private System.Windows.Media.Imaging.WriteableBitmap _scrollLivePreview;
-    private Int32Rect _scrollLivePreviewRect;
+    private ScrollLivePreview _scrollLivePreview;
 
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
@@ -269,85 +258,7 @@ public sealed class SnipWindow : Window
         _root.Children.Add(_toolbar);
         Panel.SetZIndex(_toolbar, 30);
 
-        _magnifierBitmap = new System.Windows.Media.Imaging.WriteableBitmap(
-            PixelMagnifier.OutputPixelSize,
-            PixelMagnifier.OutputPixelSize,
-            96,
-            96,
-            PixelFormats.Bgra32,
-            null);
-        _magnifierImage = new System.Windows.Controls.Image
-        {
-            Width = PixelMagnifier.OutputPixelSize,
-            Height = PixelMagnifier.OutputPixelSize,
-            Source = _magnifierBitmap,
-            Stretch = Stretch.Fill,
-        };
-        RenderOptions.SetBitmapScalingMode(_magnifierImage, BitmapScalingMode.NearestNeighbor);
-
-        _magnifierSwatch = new Border
-        {
-            Width = 12,
-            Height = 12,
-            CornerRadius = new CornerRadius(2),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(160, 255, 255, 255)),
-            BorderThickness = new Thickness(1),
-            Margin = new Thickness(0, 0, 6, 0),
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        _magnifierCoordText = new System.Windows.Controls.TextBlock
-        {
-            Foreground = Brushes.White,
-            FontSize = 11,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 4, 0, 2),
-        };
-        _magnifierColorText = new System.Windows.Controls.TextBlock
-        {
-            Foreground = new SolidColorBrush(Color.FromRgb(220, 224, 232)),
-            FontSize = 11,
-            VerticalAlignment = VerticalAlignment.Center,
-        };
-        var colorRow = new System.Windows.Controls.StackPanel
-        {
-            Orientation = System.Windows.Controls.Orientation.Horizontal,
-            Margin = new Thickness(0, 1, 0, 2),
-        };
-        colorRow.Children.Add(_magnifierSwatch);
-        colorRow.Children.Add(_magnifierColorText);
-
-        _magnifierHintText = new System.Windows.Controls.TextBlock
-        {
-            Text = "[C] HEX  [Shift+C] RGB",
-            Foreground = new SolidColorBrush(Color.FromRgb(150, 156, 168)),
-            FontSize = 10,
-        };
-        var hudStack = new System.Windows.Controls.StackPanel();
-        hudStack.Children.Add(new Border
-        {
-            CornerRadius = new CornerRadius(4),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(80, 255, 255, 255)),
-            BorderThickness = new Thickness(1),
-            ClipToBounds = true,
-            Child = _magnifierImage,
-        });
-        hudStack.Children.Add(_magnifierCoordText);
-        hudStack.Children.Add(colorRow);
-        hudStack.Children.Add(_magnifierHintText);
-
-        _magnifierHud = new Border
-        {
-            Background = new SolidColorBrush(Color.FromArgb(230, 22, 24, 28)),
-            BorderBrush = new SolidColorBrush(Color.FromArgb(60, 255, 255, 255)),
-            BorderThickness = new Thickness(1),
-            CornerRadius = new CornerRadius(8),
-            Padding = new Thickness(8),
-            IsHitTestVisible = false,
-            Visibility = Visibility.Collapsed,
-            Child = hudStack,
-        };
-        _root.Children.Add(_magnifierHud);
-        Panel.SetZIndex(_magnifierHud, 35);
+        _magnifier = new MagnifierHud(_root);
 
         Content = _root;
 
@@ -684,7 +595,7 @@ public sealed class SnipWindow : Window
         else
         {
             _dragMovingHandle = false;
-            _magnifierHud.Visibility = Visibility.Collapsed;
+            _magnifier.Hide();
             if (_selection.Width < 5 || _selection.Height < 5)
             {
                 _hasSelection = false;
@@ -824,7 +735,7 @@ public sealed class SnipWindow : Window
 
         if (_hasSelection && !_dragCreating && !_dragMovingHandle)
         {
-            _magnifierHud.Visibility = Visibility.Collapsed;
+            _magnifier.Hide();
         }
 
         if (ShouldShowSelectionVignette())
@@ -910,7 +821,7 @@ public sealed class SnipWindow : Window
         if (e.Key == Key.C
             && (Keyboard.Modifiers & (ModifierKeys.Control | ModifierKeys.Alt | ModifierKeys.Windows)) == 0
             && Keyboard.FocusedElement is not System.Windows.Controls.TextBox
-            && _hasSampledPixel)
+            && _magnifier.HasSampledPixel)
         {
             bool copyRgb = (Keyboard.Modifiers & ModifierKeys.Shift) == ModifierKeys.Shift;
             CopySampledColorToClipboard(copyRgb);
@@ -968,9 +879,6 @@ public sealed class SnipWindow : Window
     private DateTime _lastUiaSnapUtc = DateTime.MinValue;
 
     private Int32Rect? _lastUiaTargetScreenRect;
-
-    /// <summary>Magnifier color swatch brush, created once and recolored per move.</summary>
-    private SolidColorBrush _magnifierSwatchBrush;
 
     private void UpdateHoverWindowSnap(Point dipPoint)
     {
@@ -1107,15 +1015,15 @@ public sealed class SnipWindow : Window
         {
             // Window-capture path: overlay stays visible — show live-updated window frames
             // inside the selection without punching a hole or mutating _source.
-            _scrollLivePreviewRect = new Int32Rect(
+            var previewRect = new Int32Rect(
                 Math.Max(0, physicalRect.X - _physicalBounds.X),
                 Math.Max(0, physicalRect.Y - _physicalBounds.Y),
                 physicalRect.Width,
                 physicalRect.Height);
-            _scrollLivePreview = _source?.Clone();
-            if (_scrollLivePreview != null)
+            _scrollLivePreview = ScrollLivePreview.Create(_source, previewRect);
+            if (_scrollLivePreview?.Bitmap != null)
             {
-                _screenshotImage.Source = _scrollLivePreview;
+                _screenshotImage.Source = _scrollLivePreview.Bitmap;
             }
 
             _scrollController.LatestTileCaptured += OnScrollLatestTileCaptured;
@@ -1298,7 +1206,7 @@ public sealed class SnipWindow : Window
                 ClearScrollCaptureHole();
                 if (_source != null)
                 {
-                    _screenshotImage.Source = (System.Windows.Media.Imaging.BitmapSource)_scrollLivePreview ?? BitmapPreview.ForOverlay(_source);
+                    _screenshotImage.Source = (System.Windows.Media.Imaging.BitmapSource)_scrollLivePreview?.Bitmap ?? BitmapPreview.ForOverlay(_source);
                     _annoCanvas.SourceBitmap = _source;
                     _screenshotImage.Opacity = 1;
                     _screenshotImage.Visibility = Visibility.Visible;
@@ -1384,60 +1292,14 @@ public sealed class SnipWindow : Window
         }
     }
 
-    private unsafe void OnScrollLatestTileCaptured(ScrollTilePixels tile)
+    private void OnScrollLatestTileCaptured(ScrollTilePixels tile)
     {
-        try
-        {
-            var preview = _scrollLivePreview;
-            if (preview == null || tile == null)
-            {
-                return;
-            }
-
-            var srcArr = tile.DangerousGetArray();
-            if (srcArr == null)
-            {
-                return;
-            }
-
-            int dstX = _scrollLivePreviewRect.X;
-            int dstY = _scrollLivePreviewRect.Y;
-            int copyW = Math.Min(tile.Width, preview.PixelWidth - dstX);
-            int copyH = Math.Min(tile.Height, preview.PixelHeight - dstY);
-            if (copyW <= 0 || copyH <= 0)
-            {
-                return;
-            }
-
-            int rowBytes = copyW * 4;
-            int srcStride = tile.Stride;
-            preview.Lock();
-            try
-            {
-                byte* dstBase = (byte*)preview.BackBuffer;
-                int dstStride = preview.BackBufferStride;
-                for (int y = 0; y < copyH; y++)
-                {
-                    var srcRow = srcArr.AsSpan(y * srcStride, rowBytes);
-                    var dstRow = new Span<byte>(dstBase + ((long)(dstY + y) * dstStride) + (dstX * 4), rowBytes);
-                    srcRow.CopyTo(dstRow);
-                }
-
-                preview.AddDirtyRect(new Int32Rect(dstX, dstY, copyW, copyH));
-            }
-            finally
-            {
-                preview.Unlock();
-            }
-        }
-        catch (Exception ex)
-        {
-            SnipVerbose.Scroll($"[scroll] live preview update skipped: {ex.Message}");
-        }
+        _scrollLivePreview?.BlitTile(tile);
     }
 
     private void RestorePassthroughUi()
     {
+        _scrollLivePreview?.Reset();
         _scrollLivePreview = null;
         ClearScrollCaptureHole();
         _dimPath.IsHitTestVisible = false;
@@ -2121,107 +1983,25 @@ public sealed class SnipWindow : Window
 
     private void UpdateMagnifierAt(Point dipPoint)
     {
-        if (_source == null || _magnifierBitmap == null || _scrollController is { IsActive: true }
-            || _source.IsFrozen || _magnifierBitmap.IsFrozen)
+        if (_scrollController is { IsActive: true })
         {
-            _magnifierHud.Visibility = Visibility.Collapsed;
+            _magnifier.Hide();
             return;
         }
 
-        int sw = _source.PixelWidth;
-        int sh = _source.PixelHeight;
-        if (sw <= 0 || sh <= 0)
-        {
-            return;
-        }
-
-        int px = Math.Clamp((int)Math.Round(dipPoint.X * _dpiScale), 0, sw - 1);
-        int py = Math.Clamp((int)Math.Round(dipPoint.Y * _dpiScale), 0, sh - 1);
-
-        _source.Lock();
-        _magnifierBitmap.Lock();
-        try
-        {
-            unsafe
-            {
-                var srcPtr = (byte*)_source.BackBuffer;
-                int srcStride = _source.BackBufferStride;
-                PixelMagnifier.SamplePixelBgra(srcPtr, srcStride, sw, sh, px, py, out _lastSampledR, out _lastSampledG, out _lastSampledB);
-                _hasSampledPixel = true;
-
-                if (!_hasSelection || _dragCreating || _dragMovingHandle)
-                {
-                    PixelMagnifier.FillZoomedGrid(
-                        srcPtr,
-                        srcStride,
-                        sw,
-                        sh,
-                        px,
-                        py,
-                        (byte*)_magnifierBitmap.BackBuffer,
-                        _magnifierBitmap.BackBufferStride);
-                    _magnifierBitmap.AddDirtyRect(new Int32Rect(0, 0, PixelMagnifier.OutputPixelSize, PixelMagnifier.OutputPixelSize));
-                }
-            }
-        }
-        finally
-        {
-            _magnifierBitmap.Unlock();
-            _source.Unlock();
-        }
-
-        if (_hasSelection && !_dragCreating && !_dragMovingHandle)
-        {
-            _magnifierHud.Visibility = Visibility.Collapsed;
-            return;
-        }
-
-        // Swatch brush is frozen and reused; only the color changes per move.
-        if (_magnifierSwatchBrush == null)
-        {
-            _magnifierSwatchBrush = new SolidColorBrush(Color.FromRgb(_lastSampledR, _lastSampledG, _lastSampledB));
-            _magnifierSwatch.Background = _magnifierSwatchBrush;
-        }
-        else
-        {
-            _magnifierSwatchBrush.Color = Color.FromRgb(_lastSampledR, _lastSampledG, _lastSampledB);
-        }
-
-        if (_dragCreating || _dragMovingHandle)
-        {
-            int selW = Math.Max(1, (int)Math.Round(_selection.Width * _dpiScale));
-            int selH = Math.Max(1, (int)Math.Round(_selection.Height * _dpiScale));
-            _magnifierCoordText.Text = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"{selW} × {selH}  ({px}, {py})");
-        }
-        else
-        {
-            _magnifierCoordText.Text = string.Create(System.Globalization.CultureInfo.InvariantCulture, $"({px}, {py})");
-        }
-
-        _magnifierColorText.Text = $"{PixelMagnifier.FormatHex(_lastSampledR, _lastSampledG, _lastSampledB)}  {PixelMagnifier.FormatRgb(_lastSampledR, _lastSampledG, _lastSampledB)}";
-
-        _magnifierHud.Visibility = Visibility.Visible;
-        _magnifierHud.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
-        var monitorArea = MonitorAreaFor(new Rect(dipPoint.X, dipPoint.Y, 1, 1));
-        var hudPos = PixelMagnifier.ComputeHudPosition(dipPoint, _magnifierHud.DesiredSize, monitorArea);
-        Canvas.SetLeft(_magnifierHud, hudPos.X);
-        Canvas.SetTop(_magnifierHud, hudPos.Y);
+        bool showGrid = !_hasSelection || _dragCreating || _dragMovingHandle;
+        _magnifier.UpdateAt(
+            _source,
+            _dpiScale,
+            dipPoint,
+            showGrid,
+            _selection,
+            dragging: _dragCreating || _dragMovingHandle,
+            MonitorAreaFor(new Rect(dipPoint.X, dipPoint.Y, 1, 1)));
     }
 
     private void CopySampledColorToClipboard(bool copyRgb)
     {
-        string value = copyRgb
-            ? PixelMagnifier.FormatRgb(_lastSampledR, _lastSampledG, _lastSampledB)
-            : PixelMagnifier.FormatHex(_lastSampledR, _lastSampledG, _lastSampledB);
-        try
-        {
-            Clipboard.SetText(value);
-            _magnifierHintText.Foreground = new SolidColorBrush(Color.FromRgb(72, 210, 110));
-            _magnifierHintText.Text = $"{Properties.Resources.ocr_copied}: {value}";
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow CopySampledColorToClipboard failed: {ex.Message}", ex, GetType());
-        }
+        _magnifier.CopySampledColorToClipboard(copyRgb);
     }
 }
