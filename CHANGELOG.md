@@ -8,6 +8,10 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ## [Unreleased]
 
+（暂无 / Nothing yet）
+
+## [1.6.0] - 2026-10-25
+
 ### 新增 / Added
 
 - 首次截屏预热：插件初始化后闲时预建截屏专用 STA 线程（Dispatcher + DPI 提升 + WPF Application），首次 Alt+A 不再付线程冷启动成本 — Prewarm the snip STA after plugin init so the first capture skips thread bootstrap (@Jotaro2025)
@@ -169,5 +173,6 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 `plugin.json` has been 1.3.0 since #6; #1–#35 landed under that version without separate tags: region capture and annotation editor, text extraction (WeChatOcr, on-demand download for slim), image translation (HTTP OpenAI-compatible / in-process HyMT2Sharp with GGUF download, resume and SHA-256 check), pin image, the dedicated settings window and pack scripts, plus capture / clipboard / translate-render performance work (@Jotaro2025).
 
+[1.6.0]: https://github.com/Jotaro2025/PowerToys-Run-Snip/releases/tag/v1.6.0
 [1.5.0]: https://github.com/Jotaro2025/PowerToys-Run-Snip/releases/tag/v1.5.0
 [1.4.0]: https://github.com/Jotaro2025/PowerToys-Run-Snip/releases/tag/v1.4.0
