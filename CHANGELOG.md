@@ -17,6 +17,8 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 - 安装程序改用 `dotnet publish` + ReadyToRun：插件 DLL 预编译为本机码，PowerToys 加载时省去 JIT（体积约 +120%，仅安装包路径；zip 路径不变）— Installer builds are now R2R-precompiled via publish (@Jotaro2025)
 - 选区边框光晕由 DropShadowEffect 改为双层半透明边框：拖拽选区不再跑每帧 shader — Selection glow via stacked translucent borders instead of a per-frame DropShadow shader (@Jotaro2025)
+- Win32 P/Invoke 迁移至 source-generated `LibraryImport`（消除运行时 marshal stub）；StringBuilder / 委托回调 / ByValTStr 结构三处保留经典 DllImport — Win32 P/Invokes migrated to source-generated LibraryImport (@Jotaro2025)
+- winget 1.5.0 清单就绪：真实 SHA256 与 Inno ProductCode，`winget validate` 通过，可 PR 到 winget-pkgs — winget 1.5.0 manifests with real hashes, validate-clean (@Jotaro2025)
 
 ## [1.5.0] - 2026-10-25
 
