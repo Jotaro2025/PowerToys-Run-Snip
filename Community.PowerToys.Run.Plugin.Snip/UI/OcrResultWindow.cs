@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Linq;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
@@ -12,6 +13,7 @@ using System.Windows.Input;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
+using Community.PowerToys.Run.Plugin.Snip.Models;
 using Community.PowerToys.Run.Plugin.Snip.Services;
 using Wox.Plugin.Logger;
 
@@ -39,6 +41,7 @@ public sealed class OcrResultWindow : Window, IDisposable
     private readonly TextBlock _overlayText;
     private readonly TextBlock _status;
     private readonly Button _copyButton;
+    private readonly Button _exportButton;
     private readonly Button _copyAllButton;
     private readonly CancellationTokenSource _cts = new CancellationTokenSource();
     private readonly SnipSettings _settings;
@@ -46,6 +49,7 @@ public sealed class OcrResultWindow : Window, IDisposable
     private Uri _detectedHttpUri;
     private string _detectedCodeText;
     private bool _closed;
+    private System.Collections.Generic.IReadOnlyList<OcrTextLine> _lines;
     private bool _disposed;
 
     public OcrResultWindow(BitmapSource image, byte[] png, SnipSettings settings)
@@ -212,6 +216,10 @@ public sealed class OcrResultWindow : Window, IDisposable
         _copyAllButton.Click += (sender, e) => CopyText(_textBox.Text);
         buttons.Children.Add(_copyAllButton);
 
+        _exportButton = CreateButton(Properties.Resources.ocr_export, isDefault: false);
+        _exportButton.Click += (sender, e) => ExportLines();
+        buttons.Children.Add(_exportButton);
+
         var closeButton = CreateButton(Properties.Resources.ocr_close, isDefault: false);
         closeButton.IsCancel = true;
         closeButton.Click += (sender, e) => Close();
@@ -259,7 +267,8 @@ public sealed class OcrResultWindow : Window, IDisposable
 
         try
         {
-            var text = await OcrService.RecognizeAsync(_png, _settings, _cts.Token);
+            var lines = await OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token);
+            var text = string.Join(Environment.NewLine, lines.Select(l => l.Text));
             if (_closed)
             {
                 return;
@@ -276,6 +285,7 @@ public sealed class OcrResultWindow : Window, IDisposable
                 return;
             }
 
+            _lines = lines;
             Cursor = null;
             _textBox.Text = text;
             _textBox.IsEnabled = true;
@@ -421,6 +431,42 @@ public sealed class OcrResultWindow : Window, IDisposable
             Log.Exception($"Snip OCR clipboard copy failed: {ex.Message}", ex, GetType());
             _status.Foreground = new SolidColorBrush(ErrorColor);
             _status.Text = Properties.Resources.ocr_copy_failed;
+        }
+    }
+
+    private void ExportLines()
+    {
+        if (_lines == null || _lines.Count == 0)
+        {
+            return;
+        }
+
+        try
+        {
+            var dialog = new Microsoft.Win32.SaveFileDialog
+            {
+                Title = Properties.Resources.ocr_export,
+                DefaultExt = ".md",
+                Filter = Properties.Resources.ocr_export_filter,
+                AddExtension = true,
+            };
+            if (dialog.ShowDialog(this) != true)
+            {
+                return;
+            }
+
+            var format = dialog.FileName.EndsWith(".json", StringComparison.OrdinalIgnoreCase)
+                ? OcrExport.Format.Json
+                : OcrExport.Format.Markdown;
+            System.IO.File.WriteAllText(dialog.FileName, OcrExport.Render(_lines, format));
+            _status.Foreground = new SolidColorBrush(Color.FromRgb(48, 175, 85));
+            _status.Text = $"{Properties.Resources.ocr_export_saved}: {System.IO.Path.GetFileName(dialog.FileName)}";
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip OCR export failed: {ex.Message}", ex, GetType());
+            _status.Foreground = new SolidColorBrush(ErrorColor);
+            _status.Text = ex.Message;
         }
     }
 

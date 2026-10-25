@@ -5,6 +5,8 @@
 using System;
 using System.Buffers;
 using System.Collections.Generic;
+using System.Linq;
+using System.Numerics;
 using System.Text;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -99,19 +101,24 @@ internal static class QrAndBarcodeScanner
         byte[] binary = ArrayPool<byte>.Shared.Rent(pixelCount);
         try
         {
-            BinarizeBgra(bgra, width, height, stride, binary.AsSpan(0, pixelCount));
+            var bin = binary.AsSpan(0, pixelCount);
+            BinarizeBgra(bgra, width, height, stride, bin);
             var results = new List<ScanResult>(2);
 
-            if (width >= 21 && height >= 21
-                && TryDecodeQrFromBinary(binary.AsSpan(0, pixelCount), width, height, out string qrText)
-                && !string.IsNullOrEmpty(qrText))
+            // Multi-code collection: first try the whole image; if that fails
+            // (or to find more codes), scan tile subdivisions so side-by-side
+            // codes — which break the single-bbox module-size estimate — are
+            // still decoded individually. Bounded and deduplicated.
+            if (width >= 21 && height >= 21)
             {
-                TryNormalizeHttpUrl(qrText, out Uri uri);
-                results.Add(new ScanResult("QR", qrText, uri));
+                TryCollectQrCodes(bin, width, height, results, maxCodes: MaxCodesPerScan);
             }
 
-            if (TryDecodeCode128FromBinary(binary.AsSpan(0, pixelCount), width, height, out string barcodeText)
-                && !string.IsNullOrEmpty(barcodeText))
+            // 1D barcodes: scan several horizontal bands so stacked or stacked-
+            // layout barcodes are all found, not just the one crossing the midline.
+            if (TryDecodeCode128FromBinary(bin, width, height, out string barcodeText)
+                && !string.IsNullOrEmpty(barcodeText)
+                && !results.Any(r => r.Format == "CODE-128" && r.Text == barcodeText))
             {
                 TryNormalizeHttpUrl(barcodeText, out Uri uri);
                 results.Add(new ScanResult("CODE-128", barcodeText, uri));
@@ -122,6 +129,115 @@ internal static class QrAndBarcodeScanner
         finally
         {
             ArrayPool<byte>.Shared.Return(binary);
+        }
+    }
+
+    /// <summary>Upper bound on codes collected from one image.</summary>
+    private const int MaxCodesPerScan = 8;
+
+    internal readonly record struct RectInt(int X, int Y, int Width, int Height);
+
+    /// <summary>
+    /// Decodes QR codes by trying the region as-is, then splitting into
+    /// quadrants while codes remain and budget lasts. Whole-image decoding
+    /// covers the common single-code case at full accuracy; quadrant splits
+    /// rescue side-by-side/stacked layouts where one merged bbox breaks the
+    /// finder-pattern estimate.
+    /// </summary>
+    private static void TryCollectQrCodes(
+        Span<byte> bin,
+        int width,
+        int height,
+        List<ScanResult> results,
+        int maxCodes,
+        int depth = 0)
+    {
+        if (results.Count >= maxCodes || width < 21 || height < 21 || depth > 3)
+        {
+            return;
+        }
+
+        if (TryDecodeQrFromBinary(bin, width, height, out string text, out RectInt box)
+            && !string.IsNullOrEmpty(text)
+            && !results.Any(r => r.Format == "QR" && r.Text == text))
+        {
+            TryNormalizeHttpUrl(text, out Uri uri);
+            results.Add(new ScanResult("QR", text, uri));
+        }
+
+        if (results.Count >= maxCodes || depth >= 3)
+        {
+            return;
+        }
+
+        // Split candidates: prefer the full-height halves (side-by-side codes are
+        // the common layout — a vertical cut keeps each code intact), then the
+        // full-width halves for stacked codes. A small overlap keeps codes on
+        // the seam inside one tile.
+        int o = 4;
+        int halfW = width / 2;
+        int halfH = height / 2;
+        if (halfW < 21 && halfH < 21)
+        {
+            return;
+        }
+
+        Span<(int X, int Y, int W, int H)> quads = halfW >= 21
+            ? stackalloc (int, int, int, int)[4]
+            {
+                (0, 0, halfW + o, height),
+                (halfW - o, 0, width - halfW + o, height),
+                (0, 0, width, halfH + o),
+                (0, halfH - o, width, height - halfH + o),
+            }
+            : stackalloc (int, int, int, int)[2]
+            {
+                (0, 0, width, halfH + o),
+                (0, halfH - o, width, height - halfH + o),
+            };
+        foreach (var (qx, qy, qw, qh) in quads)
+        {
+            if (results.Count >= maxCodes)
+            {
+                return;
+            }
+
+            if (qw < 21 || qh < 21 || qx < 0 || qy < 0 || qx + qw > width || qy + qh > height)
+            {
+                continue;
+            }
+
+            // Build a sub-view: rows are not contiguous, so decode against the
+            // same binary with adjusted origin by copying into rented scratch.
+            int subPixels = qw * qh;
+            byte[] scratch = ArrayPool<byte>.Shared.Rent(subPixels);
+            try
+            {
+                for (int y = 0; y < qh; y++)
+                {
+                    bin.Slice(((qy + y) * width) + qx, qw).CopyTo(scratch.AsSpan(y * qw, qw));
+                }
+
+                TryCollectQrCodes(scratch.AsSpan(0, subPixels), qw, qh, results, maxCodes, depth + 1);
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(scratch);
+            }
+        }
+    }
+
+    /// <summary>Zeroes a binary-image rect (plus a small margin) so the next bbox scan skips it.</summary>
+    private static void ClearRect(Span<byte> binary, int width, RectInt box)
+    {
+        int margin = 2;
+        int y0 = Math.Max(0, box.Y - margin);
+        int y1 = Math.Min(binary.Length / Math.Max(1, width), box.Y + box.Height + margin);
+        int x0 = Math.Max(0, box.X - margin);
+        int x1 = Math.Min(width, box.X + box.Width + margin);
+        for (int y = y0; y < y1; y++)
+        {
+            binary.Slice((y * width) + x0, Math.Max(0, x1 - x0)).Clear();
         }
     }
 
@@ -331,15 +447,35 @@ internal static class QrAndBarcodeScanner
         int threshold = (int)(sum / Math.Max(1, (long)width * height));
         threshold = Math.Clamp(threshold, 32, 224);
 
-        for (int i = 0; i < binary.Length; i++)
+        if (Vector.IsHardwareAccelerated && binary.Length >= Vector<byte>.Count)
         {
-            binary[i] = binary[i] < threshold ? (byte)1 : (byte)0;
+            var threshVec = new Vector<byte>((byte)threshold);
+            var one = Vector<byte>.One;
+            int vecEnd = binary.Length - (binary.Length % Vector<byte>.Count);
+            for (int i = 0; i < vecEnd; i += Vector<byte>.Count)
+            {
+                var v = new Vector<byte>(binary.Slice(i, Vector<byte>.Count));
+                (Vector.LessThan(v, threshVec) & one).CopyTo(binary.Slice(i, Vector<byte>.Count));
+            }
+
+            for (int i = vecEnd; i < binary.Length; i++)
+            {
+                binary[i] = binary[i] < threshold ? (byte)1 : (byte)0;
+            }
+        }
+        else
+        {
+            for (int i = 0; i < binary.Length; i++)
+            {
+                binary[i] = binary[i] < threshold ? (byte)1 : (byte)0;
+            }
         }
     }
 
-    private static bool TryDecodeQrFromBinary(ReadOnlySpan<byte> binary, int width, int height, out string decoded)
+    private static bool TryDecodeQrFromBinary(ReadOnlySpan<byte> binary, int width, int height, out string decoded, out RectInt bbox)
     {
         decoded = null;
+        bbox = default;
 
         // Find bounding box of dark modules and estimate module size from top-left finder pattern.
         int minX = width, minY = height, maxX = -1, maxY = -1;
@@ -380,6 +516,7 @@ internal static class QrAndBarcodeScanner
 
         int boxW = maxX - minX + 1;
         int boxH = maxY - minY + 1;
+        bbox = new RectInt(minX, minY, boxW, boxH);
 
         // Estimate module size by measuring the top-left finder top border run length (7 modules wide).
         int topRun = 0;

@@ -442,6 +442,33 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Export….
+        /// </summary>
+        public static string ocr_export {
+            get {
+                return ResourceManager.GetString("ocr_export", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Markdown (*.md)|*.md|JSON (*.json)|*.json|All files (*.*)|*.*.
+        /// </summary>
+        public static string ocr_export_filter {
+            get {
+                return ResourceManager.GetString("ocr_export_filter", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Exported.
+        /// </summary>
+        public static string ocr_export_saved {
+            get {
+                return ResourceManager.GetString("ocr_export_saved", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Close.
         /// </summary>
         public static string ocr_close {

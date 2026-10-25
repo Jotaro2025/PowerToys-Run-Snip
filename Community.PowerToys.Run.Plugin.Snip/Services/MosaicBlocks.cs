@@ -4,6 +4,8 @@
 
 using System;
 using System.Buffers;
+using System.Numerics;
+using System.Runtime.InteropServices;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
@@ -74,17 +76,11 @@ public static class MosaicBlocks
 
                 int destX0 = bx - x0;
                 int destY0 = by - y0;
+                uint packed = (uint)(b | (g << 8) | (r << 16) | 0xFF000000);
                 for (int py = 0; py < blockH; py++)
                 {
-                    byte* row = dest + ((destY0 + py) * destStride) + (destX0 * 4);
-                    for (int px = 0; px < blockW; px++)
-                    {
-                        int o = px * 4;
-                        row[o + 0] = b;
-                        row[o + 1] = g;
-                        row[o + 2] = r;
-                        row[o + 3] = 255;
-                    }
+                    var row = new Span<uint>(dest + ((destY0 + py) * destStride) + (destX0 * 4), blockW);
+                    row.Fill(packed);
                 }
             }
         }
@@ -164,6 +160,27 @@ public static class MosaicBlocks
         }
     }
 
+    // Channel masks in the widened uint domain: after two Widen steps each
+    // Vector<byte> (N BGRA pixels) becomes Vector<uint> lanes holding single bytes
+    // in [B,G,R,A] order — lane index ≡ byte offset (mod 4). Built per
+    // Vector<uint>.Count so they cover AVX-512's 16 lanes as well as SSE/AVX2's 8.
+    private static readonly Vector<uint> MaskB = BuildChannelMask(0);
+    private static readonly Vector<uint> MaskG = BuildChannelMask(1);
+    private static readonly Vector<uint> MaskR = BuildChannelMask(2);
+
+    private static Vector<uint> BuildChannelMask(int channel)
+    {
+        var lanes = new uint[Vector<uint>.Count];
+        for (int i = channel; i < lanes.Length; i += 4)
+        {
+            lanes[i] = 0xFFFFFFFF;
+        }
+
+        return new Vector<uint>(lanes);
+    }
+
+    private static unsafe Vector<byte> LoadVector(byte* p) => *(Vector<byte>*)p;
+
     private static unsafe void SampleFullAverage(
         byte* src,
         int srcStride,
@@ -175,20 +192,71 @@ public static class MosaicBlocks
         out byte g,
         out byte r)
     {
-        long sumB = 0, sumG = 0, sumR = 0, count = 0;
         int bxEnd = bx + blockW;
         int byEnd = by + blockH;
-        for (int py = by; py < byEnd; py++)
+        long sumB = 0, sumG = 0, sumR = 0, count = 0;
+        int rowPixels = blockW;
+        int vecPixels = Vector<byte>.Count / 4;
+
+        if (Vector.IsHardwareAccelerated && rowPixels >= vecPixels)
         {
-            byte* row = src + (py * srcStride);
-            for (int px = bx; px < bxEnd; px++)
+            Vector<uint> accB = default, accG = default, accR = default;
+            long vecCount = 0, tailCount = 0;
+            for (int py = by; py < byEnd; py++)
             {
-                int o = px * 4;
-                sumB += row[o + 0];
-                sumG += row[o + 1];
-                sumR += row[o + 2];
-                count++;
+                byte* row = src + (py * srcStride) + (bx * 4);
+                int px = 0;
+                for (; px + vecPixels <= rowPixels; px += vecPixels)
+                {
+                    var vb = LoadVector(row + (px * 4));
+                    Vector.Widen(vb, out Vector<ushort> lo16, out Vector<ushort> hi16);
+                    Vector.Widen(lo16, out Vector<uint> q0, out Vector<uint> q1);
+                    Vector.Widen(hi16, out Vector<uint> q2, out Vector<uint> q3);
+                    accB += (q0 & MaskB) + (q1 & MaskB) + (q2 & MaskB) + (q3 & MaskB);
+                    accG += (q0 & MaskG) + (q1 & MaskG) + (q2 & MaskG) + (q3 & MaskG);
+                    accR += (q0 & MaskR) + (q1 & MaskR) + (q2 & MaskR) + (q3 & MaskR);
+                }
+
+                vecCount += px;
+
+                // Scalar tail for the last <vector-width pixels of the row
+                // (also the whole row when it is narrower than one vector).
+                for (; px < rowPixels; px++)
+                {
+                    int o = px * 4;
+                    sumB += row[o + 0];
+                    sumG += row[o + 1];
+                    sumR += row[o + 2];
+                    tailCount++;
+                }
             }
+
+            count = vecCount + tailCount;
+
+            // Lane-reduce the accumulators (8 lanes each; headroom is ample —
+            // 255 × pixels-per-block fits uint for any block ≤ 16M pixels).
+            for (int i = 0; i < Vector<uint>.Count; i++)
+            {
+                sumB += accB[i];
+                sumG += accG[i];
+                sumR += accR[i];
+            }
+        }
+        else
+        {
+            for (int py = by; py < byEnd; py++)
+            {
+                byte* row = src + (py * srcStride);
+                for (int px = bx; px < bxEnd; px++)
+                {
+                    int o = px * 4;
+                    sumB += row[o + 0];
+                    sumG += row[o + 1];
+                    sumR += row[o + 2];
+                }
+            }
+
+            count = (long)blockW * blockH;
         }
 
         if (count == 0)

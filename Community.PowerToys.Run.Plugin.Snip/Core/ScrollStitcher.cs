@@ -588,7 +588,7 @@ public static class ScrollStitcher
                 double raw = ComputeRawMatchRatio(
                     prevBase, prev.Stride, h, 0,
                     nextBase, next.Stride, h, 0,
-                    h, width, stepX: 1, stepY: 1);
+                    h, width, stepX: 1, stepY: 1, earlyExitBelow: 0.999);
                 return raw >= 0.999;
             }
         }
@@ -613,7 +613,7 @@ public static class ScrollStitcher
                 double raw = ComputeRawMatchRatio(
                     (byte*)prev.BackBuffer, prev.BackBufferStride, h, 0,
                     (byte*)next.BackBuffer, next.BackBufferStride, h, 0,
-                    h, width, stepX: 1, stepY: 1);
+                    h, width, stepX: 1, stepY: 1, earlyExitBelow: 0.999);
                 return raw >= 0.999;
             }
         }
@@ -1233,10 +1233,17 @@ public static class ScrollStitcher
     private static unsafe double ComputeRawMatchRatio(
         byte* prevBase, int prevStride, int prevH, int prevStartY,
         byte* nextBase, int nextStride, int nextH, int nextStartY,
-        int overlapRows, int width, int stepX, int stepY)
+        int overlapRows, int width, int stepX, int stepY,
+        double earlyExitBelow = 0.0)
     {
         int matches = 0;
         int total = 0;
+        // Early-exit budget: once mismatches exceed what the threshold allows,
+        // the final ratio can only fall below it — stop scanning (duplicate-tile
+        // checks on visibly different frames previously paid a full pass).
+        long maxMismatches = earlyExitBelow > 0
+            ? (long)(overlapRows / Math.Max(1, stepY) * ((width + stepX - 1) / stepX) * (1.0 - earlyExitBelow)) + 1
+            : long.MaxValue;
 
         for (int r = 0; r < overlapRows; r += stepY)
         {
@@ -1253,7 +1260,13 @@ public static class ScrollStitcher
                 if (prevRow[o] == nextRow[o]
                     && prevRow[o + 1] == nextRow[o + 1]
                     && prevRow[o + 2] == nextRow[o + 2])
+                {
                     matches++;
+                }
+                else if (total - matches > maxMismatches)
+                {
+                    return (double)matches / total;
+                }
             }
         }
         return total > 0 ? (double)matches / total : 0;

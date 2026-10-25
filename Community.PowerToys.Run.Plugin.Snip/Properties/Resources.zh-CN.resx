@@ -188,6 +188,15 @@
   <data name="ocr_busy_waiting" xml:space="preserve">
     <value>正在等待其他文字识别完成…</value>
   </data>
+  <data name="ocr_export" xml:space="preserve">
+    <value>导出…</value>
+  </data>
+  <data name="ocr_export_filter" xml:space="preserve">
+    <value>Markdown (*.md)|*.md|JSON (*.json)|*.json|所有文件 (*.*)|*.*</value>
+  </data>
+  <data name="ocr_export_saved" xml:space="preserve">
+    <value>已导出</value>
+  </data>
   <data name="ocr_copy" xml:space="preserve">
     <value>复制</value>
   </data>
