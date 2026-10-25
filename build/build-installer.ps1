@@ -179,23 +179,29 @@ foreach ($arch in $Architectures) {
     $rid = "win-$arch"
     $buildOut = Join-Path $BuildRoot $arch
     if (-not $SkipBuild) {
-        Write-Host "==> dotnet build ($rid, $Configuration)"
+        Write-Host "==> dotnet publish ($rid, $Configuration, R2R)"
         if (Test-Path $buildOut) {
             Remove-Item -Recurse -Force $buildOut
         }
         $buildArgs = @(
-            "build", $Project,
+            "publish", $Project,
             "-c", $Configuration,
             "-p:RuntimeIdentifier=$rid",
             "-p:SelfContained=false",
             "-p:EnableWindowsTargeting=true",
             "-p:PowerToysInstallDir=$PowerToysInstallDir",
+            # ReadyToRun: precompiled native code trims JIT time when PowerToys
+            # loads the plugin. Framework-dependent, so only the plugin's own
+            # assemblies grow (~20-30%... measured ~2x on this assembly);
+            # accepts any runtime >= the build's. publish (not build) is
+            # required — the Crossgen step only runs on publish.
+            "-p:PublishReadyToRun=true",
             "-o", $buildOut,
             "-v:m"
         )
         & dotnet @buildArgs
         if ($LASTEXITCODE -ne 0) {
-            throw "dotnet build ($rid) failed with exit code $LASTEXITCODE"
+            throw "dotnet publish ($rid) failed with exit code $LASTEXITCODE"
         }
     }
     if (-not (Test-Path (Join-Path $buildOut "Community.PowerToys.Run.Plugin.Snip.dll"))) {

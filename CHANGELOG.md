@@ -8,7 +8,15 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ## [Unreleased]
 
-（暂无 / Nothing yet）
+### 新增 / Added
+
+- 首次截屏预热：插件初始化后闲时预建截屏专用 STA 线程（Dispatcher + DPI 提升 + WPF Application），首次 Alt+A 不再付线程冷启动成本 — Prewarm the snip STA after plugin init so the first capture skips thread bootstrap (@Jotaro2025)
+- WeChatOCR.exe 闲置自动回收：与 HyMT 模型共用同一「闲置 N 分钟卸载」设置（默认 10，0 关闭），OCR 子进程不再常驻 — Idle auto-recycle for the WeChatOCR.exe child process, sharing the HyMT idle-unload setting (@Jotaro2025)
+
+### 变更 / Changed
+
+- 安装程序改用 `dotnet publish` + ReadyToRun：插件 DLL 预编译为本机码，PowerToys 加载时省去 JIT（体积约 +120%，仅安装包路径；zip 路径不变）— Installer builds are now R2R-precompiled via publish (@Jotaro2025)
+- 选区边框光晕由 DropShadowEffect 改为双层半透明边框：拖拽选区不再跑每帧 shader — Selection glow via stacked translucent borders instead of a per-frame DropShadow shader (@Jotaro2025)
 
 ## [1.5.0] - 2026-10-25
 
