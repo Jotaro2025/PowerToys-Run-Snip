@@ -83,6 +83,17 @@ public static class SnipController
     }
 
     /// <summary>
+    /// Creates the dedicated snip STA (dispatcher + DPI promotion + WPF Application)
+    /// ahead of the first user trigger so the first Alt+A does not pay the thread
+    /// bootstrap cost. Idempotent and safe to call from any thread; a concurrent
+    /// <see cref="Start"/> simply wins the race and the loser reuses the winner.
+    /// </summary>
+    public static void PrewarmUiThread()
+    {
+        _ = EnsureUiDispatcher();
+    }
+
+    /// <summary>
     /// Runs <paramref name="action"/> on the dedicated STA UI dispatcher
     /// (same thread as the snip editor). Returns immediately.
     /// </summary>

@@ -433,6 +433,21 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         SnipVerbose.ScrollLogging = _settings.VerboseScrollLogging;
         ApplyHotkeyRegistration();
         UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
+
+        // Bootstrap the snip STA (dispatcher + DPI promotion + WPF Application)
+        // after Run has settled, so the first Alt+A skips the thread cold start.
+        _ = System.Threading.Tasks.Task.Run(async () =>
+        {
+            try
+            {
+                await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
+                SnipController.PrewarmUiThread();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Snip prewarm failed: {ex.Message}", typeof(Main));
+            }
+        });
     }
 
     public string GetTranslatedPluginTitle() => Properties.Resources.plugin_name;
@@ -483,6 +498,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         }
 
         HyMT2SharpTranslatorCache.ConfigureIdleUnload(_settings.HyMtIdleUnloadMinutes);
+        WeChatOcrService.ConfigureIdleRecycle(_settings.HyMtIdleUnloadMinutes);
 
         _settings.CheckForUpdates = options.FirstOrDefault(x => x.Key == OptionCheckForUpdates)?.Value ?? false;
         _settings.VerboseScrollLogging = options.FirstOrDefault(x => x.Key == OptionVerboseScrollLogging)?.Value ?? false;
@@ -611,6 +627,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         {
             UiLanguageHelper.Apply(_settings.UiLanguage);
             HyMT2SharpTranslatorCache.ConfigureIdleUnload(_settings.HyMtIdleUnloadMinutes);
+            WeChatOcrService.ConfigureIdleRecycle(_settings.HyMtIdleUnloadMinutes);
             SnipVerbose.ScrollLogging = _settings.VerboseScrollLogging;
             ApplyHotkeyRegistration();
             UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);

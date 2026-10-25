@@ -57,8 +57,70 @@ public static class WeChatOcrService
     /// </summary>
     private static ImageOcr _sharedOcr;
 
+    /// <summary>
+    /// Idle auto-recycle for the shared component's WeChatOCR.exe child process,
+    /// mirroring <see cref="HyMT2SharpTranslatorCache.ConfigureIdleUnload(int)"/>
+    /// semantics (same setting drives both; 0 disables).
+    /// </summary>
+    private static TimeSpan _idleTimeout = TimeSpan.FromMinutes(HyMT2SharpTranslatorCache.DefaultIdleUnloadMinutes);
+    private static DateTime _lastUseUtc = DateTime.UtcNow;
+    private static Timer _idleTimer;
+
     /// <summary>True when another recognition currently holds the process-wide gate.</summary>
     public static bool IsBusy => Gate.CurrentCount == 0;
+
+    /// <summary>Current idle timeout for the OCR child process; <see cref="TimeSpan.Zero"/> = keep it warm forever.</summary>
+    public static TimeSpan IdleTimeout => _idleTimeout;
+
+    /// <summary>
+    /// Sets idle auto-recycle in minutes for the WeChatOCR.exe child process
+    /// (0 = off, clamped to 0–<see cref="HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes"/>).
+    /// Mirrors the HyMT model idle-unload setting.
+    /// </summary>
+    public static void ConfigureIdleRecycle(int minutes)
+    {
+        int m = Math.Clamp(minutes, 0, HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes);
+        _idleTimeout = m == 0 ? TimeSpan.Zero : TimeSpan.FromMinutes(m);
+        EnsureIdleTimer();
+    }
+
+    private static void EnsureIdleTimer()
+    {
+        if (_idleTimeout == TimeSpan.Zero)
+        {
+            return;
+        }
+
+        _idleTimer ??= new Timer(
+            _ =>
+            {
+                try
+                {
+                    if (_idleTimeout != TimeSpan.Zero
+                        && _sharedOcr != null
+                        && DateTime.UtcNow - _lastUseUtc >= _idleTimeout
+                        && Gate.Wait(0))
+                    {
+                        try
+                        {
+                            TryDisposeSharedOcr();
+                            Log.Info("Snip WeChat OCR idle recycle: child process disposed.", typeof(WeChatOcrService));
+                        }
+                        finally
+                        {
+                            Gate.Release();
+                        }
+                    }
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"Snip WeChat OCR idle recycle: {ex.Message}", typeof(WeChatOcrService));
+                }
+            },
+            null,
+            dueTime: TimeSpan.FromMinutes(1),
+            period: TimeSpan.FromMinutes(1));
+    }
 
     /// <summary>OCR assets next to the plugin DLL (full package / local build).</summary>
     public static string PluginOcrDataDirectory => Path.Combine(PluginDirectory, "wco_data");
@@ -161,6 +223,7 @@ public static class WeChatOcrService
                 await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
                 {
+                    _lastUseUtc = DateTime.UtcNow;
                     return await RunOcrLinesAsync(png, cancellationToken).ConfigureAwait(false);
                 }
                 finally

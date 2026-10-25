@@ -60,6 +60,14 @@ public sealed class SelectionAdorner
     private static readonly Color Chrome = Color.FromRgb(80, 220, 100);
 
     private readonly Canvas _host;
+
+    /// <summary>
+    /// Soft outer glow ring under the 2px border. Two stacked translucent
+    /// borders approximate the old DropShadowEffect glow without a per-frame
+    /// shader pass while the selection is being dragged.
+    /// </summary>
+    private readonly Border _glowOuter;
+    private readonly Border _glowInner;
     private readonly Border _border;
     private readonly Border _labelHost;
     private readonly TextBlock _sizeLabel;
@@ -69,22 +77,32 @@ public sealed class SelectionAdorner
     {
         _host = host;
 
+        _glowOuter = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(70, Chrome.R, Chrome.G, Chrome.B)),
+            BorderThickness = new Thickness(5),
+            Background = Brushes.Transparent,
+            IsHitTestVisible = false,
+        };
+        _host.Children.Add(_glowOuter);
+        Panel.SetZIndex(_glowOuter, 14);
+
+        _glowInner = new Border
+        {
+            BorderBrush = new SolidColorBrush(Color.FromArgb(110, Chrome.R, Chrome.G, Chrome.B)),
+            BorderThickness = new Thickness(3),
+            Background = Brushes.Transparent,
+            IsHitTestVisible = false,
+        };
+        _host.Children.Add(_glowInner);
+        Panel.SetZIndex(_glowInner, 14);
+
         _border = new Border
         {
             BorderBrush = new SolidColorBrush(Chrome),
             BorderThickness = new Thickness(2),
             Background = Brushes.Transparent,
             IsHitTestVisible = false,
-
-            // Soft outer glow makes the selection edge pop against dark or
-            // low-contrast desktops where a thin 2px line alone is easy to miss.
-            Effect = new System.Windows.Media.Effects.DropShadowEffect
-            {
-                Color = Chrome,
-                BlurRadius = 10,
-                ShadowDepth = 0,
-                Opacity = 0.9,
-            },
         };
         _host.Children.Add(_border);
         Panel.SetZIndex(_border, 15);
@@ -169,6 +187,8 @@ public sealed class SelectionAdorner
     {
         var show = IsVisible && Selection.Width > 0 && Selection.Height > 0;
         _border.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        _glowOuter.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
+        _glowInner.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         _labelHost.Visibility = show ? Visibility.Visible : Visibility.Collapsed;
         foreach (var h in _handles.Values)
         {
@@ -185,6 +205,16 @@ public sealed class SelectionAdorner
         _border.Height = s.Height;
         Canvas.SetLeft(_border, s.X);
         Canvas.SetTop(_border, s.Y);
+
+        // Glow rings extend past the border by their border thickness.
+        _glowOuter.Width = s.Width + 10;
+        _glowOuter.Height = s.Height + 10;
+        Canvas.SetLeft(_glowOuter, s.X - 5);
+        Canvas.SetTop(_glowOuter, s.Y - 5);
+        _glowInner.Width = s.Width + 6;
+        _glowInner.Height = s.Height + 6;
+        Canvas.SetLeft(_glowInner, s.X - 3);
+        Canvas.SetTop(_glowInner, s.Y - 3);
 
         _sizeLabel.Text = $"{(int)s.Width} x {(int)s.Height}";
         _labelHost.Measure(new Size(double.PositiveInfinity, double.PositiveInfinity));
