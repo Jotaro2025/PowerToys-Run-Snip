@@ -1374,42 +1374,7 @@ public sealed class SnipWindow : Window
     /// <see cref="RenderTargetBitmap"/> round-trip).
     /// </summary>
     private BitmapSource BuildResultBitmap(Rect selection)
-    {
-        // Selection is in logical (DIP) coords; the source bitmap is physical pixels.
-        double dpi = _dpiScale;
-        int x = (int)Math.Round(selection.X * dpi);
-        int y = (int)Math.Round(selection.Y * dpi);
-        int w = (int)Math.Round(selection.Width * dpi);
-        int h = (int)Math.Round(selection.Height * dpi);
-        w = Math.Max(1, Math.Min(w, _source.PixelWidth - x));
-        h = Math.Max(1, Math.Min(h, _source.PixelHeight - y));
-
-        // 1) Crop the source 1:1.
-        var cropped = new CroppedBitmap(_source, new Int32Rect(x, y, w, h));
-
-        // No markup → skip RenderTargetBitmap (crop is enough for copy/save/OCR).
-        if (_annoCanvas.Items.Count == 0)
-        {
-            return cropped;
-        }
-
-        // 2) Render annotations on top of the 1:1 crop. AnnotationCanvas only
-        //    draws markup (not the background); mosaic still samples SourceBitmap
-        //    at the corresponding source pixels.
-        var visual = new DrawingVisual();
-        using (var dc = visual.RenderOpen())
-        {
-            dc.DrawImage(cropped, new Rect(0, 0, w, h));
-            var matrix = new Matrix(dpi, 0, 0, dpi, -selection.X * dpi, -selection.Y * dpi);
-            dc.PushTransform(new MatrixTransform(matrix));
-            _annoCanvas.RenderAnnotations(dc);
-            dc.Pop();
-        }
-
-        var rtb = new RenderTargetBitmap(w, h, 96, 96, PixelFormats.Pbgra32);
-        rtb.Render(visual);
-        return rtb;
-    }
+        => SnipExportComposer.BuildResultBitmap(_source, _annoCanvas, selection, _dpiScale);
 
     private async Task DoConfirmAsync()
     {

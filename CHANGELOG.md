@@ -20,6 +20,7 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 - 选区边框光晕由 DropShadowEffect 改为双层半透明边框：拖拽选区不再跑每帧 shader — Selection glow via stacked translucent borders instead of a per-frame DropShadow shader (@Jotaro2025)
 - Win32 P/Invoke 迁移至 source-generated `LibraryImport`（消除运行时 marshal stub）；StringBuilder / 委托回调 / ByValTStr 结构三处保留经典 DllImport — Win32 P/Invokes migrated to source-generated LibraryImport (@Jotaro2025)
 - SnipWindow 拆分：滚动实时预览提取为 `ScrollLivePreview`、放大镜 HUD 提取为 `MagnifierHud`（2227 → 2007 行，行为不变）— SnipWindow split: extract ScrollLivePreview and MagnifierHud (@Jotaro2025)
+- 导出合成提取为 `SnipExportComposer`（选区裁剪 + 标注渲染纯函数化），新增 3 个 STA 单测覆盖物理像素映射与边界钳制 — Extract SnipExportComposer with STA unit tests (@Jotaro2025)
 - `SnipVerbose.Scroll` 日志发射拆入 NoInlining 方法：JIT 不再强制加载 Wox.Plugin，无宿主环境（基准/子进程）调用不再 FileNotFoundException — Lazy Wox.Plugin load in SnipVerbose so benchmarks run hostless (@Jotaro2025)
 - winget 1.5.0 清单就绪：真实 SHA256 与 Inno ProductCode，`winget validate` 通过，可 PR 到 winget-pkgs — winget 1.5.0 manifests with real hashes, validate-clean (@Jotaro2025)
 
