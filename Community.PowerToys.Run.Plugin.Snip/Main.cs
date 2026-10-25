@@ -27,6 +27,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     // Option keys are persisted in PowerToys settings; keep them stable.
     private const string OptionSaveDirectory = "SaveDirectory";
     private const string OptionCopyAfterCapture = "CopyAfterCapture";
+    private const string OptionNotifyOnCopy = "NotifyOnCopy";
     private const string OptionAutoSaveAfterCapture = "AutoSaveAfterCapture";
     private const string OptionCaptureDelayMs = "CaptureDelayMs";
     private const string OptionScrollIntervalMs = "ScrollIntervalMs";
@@ -78,6 +79,14 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayLabel = Properties.Resources.opt_copy_label,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
             Value = _settings.CopyAfterCapture,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionNotifyOnCopy,
+            DisplayLabel = Properties.Resources.opt_notify_copy_label,
+            DisplayDescription = Properties.Resources.opt_notify_copy_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.NotifyOnCopy,
         },
         new PluginAdditionalOption()
         {
@@ -474,6 +483,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
 
         _settings.SaveDirectory = options.FirstOrDefault(x => x.Key == OptionSaveDirectory)?.TextValue ?? string.Empty;
         _settings.CopyAfterCapture = options.FirstOrDefault(x => x.Key == OptionCopyAfterCapture)?.Value ?? true;
+        _settings.NotifyOnCopy = options.FirstOrDefault(x => x.Key == OptionNotifyOnCopy)?.Value ?? false;
         _settings.AutoSaveAfterCapture = options.FirstOrDefault(x => x.Key == OptionAutoSaveAfterCapture)?.Value ?? false;
 
         var delay = options.FirstOrDefault(x => x.Key == OptionCaptureDelayMs)?.NumberValue;

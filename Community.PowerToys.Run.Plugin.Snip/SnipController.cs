@@ -554,7 +554,7 @@ public static class SnipController
             return;
         }
 
-        if (settings.CopyAfterCapture)
+        if (settings.CopyAfterCapture && settings.NotifyOnCopy)
         {
             notify(Properties.Resources.msg_copied, string.Empty);
         }

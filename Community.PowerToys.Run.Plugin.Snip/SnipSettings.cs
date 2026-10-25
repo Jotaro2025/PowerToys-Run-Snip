@@ -23,6 +23,9 @@ public sealed class SnipSettings
     /// <summary>Copy the screenshot to the clipboard after confirming.</summary>
     public bool CopyAfterCapture { get; set; } = true;
 
+    /// <summary>Show a PowerToys Run notification after a copy-to-clipboard capture (default off).</summary>
+    public bool NotifyOnCopy { get; set; }
+
     /// <summary>Save the screenshot to <see cref="SaveDirectory"/> after confirming.</summary>
     public bool AutoSaveAfterCapture { get; set; }
 
@@ -146,6 +149,7 @@ public sealed class SnipSettings
         {
             SaveDirectory = SaveDirectory,
             CopyAfterCapture = CopyAfterCapture,
+            NotifyOnCopy = NotifyOnCopy,
             AutoSaveAfterCapture = AutoSaveAfterCapture,
             CaptureDelayMs = CaptureDelayMs,
             ScrollIntervalMs = ScrollIntervalMs,
@@ -176,6 +180,7 @@ public sealed class SnipSettings
         ArgumentNullException.ThrowIfNull(other);
         SaveDirectory = other.SaveDirectory;
         CopyAfterCapture = other.CopyAfterCapture;
+        NotifyOnCopy = other.NotifyOnCopy;
         AutoSaveAfterCapture = other.AutoSaveAfterCapture;
         CaptureDelayMs = other.CaptureDelayMs;
         ScrollIntervalMs = other.ScrollIntervalMs;

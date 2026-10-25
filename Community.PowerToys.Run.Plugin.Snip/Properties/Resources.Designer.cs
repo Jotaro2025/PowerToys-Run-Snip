@@ -442,6 +442,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Notify after copy.
+        /// </summary>
+        public static string opt_notify_copy_label {
+            get {
+                return ResourceManager.GetString("opt_notify_copy_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Show a PowerToys Run notification when a capture is copied to the clipboard (off by default)..
+        /// </summary>
+        public static string opt_notify_copy_desc {
+            get {
+                return ResourceManager.GetString("opt_notify_copy_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Record GIF (region).
         /// </summary>
         public static string tip_record_gif {

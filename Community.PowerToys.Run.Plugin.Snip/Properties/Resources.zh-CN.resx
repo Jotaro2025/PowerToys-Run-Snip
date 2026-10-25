@@ -209,6 +209,12 @@
   <data name="gif_error" xml:space="preserve">
     <value>GIF 录制失败</value>
   </data>
+  <data name="opt_notify_copy_label" xml:space="preserve">
+    <value>复制后通知</value>
+  </data>
+  <data name="opt_notify_copy_desc" xml:space="preserve">
+    <value>截屏复制到剪贴板后显示 PowerToys Run 通知（默认关闭）。</value>
+  </data>
   <data name="ocr_copy" xml:space="preserve">
     <value>复制</value>
   </data>

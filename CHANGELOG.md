@@ -10,6 +10,7 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 新增 / Added
 
+- 「复制后通知」开关（默认关闭）：截屏复制到剪贴板后不再弹 PowerToys Run 通知，需要时在插件设置勾选 — Optional notify-after-copy toggle, off by default (@Jotaro2025)
 - QR 多码识别：整图解码失败时按左/右半（含重叠）递归分半解码，并排/堆叠多码可全部解出（数量与深度有上限、结果去重） — Multi-QR collection via recursive half splits (@Jotaro2025)
 - OCR 结果窗新增「导出…」：行级数据导出 Markdown 表格或 JSON（含 box/角点几何），`OcrExport` 纯函数渲染 — OCR export to Markdown / JSON with geometry (@Jotaro2025)
 - 区域 GIF 录屏：工具栏录制按钮 + Esc/再点停止，选区逐帧捕获经自研 GIF89a 编码器（median-cut 调色板 + LZW，零依赖）保存 — Region GIF recording with a zero-dependency GIF89a encoder (@Jotaro2025)

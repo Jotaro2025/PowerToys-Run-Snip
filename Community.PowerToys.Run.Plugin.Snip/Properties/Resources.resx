@@ -209,6 +209,12 @@
   <data name="gif_error" xml:space="preserve">
     <value>GIF recording failed</value>
   </data>
+  <data name="opt_notify_copy_label" xml:space="preserve">
+    <value>Notify after copy</value>
+  </data>
+  <data name="opt_notify_copy_desc" xml:space="preserve">
+    <value>Show a PowerToys Run notification when a capture is copied to the clipboard (off by default).</value>
+  </data>
   <data name="ocr_copy" xml:space="preserve">
     <value>Copy</value>
   </data>

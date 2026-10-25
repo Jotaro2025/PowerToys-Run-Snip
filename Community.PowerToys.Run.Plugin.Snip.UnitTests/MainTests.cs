@@ -146,7 +146,7 @@ public class MainTests
 
         // Keep in sync with the option list in Main.AdditionalOptions
         // (+1 CheckForUpdates #79, +1 VerboseScrollLogging #82 since the original 21).
-        Assert.HasCount(23, main.AdditionalOptions.ToList());
+        Assert.HasCount(24, main.AdditionalOptions.ToList());
     }
 
     [TestMethod]
