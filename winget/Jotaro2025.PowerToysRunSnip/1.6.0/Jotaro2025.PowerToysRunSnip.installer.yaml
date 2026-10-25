@@ -1,0 +1,30 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.installer.1.6.0.schema.json
+PackageIdentifier: Jotaro2025.PowerToysRunSnip
+PackageVersion: 1.6.0
+Platform:
+  - Windows.Desktop
+MinimumOSVersion: 10.0.19041.0
+InstallerType: inno
+Scope: user
+InstallModes:
+  - interactive
+  - silent
+  - silentWithProgress
+UpgradeBehavior: install
+Commands:
+  - snip
+Dependencies:
+  PackageDependencies:
+    - PackageIdentifier: Microsoft.PowerToys
+      MinimumVersion: 0.100.0
+Installers:
+  - Architecture: x64
+    InstallerUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip/releases/download/v1.6.0/Snip-Setup-1.6.0-x64-slim.exe
+    InstallerSha256: A45D42D8D07FC331F4A55D8790B95AB6202F3372C6085AF379E19F532F78CBCE
+    ProductCode: "{6E8C1B5A-3F2D-4C7E-9A41-5D0B7E2C9F10}_is1"
+  - Architecture: arm64
+    InstallerUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip/releases/download/v1.6.0/Snip-Setup-1.6.0-arm64-slim.exe
+    InstallerSha256: 9238CEF548E664512DE7DE6F309A2C01843E87B8D7BF54FDF38938227223DCF3
+    ProductCode: "{B2D47F93-81C6-4A0E-B5F3-7C9E1A2D6084}_is1"
+ManifestType: installer
+ManifestVersion: 1.6.0

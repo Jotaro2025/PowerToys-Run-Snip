@@ -1,0 +1,24 @@
+# yaml-language-server: $schema=https://aka.ms/winget-manifest.locale.1.6.0.schema.json
+PackageIdentifier: Jotaro2025.PowerToysRunSnip
+PackageVersion: 1.6.0
+PackageLocale: zh-CN
+Publisher: Jotaro2025
+PublisherUrl: https://github.com/Jotaro2025
+PublisherSupportUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip/issues
+Author: Jotaro2025
+PackageName: PowerToys Run Snip
+PackageUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip
+License: MIT
+LicenseUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip/blob/main/LICENSE
+ShortDescription: PowerToys Run 区域截图 / 滚动截图 / OCR / 译图插件
+Description: |-
+  支持区域、窗口、全屏截图与标注，滚动截图与拼接，二维码/条形码识别，
+  放大镜取色，Windows OCR / 微信 OCR，以及译图。需要 PowerToys 0.100+。
+  winget 默认提供 slim 安装包（首次 OCR 再下载资源）。
+Tags:
+  - powertoys
+  - 截图
+  - ocr
+ReleaseNotesUrl: https://github.com/Jotaro2025/PowerToys-Run-Snip/releases/tag/v1.6.0
+ManifestType: locale
+ManifestVersion: 1.6.0
