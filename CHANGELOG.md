@@ -11,6 +11,7 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 ### 新增 / Added
 
 - 首次截屏预热：插件初始化后闲时预建截屏专用 STA 线程（Dispatcher + DPI 提升 + WPF Application），首次 Alt+A 不再付线程冷启动成本 — Prewarm the snip STA after plugin init so the first capture skips thread bootstrap (@Jotaro2025)
+- 首次截屏预热（续）：同链预热 WinRT 捕获的 D3D 设备（适配器枚举 + 设备创建），首次整屏/窗口捕获再省一段 — Also prewarm the WinRT capture D3D device in the same prewarm chain (@Jotaro2025)
 - WeChatOCR.exe 闲置自动回收：与 HyMT 模型共用同一「闲置 N 分钟卸载」设置（默认 10，0 关闭），OCR 子进程不再常驻 — Idle auto-recycle for the WeChatOCR.exe child process, sharing the HyMT idle-unload setting (@Jotaro2025)
 
 ### 变更 / Changed

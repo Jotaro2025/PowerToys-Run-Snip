@@ -86,6 +86,29 @@ internal static class WinRtGraphicsCapture
     }
 
     /// <summary>
+    /// Creates the cached D3D device (adapter enumeration + device creation) ahead of
+    /// the first capture so the first frame skips that cost. Safe no-op when capture
+    /// is unsupported or the device already exists; a failed probe leaves the cache
+    /// empty so the next capture retries normally.
+    /// </summary>
+    public static void PrewarmDevice()
+    {
+        if (!IsSupported)
+        {
+            return;
+        }
+
+        try
+        {
+            _ = GetOrCreateDevice();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip WinRT device prewarm failed (will retry on first capture): {ex.Message}", typeof(WinRtGraphicsCapture));
+        }
+    }
+
+    /// <summary>
     /// Capture a physical monitor (HMONITOR) into a managed BGRA <see cref="CapturedFrame"/>.
     /// Returns false on any failure (caller should use GDI).
     /// </summary>

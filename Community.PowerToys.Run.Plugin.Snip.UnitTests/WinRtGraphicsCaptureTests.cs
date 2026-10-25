@@ -57,4 +57,13 @@ public sealed class WinRtGraphicsCaptureTests
     {
         Assert.IsTrue(WinRtGraphicsCapture.CaptureGateAvailableForTests);
     }
+
+    [TestMethod]
+    public void PrewarmDevice_DoesNotThrow_AndKeepsGateFree()
+    {
+        // Unsupported platforms no-op; supported ones may create the device.
+        // Either way the call must be safe off the STA and leave the gate free.
+        WinRtGraphicsCapture.PrewarmDevice();
+        Assert.IsTrue(WinRtGraphicsCapture.CaptureGateAvailableForTests);
+    }
 }

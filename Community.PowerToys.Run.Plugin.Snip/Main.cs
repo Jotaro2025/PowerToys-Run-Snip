@@ -435,13 +435,16 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
 
         // Bootstrap the snip STA (dispatcher + DPI promotion + WPF Application)
-        // after Run has settled, so the first Alt+A skips the thread cold start.
+        // and the WinRT capture D3D device after Run has settled, so the first
+        // Alt+A skips both cold starts. Device prewarm runs off the STA thread
+        // (plain thread-pool work, no Dispatcher affinity needed).
         _ = System.Threading.Tasks.Task.Run(async () =>
         {
             try
             {
                 await System.Threading.Tasks.Task.Delay(TimeSpan.FromSeconds(8)).ConfigureAwait(false);
                 SnipController.PrewarmUiThread();
+                Core.WinRtGraphicsCapture.PrewarmDevice();
             }
             catch (Exception ex)
             {
