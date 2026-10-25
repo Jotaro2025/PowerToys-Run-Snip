@@ -197,6 +197,18 @@
   <data name="ocr_export_saved" xml:space="preserve">
     <value>已导出</value>
   </data>
+  <data name="tip_record_gif" xml:space="preserve">
+    <value>录制 GIF（区域）</value>
+  </data>
+  <data name="gif_recording" xml:space="preserve">
+    <value>录制中…按 Esc 停止</value>
+  </data>
+  <data name="gif_saved" xml:space="preserve">
+    <value>GIF 已保存</value>
+  </data>
+  <data name="gif_error" xml:space="preserve">
+    <value>GIF 录制失败</value>
+  </data>
   <data name="ocr_copy" xml:space="preserve">
     <value>复制</value>
   </data>

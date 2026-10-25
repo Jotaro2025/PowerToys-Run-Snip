@@ -197,6 +197,18 @@
   <data name="ocr_export_saved" xml:space="preserve">
     <value>Exported</value>
   </data>
+  <data name="tip_record_gif" xml:space="preserve">
+    <value>Record GIF (region)</value>
+  </data>
+  <data name="gif_recording" xml:space="preserve">
+    <value>Recording… Esc to stop</value>
+  </data>
+  <data name="gif_saved" xml:space="preserve">
+    <value>GIF saved</value>
+  </data>
+  <data name="gif_error" xml:space="preserve">
+    <value>GIF recording failed</value>
+  </data>
   <data name="ocr_copy" xml:space="preserve">
     <value>Copy</value>
   </data>

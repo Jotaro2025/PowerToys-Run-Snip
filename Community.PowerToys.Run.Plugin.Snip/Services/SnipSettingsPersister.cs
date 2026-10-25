@@ -283,9 +283,11 @@ internal static class SnipSettingsPersister
         }
         catch (IOException)
         {
+            // Best-effort cleanup; settings remain valid without the file.
         }
         catch (UnauthorizedAccessException)
         {
+            // Same — never user-facing.
         }
     }
 }

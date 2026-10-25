@@ -843,6 +843,7 @@ public sealed class SnipSettingsWindow : Window
             }
             catch (ArgumentException)
             {
+                // Malformed path text: dialog just opens without an initial dir.
             }
         }
 

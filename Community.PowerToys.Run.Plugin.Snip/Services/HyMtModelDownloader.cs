@@ -570,9 +570,11 @@ public static class HyMtModelDownloader
         }
         catch (IOException)
         {
+            // Best-effort cleanup: a locked temp file will be cleaned by the OS.
         }
         catch (UnauthorizedAccessException)
         {
+            // Same — deletion is opportunistic, never user-facing.
         }
     }
 

@@ -45,6 +45,7 @@ public sealed class ScrollCaptureController
     private readonly ICaptureService _capture;
     private readonly Panel _overlayHost;
     private readonly ScrollHintOverlay _overlay;
+    private readonly ScrollWheelDriver _wheelDriver;
     private readonly Int32Rect _captureRect;
     private readonly IntPtr _overlayHwnd;
     private readonly int _maxTiles;
@@ -122,6 +123,7 @@ public sealed class ScrollCaptureController
         _maxTiles = maxTiles;
         _overlay = new ScrollHintOverlay();
         _dispatcher = overlayHost.Dispatcher;
+        _wheelDriver = new ScrollWheelDriver(_captureRect, _overlayHwnd, _scrollUp, _stepsPerTick);
     }
 
     /// <summary>
@@ -566,53 +568,7 @@ public sealed class ScrollCaptureController
         return arr;
     }
 
-    private bool SimulateWheelAtCenter()
-    {
-        int cx = _captureRect.X + (_captureRect.Width / 2);
-        int cy = _captureRect.Y + (_captureRect.Height / 2);
-        int delta = (_scrollUp ? 1 : -1) * Win32.WheelDelta * _stepsPerTick;
-
-        // Keep cursor over the hole for the whole session (Chromium needs it).
-        if (!Win32CaptureService.IsScrollPointerHeld)
-        {
-            BeginPointerHoldAtCenter();
-        }
-
-        if (Win32CaptureService.TrySendWheelAt(cx, cy, delta, _overlayHwnd))
-        {
-            return true;
-        }
-
-        // SendInput / message path failed — try UIA ScrollPattern on the UI STA.
-        if (TryUiaScrollAt(cx, cy, delta))
-        {
-            SnipVerbose.Scroll($"[scroll] SimulateWheel via UIA ScrollPattern at ({cx},{cy})");
-            return true;
-        }
-
-        Log.Warn(
-            $"Snip scroll SimulateWheel failed at ({cx},{cy}) — SendInput/UIA unavailable",
-            typeof(ScrollCaptureController));
-        SnipVerbose.Scroll($"[scroll] SimulateWheel failed at ({cx},{cy})");
-        return false;
-    }
-
-    private bool TryUiaScrollAt(int physicalX, int physicalY, int delta)
-    {
-        try
-        {
-            // UiaScrollFallback owns a dedicated MTA worker: UIA provider calls no
-            // longer round-trip through the UI STA (they used to freeze the UI when
-            // a slow provider took hundreds of ms), so the capture loop (already on
-            // the thread pool) can call straight in and just wait for the result.
-            return UiaScrollFallback.TryScrollAt(physicalX, physicalY, delta);
-        }
-        catch (Exception ex)
-        {
-            Log.Warn($"Snip scroll UIA invoke failed: {ex.Message}", typeof(ScrollCaptureController));
-            return false;
-        }
-    }
+    private bool SimulateWheelAtCenter() => _wheelDriver.SendWheel();
 
     /// <summary>
     /// Tip when the underlay HWND is higher integrity than this process (UIPI blocks SendInput).
@@ -622,8 +578,7 @@ public sealed class ScrollCaptureController
     {
         try
         {
-            int cx = _captureRect.X + (_captureRect.Width / 2);
-            int cy = _captureRect.Y + (_captureRect.Height / 2);
+            var (cx, cy) = _wheelDriver.Center;
             var pt = new Win32.POINT { X = cx, Y = cy };
             IntPtr target = Win32CaptureService.ResolveScrollTargetAt(pt, _overlayHwnd);
             if (target == IntPtr.Zero || !ProcessIntegrity.IsHigherThanCurrent(target))
@@ -641,35 +596,9 @@ public sealed class ScrollCaptureController
         }
     }
 
-    private void BeginPointerHoldAtCenter()
-    {
-        int cx = _captureRect.X + (_captureRect.Width / 2);
-        int cy = _captureRect.Y + (_captureRect.Height / 2);
-        try
-        {
-            Win32CaptureService.BeginScrollPointerHold(
-                cx,
-                cy,
-                injectFocusClick: true,
-                skipOverlayHwnd: _overlayHwnd);
-        }
-        catch (Exception ex)
-        {
-            Log.Warn($"Snip scroll BeginScrollPointerHold failed: {ex.Message}", typeof(ScrollCaptureController));
-        }
-    }
+    private void BeginPointerHoldAtCenter() => _wheelDriver.BeginPointerHold();
 
-    private static void EndPointerHold()
-    {
-        try
-        {
-            Win32CaptureService.EndScrollPointerHold();
-        }
-        catch (Exception ex)
-        {
-            Log.Warn($"Snip scroll EndScrollPointerHold failed: {ex.Message}", typeof(ScrollCaptureController));
-        }
-    }
+    private static void EndPointerHold() => ScrollWheelDriver.ReleasePointer();
 
     public async Task StopCapturingAsync()
     {

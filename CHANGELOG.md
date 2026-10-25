@@ -8,7 +8,23 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ## [Unreleased]
 
-（暂无 / Nothing yet）
+### 新增 / Added
+
+- QR 多码识别：整图解码失败时按左/右半（含重叠）递归分半解码，并排/堆叠多码可全部解出（数量与深度有上限、结果去重） — Multi-QR collection via recursive half splits (@Jotaro2025)
+- OCR 结果窗新增「导出…」：行级数据导出 Markdown 表格或 JSON（含 box/角点几何），`OcrExport` 纯函数渲染 — OCR export to Markdown / JSON with geometry (@Jotaro2025)
+- 区域 GIF 录屏：工具栏录制按钮 + Esc/再点停止，选区逐帧捕获经自研 GIF89a 编码器（median-cut 调色板 + LZW，零依赖）保存 — Region GIF recording with a zero-dependency GIF89a encoder (@Jotaro2025)
+
+### 性能 / Performance
+
+- 马赛克块平均向量化（byte→ushort→uint 两次 Widen + BGRA 通道掩码，兼容 AVX-512），块填充改 `Span<uint>.Fill` — Vectorized mosaic block averaging (@Jotaro2025)
+- 滚动重复帧检测增加失配早退：明显不同的帧不再扫全像素 — Early-exit in duplicate-tile matching (@Jotaro2025)
+- QR 二值化阈值趟向量化（`Vector.LessThan` 掩码） — Vectorized QR threshold pass (@Jotaro2025)
+
+### 代码质量 / Code Quality
+
+- 滚轮投递（SendInput→UIA 回退 + 指针驻留）从 ScrollCaptureController 提取为 `ScrollWheelDriver` — Extracted ScrollWheelDriver from ScrollCaptureController (@Jotaro2025)
+- 静默 catch 全量审计：9 处 best-effort 清理补意图注释；取消/关闭竞态的捕获顺序验证无吞没 — Silent-catch audit with intent comments (@Jotaro2025)
+- 翻译渲染器字体回退审计：复合字体族 + 缺字回退路径验证一致，补防回归单测 — Font fallback audit with regression test (@Jotaro2025)
 
 ## [1.6.0] - 2026-10-25
 

@@ -360,4 +360,35 @@ public class ImageTranslateRendererTests
         rtb.Freeze();
         return rtb;
     }
+
+    [TestMethod]
+    public void WrapText_MissingGlyphCharacters_FallBackWithoutBreaking()
+    {
+        // Run on STA: FormattedText/GlyphTypeface need a Dispatcher affinity.
+        Exception failure = null;
+        var thread = new System.Threading.Thread(() =>
+        {
+            try
+            {
+                // CJK + Latin + an astral-plane char (escaped) most faces lack:
+                // the composite family fallback must keep wrapping sane - no
+                // throw, no empty output, Latin words preserved.
+                string text = "\u4F60\u597D\u4E16\u754C mixed with \uD83D\uDE00 emoji and Latin";
+                string wrapped = ImageTranslateRenderer.WrapText(text, 120, 14);
+                Assert.IsFalse(string.IsNullOrEmpty(wrapped));
+                Assert.IsTrue(wrapped.Contains("mixed"), wrapped);
+            }
+            catch (Exception ex)
+            {
+                failure = ex;
+            }
+        });
+        thread.SetApartmentState(System.Threading.ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        if (failure != null)
+        {
+            throw failure;
+        }
+    }
 }

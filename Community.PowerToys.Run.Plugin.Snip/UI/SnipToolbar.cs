@@ -41,6 +41,7 @@ public sealed class SnipToolbar : Border
     private readonly List<double> _widthPresets = [2, 3, 5, 8];
     private readonly List<UIElement> _hiddenDuringScroll = new();
     private readonly ToolbarButton _scrollButton;
+    private readonly ToolbarButton _recordButton;
     private readonly ToolbarButton _scrollUpButton;
     private readonly ToolbarButton _cancelButton;
     private readonly ToolbarButton _confirmButton;
@@ -168,10 +169,17 @@ public sealed class SnipToolbar : Border
             _scrollUpButton = null;
         }
 
+        var recordGroup = CreateGroup(out var recordActions);
+        _recordButton = AddIcon(recordActions, ToolIcons.Record, Properties.Resources.tip_record_gif);
+        _recordButton.Click += (sender, e) => RecordGifClicked?.Invoke(this, EventArgs.Empty);
+        root.Children.Add(recordGroup);
+
         UpdateActiveTool();
         UpdateColorChips();
         UpdateWidthChips();
     }
+
+    public event EventHandler RecordGifClicked;
 
     public event EventHandler<string> ToolChanged;
 

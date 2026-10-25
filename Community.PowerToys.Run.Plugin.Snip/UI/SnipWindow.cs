@@ -94,6 +94,7 @@ public sealed class SnipWindow : Window
 
     private ScrollCaptureController _scrollController;
     private ScrollLivePreview _scrollLivePreview;
+    private GifRecordingSession _gifSession;
 
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
@@ -216,6 +217,7 @@ public sealed class SnipWindow : Window
         _toolbar.ConfirmClicked += async (sender, e) => await DoConfirmAsync();
         _toolbar.ScrollCaptureClicked += OnScrollCaptureToggled;
         _toolbar.ScrollUpCaptureClicked += OnScrollUpCaptureToggled;
+        _toolbar.RecordGifClicked += OnRecordGifToggled;
 
         _root = new Canvas { ClipToBounds = true, Background = Brushes.Transparent };
         _root.Children.Add(_screenshotImage);
@@ -782,6 +784,13 @@ public sealed class SnipWindow : Window
 
             if (e.Key == Key.Escape)
             {
+                if (_gifSession is { IsRunning: true })
+                {
+                    _ = StopAndSaveGifAsync();
+                    e.Handled = true;
+                    return;
+                }
+
                 if (_scrollController.IsActive)
                 {
                     // Stop capturing but keep tiles (toolbar Stop / Esc while rolling).
@@ -1375,6 +1384,82 @@ public sealed class SnipWindow : Window
     /// </summary>
     private BitmapSource BuildResultBitmap(Rect selection)
         => SnipExportComposer.BuildResultBitmap(_source, _annoCanvas, selection, _dpiScale);
+
+    private void OnRecordGifToggled(object sender, EventArgs e)
+    {
+        try
+        {
+            if (_gifSession is { IsRunning: true })
+            {
+                _ = StopAndSaveGifAsync();
+            }
+            else if (_hasSelection)
+            {
+                StartGifRecording();
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"SnipWindow GIF toggle failed: {ex.Message}", ex, GetType());
+        }
+    }
+
+    private void StartGifRecording()
+    {
+        var physicalRect = DpiCoordinateMapping.DipSelectionToPhysical(
+            _selection,
+            _logicalSize,
+            _physicalBounds);
+        _gifSession = new GifRecordingSession(physicalRect, _captureService);
+        _gifSession.Start();
+        Log.Info($"Snip GIF recording started ({physicalRect.Width}x{physicalRect.Height})", GetType());
+    }
+
+    private async Task StopAndSaveGifAsync()
+    {
+        var session = _gifSession;
+        _gifSession = null;
+        if (session == null)
+        {
+            return;
+        }
+
+        try
+        {
+            byte[] gif = await session.StopAndEncodeAsync().ConfigureAwait(true);
+            if (gif == null)
+            {
+                ShowOverlayMessageBox(
+                    Properties.Resources.gif_error,
+                    Properties.Resources.tip_record_gif,
+                    MessageBoxButton.OK,
+                    MessageBoxImage.Warning);
+                return;
+            }
+
+            string dir = string.IsNullOrWhiteSpace(_settings.SaveDirectory)
+                ? SnipSettings.DefaultSaveFolder
+                : _settings.SaveDirectory;
+            System.IO.Directory.CreateDirectory(dir);
+            string path = System.IO.Path.Combine(dir, GifRecordingSession.BuildFileName());
+            await System.IO.File.WriteAllBytesAsync(path, gif).ConfigureAwait(true);
+            ShowOverlayMessageBox(
+                $"{Properties.Resources.gif_saved}: {path}",
+                Properties.Resources.tip_record_gif,
+                MessageBoxButton.OK,
+                MessageBoxImage.Information);
+            Log.Info($"Snip GIF saved: {path} ({gif.Length} bytes, {session.FrameCount} frames)", GetType());
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip GIF save failed: {ex.Message}", ex, GetType());
+            ShowOverlayMessageBox(
+                $"{Properties.Resources.gif_error}: {ex.Message}",
+                Properties.Resources.tip_record_gif,
+                MessageBoxButton.OK,
+                MessageBoxImage.Warning);
+        }
+    }
 
     private async Task DoConfirmAsync()
     {

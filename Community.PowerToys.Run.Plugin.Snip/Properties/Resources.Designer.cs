@@ -442,6 +442,42 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         }
 
         /// <summary>
+        ///   Looks up a localized string similar to Record GIF (region).
+        /// </summary>
+        public static string tip_record_gif {
+            get {
+                return ResourceManager.GetString("tip_record_gif", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Recording… Esc to stop.
+        /// </summary>
+        public static string gif_recording {
+            get {
+                return ResourceManager.GetString("gif_recording", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to GIF saved.
+        /// </summary>
+        public static string gif_saved {
+            get {
+                return ResourceManager.GetString("gif_saved", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to GIF recording failed.
+        /// </summary>
+        public static string gif_error {
+            get {
+                return ResourceManager.GetString("gif_error", resourceCulture);
+            }
+        }
+
+        /// <summary>
         ///   Looks up a localized string similar to Export….
         /// </summary>
         public static string ocr_export {
