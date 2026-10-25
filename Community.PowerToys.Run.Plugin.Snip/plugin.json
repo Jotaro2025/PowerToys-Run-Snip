@@ -4,7 +4,7 @@
   "IsGlobal": false,
   "Name": "Snip",
   "Author": "Jotaro2025",
-  "Version": "1.4.0",
+  "Version": "1.5.0",
   "Language": "csharp",
   "Website": "https://github.com/Jotaro2025/PowerToys-Run-Snip",
   "ExecuteFileName": "Community.PowerToys.Run.Plugin.Snip.dll",

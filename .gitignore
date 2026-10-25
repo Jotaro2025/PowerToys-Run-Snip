@@ -27,3 +27,6 @@ arm64/
 Thumbs.db
 Desktop.ini
 BenchmarkDotNet.Artifacts/
+
+## Local diagnostics
+diag/
