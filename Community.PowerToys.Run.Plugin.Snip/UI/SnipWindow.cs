@@ -38,7 +38,7 @@ public sealed class SnipWindow : Window
     private readonly SolidColorBrush _idleDimBrush = new SolidColorBrush(Color.FromArgb(88, 0, 0, 0));
 
     /// <summary>Stronger dim outside the selected region.</summary>
-    private readonly SolidColorBrush _selectionDimBrush = new SolidColorBrush(Color.FromArgb(210, 0, 0, 0));
+    private readonly SolidColorBrush _selectionDimBrush = new SolidColorBrush(Color.FromArgb(140, 0, 0, 0));
 
     private readonly Int32Rect _physicalBounds;
 
@@ -398,12 +398,16 @@ public sealed class SnipWindow : Window
     private void OnLoaded(object sender, RoutedEventArgs e)
     {
         ApplyNativePhysicalBounds();
-        if (_spansMonitors)
+
+        // The window may render at a different DPI than ScreenInfo reported
+        // (e.g. DPI-unaware host process or monitor changes): WPF would then
+        // stretch every DIP-sized child by the mismatch ratio and the overlay
+        // preview/selection/hole all land offset from the screen content. Trust
+        // the window's actual DPI for every DIP <-> physical conversion.
+        double windowDpi = VisualTreeHelper.GetDpi(this).DpiScaleX;
+        if (Math.Abs(windowDpi - _dpiScale) > 0.0001)
         {
-            // The virtual-desktop entry starts with the primary monitor's DPI; the window really
-            // renders at the DPI of the monitor Windows assigned it to. Use that one scale for
-            // every DIP <-> physical conversion (per-monitor-v2 windows are not bitmap-scaled).
-            ApplyWindowDpiScale(VisualTreeHelper.GetDpi(this).DpiScaleX);
+            ApplyWindowDpiScale(windowDpi);
             ApplyNativePhysicalBounds();
         }
 
@@ -739,6 +743,14 @@ public sealed class SnipWindow : Window
                     GeometryCombineMode.Xor,
                     _dimOuterGeometry,
                     _dimInnerGeometry);
+            }
+
+            // The idle / snap-preview branches may have pointed Data at the
+            // hole-less outer geometry; always re-bind to the holed combined
+            // geometry here, or the mask stays uniform-fullscreen and the
+            // selection interior renders identical to the dimmed outside.
+            if (!ReferenceEquals(_dimPath.Data, _dimCombinedGeometry))
+            {
                 _dimPath.Data = _dimCombinedGeometry;
             }
 
@@ -2109,7 +2121,8 @@ public sealed class SnipWindow : Window
 
     private void UpdateMagnifierAt(Point dipPoint)
     {
-        if (_source == null || _magnifierBitmap == null || _scrollController is { IsActive: true })
+        if (_source == null || _magnifierBitmap == null || _scrollController is { IsActive: true }
+            || _source.IsFrozen || _magnifierBitmap.IsFrozen)
         {
             _magnifierHud.Visibility = Visibility.Collapsed;
             return;

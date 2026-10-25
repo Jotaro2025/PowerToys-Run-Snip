@@ -53,10 +53,14 @@ public sealed class OcrResultWindow : Window, IDisposable
         ArgumentNullException.ThrowIfNull(image);
         ArgumentNullException.ThrowIfNull(png);
 
-        _image = image;
+        // Store an independent frozen copy: Freezable.Freeze() cascades through
+        // CroppedBitmap chains, so freezing the passed bitmap directly would also
+        // freeze the editor's live WriteableBitmap source (whose next Lock() in the
+        // pixel magnifier throws InvalidOperationException).
+        _image = image.IsFrozen ? image : BitmapPreview.MaterializeFrozen(image);
         _png = png;
         _settings = settings ?? new SnipSettings();
-        _sourceHeight = image.PixelHeight;
+        _sourceHeight = _image.PixelHeight;
 
         Title = Properties.Resources.ocr_window_title;
         Width = 760;
@@ -85,7 +89,7 @@ public sealed class OcrResultWindow : Window, IDisposable
             Padding = new Thickness(8),
             Child = new Image
             {
-                Source = image,
+                Source = _image,
                 Stretch = Stretch.Uniform,
                 StretchDirection = StretchDirection.DownOnly,
                 HorizontalAlignment = HorizontalAlignment.Center,
@@ -247,10 +251,9 @@ public sealed class OcrResultWindow : Window, IDisposable
             ? Properties.Resources.ocr_busy_waiting
             : Properties.Resources.ocr_busy);
 
-        // Full-frame pixel copy + decode is too slow for the dispatcher; freeze
-        // first so the copy is safe off the STA.
+        // _image is an independent frozen copy from the constructor, so the
+        // full-frame copy below is safe off the STA.
         var image = _image;
-        image?.Freeze();
         var scannedCodes = await Task.Run(() => QrAndBarcodeScanner.Scan(image)).ConfigureAwait(true);
         ApplyDetectedCodes(scannedCodes);
 

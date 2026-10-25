@@ -17,9 +17,11 @@ public static class BitmapPreview
 {
     /// <summary>
     /// Longest edge (physical pixels) above which the overlay is downsampled.
-    /// 1920 keeps a 1080p panel 1:1 and shrinks 4K / multi-monitor virtual desktops.
+    /// 7680 covers 4K and 5K single monitors 1:1 (a 3840-width panel downscaled
+    /// to 1920 made in-selection text look compressed vs the real desktop);
+    /// only extreme multi-monitor virtual desktops still downsample.
     /// </summary>
-    public const int MaxPreviewEdge = 1920;
+    public const int MaxPreviewEdge = 7680;
 
     /// <summary>
     /// Fraction of the monitor work area a pin window may occupy initially (DIP), matching
@@ -106,14 +108,52 @@ public static class BitmapPreview
         => Math.Max(pixelWidth, pixelHeight) > MaxPreviewEdge;
 
     /// <summary>
-    /// Evaluates <paramref name="source"/> into a frozen <see cref="WriteableBitmap"/>
-    /// so the first WPF compose is not deferred through a lazy transform chain.
+    /// Copies <paramref name="source"/> pixels into a fresh frozen
+    /// <see cref="WriteableBitmap"/>. Never Freeze()s the input: freezing a
+    /// chained source (CroppedBitmap / TransformedBitmap) cascades into the
+    /// caller's live WriteableBitmap and breaks its later Lock(). The explicit
+    /// byte copy also guarantees the GPU compositor sees real pixels — building
+    /// a WriteableBitmap from an unfrozen lazy chain renders blank on D3D.
+    /// Same construction pattern as CapturedFrame.ToWriteableBitmap.
     /// </summary>
     public static WriteableBitmap MaterializeFrozen(BitmapSource source)
     {
         ArgumentNullException.ThrowIfNull(source);
 
-        var wb = new WriteableBitmap(source);
+        int w = source.PixelWidth;
+        int h = source.PixelHeight;
+        if (w <= 0 || h <= 0)
+        {
+            throw new ArgumentOutOfRangeException(nameof(source), "Source must have positive size.");
+        }
+
+        // Normalize to BGRA32; CopyPixels from a lazily-chained source reads
+        // through the chain, so no Freeze on the input is needed.
+        var evaluated = source.Format == PixelFormats.Bgra32
+            ? source
+            : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+
+        int stride = w * 4;
+        var pixels = new byte[checked(stride * h)];
+        evaluated.CopyPixels(pixels, stride, 0);
+
+        var wb = new WriteableBitmap(w, h, 96, 96, PixelFormats.Bgra32, null);
+        wb.Lock();
+        try
+        {
+            unsafe
+            {
+                pixels.AsSpan()
+                    .CopyTo(new Span<byte>((void*)wb.BackBuffer, pixels.Length));
+            }
+
+            wb.AddDirtyRect(new Int32Rect(0, 0, w, h));
+        }
+        finally
+        {
+            wb.Unlock();
+        }
+
         if (wb.CanFreeze)
         {
             wb.Freeze();
@@ -124,8 +164,39 @@ public static class BitmapPreview
 
     private static WriteableBitmap MaterializeScaled(BitmapSource fullRes, double scale)
     {
+        // Render the scale transform into a fresh BGRA32 buffer via CopyPixels —
+        // the TransformedBitmap itself is never Frozen (would cascade into the
+        // caller's live source) and never fed to a WriteableBitmap constructor
+        // (unfrozen chains render blank on the D3D compositor).
         var scaled = new TransformedBitmap(fullRes, new ScaleTransform(scale, scale));
-        scaled.Freeze();
-        return MaterializeFrozen(scaled);
+        int w = scaled.PixelWidth;
+        int h = scaled.PixelHeight;
+        int stride = w * 4;
+        var pixels = new byte[checked(stride * h)];
+        scaled.CopyPixels(pixels, stride, 0);
+
+        var wb = new WriteableBitmap(w, h, 96, 96, PixelFormats.Bgra32, null);
+        wb.Lock();
+        try
+        {
+            unsafe
+            {
+                pixels.AsSpan()
+                    .CopyTo(new Span<byte>((void*)wb.BackBuffer, pixels.Length));
+            }
+
+            wb.AddDirtyRect(new Int32Rect(0, 0, w, h));
+        }
+        finally
+        {
+            wb.Unlock();
+        }
+
+        if (wb.CanFreeze)
+        {
+            wb.Freeze();
+        }
+
+        return wb;
     }
 }
