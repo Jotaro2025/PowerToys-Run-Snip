@@ -10,6 +10,7 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 修复 / Fixed
 
+- 自动保存目录校验：设置中的保存目录含非法字符（如 `C:\Sho<ts`）、相对路径或孤立盘符冒号时回退默认目录——此前每次自动保存都以原始异常消息失败 — Invalid / relative save directories now fall back to the default folder instead of failing every auto-save (@Jotaro2025)
 - GIF 录制中直接取消/关闭截屏窗（Esc 两连、Alt+F4、确认路径）后台捕获循环不再残留：此前循环会继续抓屏直到 300 帧上限，且 CTS 永不释放 — GIF recording loop now stops when the overlay closes or cancels mid-recording (@Jotaro2025)
 - GIF 会话 `Dispose` 语义修正：先 Cancel 再 Dispose（原实现只 Dispose 不 Cancel，挂起的 `Task.Delay` 会以 ObjectDisposedException 风暴空转到底），循环改用缓存 CancellationToken 避免 Dispose 后访问 `.Token` 崩溃 — GIF session Dispose now cancels first and uses a cached token (@Jotaro2025)
 

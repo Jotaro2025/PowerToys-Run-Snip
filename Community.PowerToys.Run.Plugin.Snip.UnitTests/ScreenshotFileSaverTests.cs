@@ -46,6 +46,22 @@ public class ScreenshotFileSaverTests
     }
 
     [TestMethod]
+    public void ResolveDirectoryFallsBackOnInvalidOrRelativePaths()
+    {
+        // Invalid path characters degrade to the fallback instead of failing every save.
+        Assert.AreEqual(@"C:\fallback", ScreenshotFileSaver.ResolveDirectory(@"C:\Sho<ts", @"C:\fallback"));
+        Assert.AreEqual(@"C:\fallback", ScreenshotFileSaver.ResolveDirectory("C:\\a\"b", @"C:\fallback"));
+
+        // Relative paths and stray drive colons are not usable as save targets.
+        Assert.AreEqual(@"C:\fallback", ScreenshotFileSaver.ResolveDirectory("shots", @"C:\fallback"));
+        Assert.AreEqual(@"C:\fallback", ScreenshotFileSaver.ResolveDirectory(@"C:\dir\we:rd", @"C:\fallback"));
+
+        // Well-formed directories still resolve (trailing separators are trimmed).
+        Assert.AreEqual(@"D:\screenshots", ScreenshotFileSaver.ResolveDirectory(@"D:\screenshots\", @"C:\fallback"));
+        Assert.AreEqual(@"C:\fallback", ScreenshotFileSaver.ResolveDirectory(null, @"C:\fallback"));
+    }
+
+    [TestMethod]
     public void BuildFileNameUsesSnapshotPrefixAndPngExtension()
     {
         var name = ScreenshotFileSaver.BuildFileName();

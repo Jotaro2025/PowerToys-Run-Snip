@@ -20,6 +20,12 @@ public static class ScreenshotFileSaver
     /// <summary>File name prefix for translated images saved from the result window.</summary>
     public const string TranslatedFileNamePrefix = "translate";
 
+    /// <summary>
+    /// Resolves the save directory: trims the configured value, falls back when
+    /// it is empty, contains invalid path characters, or is not rooted (e.g. a
+    /// typo like "shots" or "C:\Sho<ts"), so a bad setting degrades to the
+    /// default folder instead of failing every auto-save.
+    /// </summary>
     public static string ResolveDirectory(string configured, string fallbackDirectory)
     {
         if (string.IsNullOrWhiteSpace(configured))
@@ -27,7 +33,35 @@ public static class ScreenshotFileSaver
             return fallbackDirectory;
         }
 
-        return configured.Trim().TrimEnd('\\', '/');
+        var candidate = configured.Trim().TrimEnd('\\', '/');
+
+        // GetInvalidPathChars only carries control characters; < > | " etc. come
+        // from GetInvalidFileNameChars. Check the directory's name segments
+        // (excluding the drive prefix) against the stricter set.
+        bool invalid = candidate.IndexOfAny(Path.GetInvalidPathChars()) >= 0;
+        if (!invalid)
+        {
+            foreach (var segment in candidate.Split(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+            {
+                if (segment.Length == 0 || segment.EndsWith(':'))
+                {
+                    continue; // drive root or empty middle segment
+                }
+
+                if (segment.IndexOfAny(Path.GetInvalidFileNameChars()) >= 0)
+                {
+                    invalid = true;
+                    break;
+                }
+            }
+        }
+
+        if (invalid || !Path.IsPathRooted(candidate))
+        {
+            return fallbackDirectory;
+        }
+
+        return candidate;
     }
 
     public static string BuildFileName()
