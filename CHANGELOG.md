@@ -8,6 +8,11 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ## [Unreleased]
 
+### 修复 / Fixed
+
+- GIF 录制中直接取消/关闭截屏窗（Esc 两连、Alt+F4、确认路径）后台捕获循环不再残留：此前循环会继续抓屏直到 300 帧上限，且 CTS 永不释放 — GIF recording loop now stops when the overlay closes or cancels mid-recording (@Jotaro2025)
+- GIF 会话 `Dispose` 语义修正：先 Cancel 再 Dispose（原实现只 Dispose 不 Cancel，挂起的 `Task.Delay` 会以 ObjectDisposedException 风暴空转到底），循环改用缓存 CancellationToken 避免 Dispose 后访问 `.Token` 崩溃 — GIF session Dispose now cancels first and uses a cached token (@Jotaro2025)
+
 ### 新增 / Added
 
 - 小图 OCR 增强：短边 < 128 px 的小选区在识别前 2× 放大（上限 1024 px），两个引擎统一生效；识别框/角点按比例映射回原图坐标，文本提取、图片翻译渲染与导出几何全部对齐原图 — Small-image OCR: 2× upscale before recognition with boxes mapped back to source space (@Jotaro2025)

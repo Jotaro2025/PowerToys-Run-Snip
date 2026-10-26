@@ -36,6 +36,10 @@ internal sealed class GifRecordingSession : IDisposable
     private readonly List<byte[]> _frames = new();
     private readonly List<int> _delays = new();
     private readonly CancellationTokenSource _cts = new();
+
+    // Cached token: safe to read after the CTS is disposed (unlike _cts.Token,
+    // which throws ObjectDisposedException once Dispose has run mid-loop).
+    private readonly CancellationToken _token;
     private Task _loop;
     private long _budgetBytes;
 
@@ -43,6 +47,7 @@ internal sealed class GifRecordingSession : IDisposable
     {
         _physicalRect = physicalRect;
         _capture = capture;
+        _token = _cts.Token;
 
         // ~24 MB budget: roughly 40 seconds of 400×300 at ~80 ms, enough for a
         // demo clip without ballooning PowerLauncher memory.
@@ -63,7 +68,7 @@ internal sealed class GifRecordingSession : IDisposable
         _loop = Task.Run(
             async () =>
             {
-                while (!_cts.IsCancellationRequested && _frames.Count < MaxFrames && _budgetBytes > 0)
+                while (!_token.IsCancellationRequested && _frames.Count < MaxFrames && _budgetBytes > 0)
                 {
                     try
                     {
@@ -71,7 +76,7 @@ internal sealed class GifRecordingSession : IDisposable
                             _physicalRect.X, _physicalRect.Y, _physicalRect.Width, _physicalRect.Height);
                         if (frame == null)
                         {
-                            await Task.Delay(IntervalMs, _cts.Token).ConfigureAwait(false);
+                            await Task.Delay(IntervalMs, _token).ConfigureAwait(false);
                             continue;
                         }
 
@@ -92,12 +97,21 @@ internal sealed class GifRecordingSession : IDisposable
                     catch (Exception ex)
                     {
                         Log.Warn($"Snip GIF frame capture failed: {ex.Message}", typeof(GifRecordingSession));
+                        if (_token.IsCancellationRequested)
+                        {
+                            break;
+                        }
                     }
 
-                    await Task.Delay(IntervalMs, _cts.Token).ConfigureAwait(false);
+                    if (_token.IsCancellationRequested)
+                    {
+                        break;
+                    }
+
+                    await Task.Delay(IntervalMs, _token).ConfigureAwait(false);
                 }
             },
-            _cts.Token);
+            _token);
     }
 
     /// <summary>
@@ -132,9 +146,21 @@ internal sealed class GifRecordingSession : IDisposable
     public static string BuildFileName()
         => $"Snip-GIF-{DateTime.Now:yyyyMMdd-HHmmss}.gif";
 
-    /// <summary>Releases the capture loop's cancellation token source.</summary>
+    /// <summary>Releases the capture loop: cancels it first so the pending
+    /// <c>Task.Delay</c> unwinds instead of throwing
+    /// <see cref="ObjectDisposedException"/> forever, then disposes the CTS.
+    /// Frames are discarded; safe to call multiple times.</summary>
     public void Dispose()
     {
+        try
+        {
+            _cts.Cancel();
+        }
+        catch (ObjectDisposedException)
+        {
+            // Already disposed.
+        }
+
         _cts.Dispose();
     }
 }

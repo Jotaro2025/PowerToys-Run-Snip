@@ -1360,6 +1360,7 @@ public sealed class SnipWindow : Window
     private void Cancel()
     {
         DismissSessionChild(restoreOverlay: false);
+        CancelGifSessionDiscard();
         try
         {
             _scrollController?.Cancel();
@@ -1374,6 +1375,18 @@ public sealed class SnipWindow : Window
         ClearScrollCaptureHole();
         Result = new EditResult { Outcome = EditOutcome.Cancelled };
         Close();
+    }
+
+    /// <summary>
+    /// Stops a running GIF recording and throws the frames away (cancel / close
+    /// paths). Without this the background capture loop keeps grabbing the
+    /// screen until its frame cap and the session's CTS is never released.
+    /// </summary>
+    private void CancelGifSessionDiscard()
+    {
+        var session = _gifSession;
+        _gifSession = null;
+        session?.Dispose();
     }
 
     /// <summary>
@@ -1977,6 +1990,8 @@ public sealed class SnipWindow : Window
         }
 
         _disposed = true;
+
+        CancelGifSessionDiscard();
 
         try
         {
