@@ -810,4 +810,13 @@
   <data name="qr_open_url" xml:space="preserve">
     <value>Open Link</value>
   </data>
+  <data name="mosaic_effect_pixelate" xml:space="preserve">
+    <value>Mosaic · Pixelate (click again for blur)</value>
+  </data>
+  <data name="mosaic_effect_blur" xml:space="preserve">
+    <value>Mosaic · Gaussian blur (click again for redact)</value>
+  </data>
+  <data name="mosaic_effect_redact" xml:space="preserve">
+    <value>Mosaic · Solid redact (click again for pixelate)</value>
+  </data>
 </root>

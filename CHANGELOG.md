@@ -10,10 +10,16 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 新增 / Added
 
+- 小图 OCR 增强：短边 < 128 px 的小选区在识别前 2× 放大（上限 1024 px），两个引擎统一生效；识别框/角点按比例映射回原图坐标，文本提取、图片翻译渲染与导出几何全部对齐原图 — Small-image OCR: 2× upscale before recognition with boxes mapped back to source space (@Jotaro2025)
+- OCR 结果窗快捷键：Ctrl+C 复制全文（无选区时）、Ctrl+E 导出；复制/导出状态 2 秒后自动清除 — OCR result window: Ctrl+C / Ctrl+E shortcuts, transient status (@Jotaro2025)
 - 「复制后通知」开关（默认关闭）：截屏复制到剪贴板后不再弹 PowerToys Run 通知，需要时在插件设置勾选 — Optional notify-after-copy toggle, off by default (@Jotaro2025)
 - QR 多码识别：整图解码失败时按左/右半（含重叠）递归分半解码，并排/堆叠多码可全部解出（数量与深度有上限、结果去重） — Multi-QR collection via recursive half splits (@Jotaro2025)
 - OCR 结果窗新增「导出…」：行级数据导出 Markdown 表格或 JSON（含 box/角点几何），`OcrExport` 纯函数渲染 — OCR export to Markdown / JSON with geometry (@Jotaro2025)
 - 区域 GIF 录屏：工具栏录制按钮 + Esc/再点停止，选区逐帧捕获经自研 GIF89a 编码器（median-cut 调色板 + LZW，零依赖）保存 — Region GIF recording with a zero-dependency GIF89a encoder (@Jotaro2025)
+
+### 变更 / Changed
+
+- 工具栏马赛克工具 tooltip 随点击循环显示当前效果（像素化/高斯模糊/纯色涂抹）与下一步切换目标 — Mosaic toolbar tooltip now shows the active effect while cycling (@Jotaro2025)
 
 ### 性能 / Performance
 

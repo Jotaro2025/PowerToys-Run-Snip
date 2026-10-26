@@ -2138,5 +2138,11 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         internal static string qr_copy => ResourceManager.GetString("qr_copy", resourceCulture);
 
         internal static string qr_open_url => ResourceManager.GetString("qr_open_url", resourceCulture);
+
+        internal static string mosaic_effect_pixelate => ResourceManager.GetString("mosaic_effect_pixelate", resourceCulture);
+
+        internal static string mosaic_effect_blur => ResourceManager.GetString("mosaic_effect_blur", resourceCulture);
+
+        internal static string mosaic_effect_redact => ResourceManager.GetString("mosaic_effect_redact", resourceCulture);
     }
 }

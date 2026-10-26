@@ -51,6 +51,7 @@ public sealed class OcrResultWindow : Window, IDisposable
     private bool _closed;
     private System.Collections.Generic.IReadOnlyList<OcrTextLine> _lines;
     private bool _disposed;
+    private System.Windows.Threading.DispatcherTimer _statusClearTimer;
 
     public OcrResultWindow(BitmapSource image, byte[] png, SnipSettings settings)
     {
@@ -423,15 +424,36 @@ public sealed class OcrResultWindow : Window, IDisposable
         try
         {
             Clipboard.SetText(text);
-            _status.Foreground = new SolidColorBrush(Color.FromRgb(48, 175, 85));
-            _status.Text = Properties.Resources.ocr_copied;
+            ShowTransientStatus(Properties.Resources.ocr_copied, Color.FromRgb(48, 175, 85));
         }
         catch (ExternalException ex)
         {
             Log.Exception($"Snip OCR clipboard copy failed: {ex.Message}", ex, GetType());
-            _status.Foreground = new SolidColorBrush(ErrorColor);
-            _status.Text = Properties.Resources.ocr_copy_failed;
+            ShowTransientStatus(Properties.Resources.ocr_copy_failed, ErrorColor);
         }
+    }
+
+    /// <summary>
+    /// Shows a status message that clears after 2 seconds so a stale
+    /// "Copied" does not linger next to later tall-image hints.
+    /// </summary>
+    private void ShowTransientStatus(string message, Color color)
+    {
+        _statusClearTimer ??= new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2),
+        };
+        _statusClearTimer.Stop();
+        _status.Foreground = new SolidColorBrush(color);
+        _status.Text = message;
+        _statusClearTimer.Tick += StatusClearTimerTick;
+        _statusClearTimer.Start();
+    }
+
+    private void StatusClearTimerTick(object sender, EventArgs e)
+    {
+        _statusClearTimer.Stop();
+        _status.Text = string.Empty;
     }
 
     private void ExportLines()
@@ -459,14 +481,14 @@ public sealed class OcrResultWindow : Window, IDisposable
                 ? OcrExport.Format.Json
                 : OcrExport.Format.Markdown;
             System.IO.File.WriteAllText(dialog.FileName, OcrExport.Render(_lines, format));
-            _status.Foreground = new SolidColorBrush(Color.FromRgb(48, 175, 85));
-            _status.Text = $"{Properties.Resources.ocr_export_saved}: {System.IO.Path.GetFileName(dialog.FileName)}";
+            ShowTransientStatus(
+                $"{Properties.Resources.ocr_export_saved}: {System.IO.Path.GetFileName(dialog.FileName)}",
+                Color.FromRgb(48, 175, 85));
         }
         catch (Exception ex)
         {
             Log.Exception($"Snip OCR export failed: {ex.Message}", ex, GetType());
-            _status.Foreground = new SolidColorBrush(ErrorColor);
-            _status.Text = ex.Message;
+            ShowTransientStatus(ex.Message, ErrorColor);
         }
     }
 
@@ -475,6 +497,23 @@ public sealed class OcrResultWindow : Window, IDisposable
         if (e.Key == Key.Escape)
         {
             Close();
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+C copies the recognized text when the editable box has no
+        // selection of its own; Ctrl+E opens the export dialog.
+        if (e.Key == Key.C && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control
+            && _textBox.SelectionLength == 0 && _copyButton.IsEnabled)
+        {
+            CopyText(_textBox.Text);
+            e.Handled = true;
+            return;
+        }
+
+        if (e.Key == Key.E && (Keyboard.Modifiers & ModifierKeys.Control) == ModifierKeys.Control)
+        {
+            ExportLines();
             e.Handled = true;
         }
     }
@@ -505,6 +544,7 @@ public sealed class OcrResultWindow : Window, IDisposable
         }
 
         _cts.Dispose();
+        _statusClearTimer?.Stop();
         GC.SuppressFinalize(this);
     }
 }

@@ -175,6 +175,7 @@ public sealed class SnipToolbar : Border
         root.Children.Add(recordGroup);
 
         UpdateActiveTool();
+        UpdateMosaicToolTip();
         UpdateColorChips();
         UpdateWidthChips();
     }
@@ -244,6 +245,7 @@ public sealed class SnipToolbar : Border
                     MosaicEffectKind.GaussianBlur => MosaicEffectKind.SolidRedact,
                     _ => MosaicEffectKind.Pixelate,
                 };
+                UpdateMosaicToolTip();
                 MosaicEffectChanged?.Invoke(this, CurrentMosaicEffect);
             }
 
@@ -252,7 +254,21 @@ public sealed class SnipToolbar : Border
 
         ActiveTool = id;
         UpdateActiveTool();
+        UpdateMosaicToolTip();
         ToolChanged?.Invoke(this, id);
+    }
+
+    private void UpdateMosaicToolTip()
+    {
+        if (_toolButtons.TryGetValue(ToolIds.Mosaic, out var button))
+        {
+            button.ToolTip = CurrentMosaicEffect switch
+            {
+                MosaicEffectKind.GaussianBlur => Properties.Resources.mosaic_effect_blur,
+                MosaicEffectKind.SolidRedact => Properties.Resources.mosaic_effect_redact,
+                _ => Properties.Resources.mosaic_effect_pixelate,
+            };
+        }
     }
 
     /// <summary>Hide annotation tools while scroll capture is running; toggle scroll tip.</summary>
