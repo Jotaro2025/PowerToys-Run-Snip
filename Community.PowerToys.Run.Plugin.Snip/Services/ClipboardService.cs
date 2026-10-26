@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Media.Imaging;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
+using Wox.Plugin.Logger;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
@@ -44,7 +45,17 @@ public static class ClipboardService
         try
         {
             EmptyClipboard();
-            PutDib(bitmap);
+            try
+            {
+                PutDib(bitmap);
+            }
+            catch (Exception ex)
+            {
+                // DIB build must not abort the PNG placement — otherwise a failed
+                // DIB (after EmptyClipboard already ran) leaves the clipboard empty.
+                Log.Warn($"Snip clipboard DIB failed (PNG still placed): {ex.Message}", typeof(ClipboardService));
+            }
+
             PutPng(bitmap, pngBytes);
         }
         finally
@@ -364,7 +375,7 @@ public static class ClipboardService
         {
             fixed (byte* stageBase = staging)
             {
-                bitmap.CopyPixels(new Int32Rect(0, 0, width, height), (IntPtr)stageBase, imageBytes, 0);
+                bitmap.CopyPixels(new Int32Rect(0, 0, width, height), (IntPtr)stageBase, imageBytes, stride);
                 for (int y = 0; y < height; y++)
                 {
                     byte* dstRow = pixelsBase + (y * (long)stride);
