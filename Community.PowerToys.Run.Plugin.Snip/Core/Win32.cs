@@ -246,7 +246,7 @@ internal static partial class Win32
     [LibraryImport(Kernel32)]
     internal static partial uint GetCurrentThreadId();
 
-    [LibraryImport(User32, SetLastError = true)]
+    [LibraryImport(User32, EntryPoint = "PostMessageW", SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool PostMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
@@ -310,7 +310,7 @@ internal static partial class Win32
     [LibraryImport(User32)]
     internal static partial IntPtr GetAncestor(IntPtr hWnd, uint gaFlags);
 
-    [LibraryImport(User32, SetLastError = true)]
+    [LibraryImport(User32, EntryPoint = "SendMessageW", SetLastError = true)]
     internal static partial IntPtr SendMessage(IntPtr hWnd, uint msg, IntPtr wParam, IntPtr lParam);
 
     public const uint InputMouse = 0;

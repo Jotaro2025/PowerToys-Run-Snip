@@ -374,6 +374,9 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
             return;
         }
 
+        // Info (not just verbose) so the launcher log shows whether a scroll session
+        // ended by Esc/Space/strip — key when diagnosing an early stop.
+        Log.Info($"Snip scroll stop requested via {reason}", typeof(ScrollCaptureStopGuard));
         SnipVerbose.Scroll($"[scroll] mid-stop requested via {reason}");
         try
         {

@@ -173,25 +173,24 @@ public sealed class ScrollCaptureController
         int scrollHint = 0;
         string autoStopReason = null;
 
-        // Prefer window-local capture (WinRT CreateForWindow / PrintWindow) so the
-        // overlay can stay visible (stop strip, less flicker). Fall back to
-        // session SW_HIDE + desktop BitBlt when window capture is unavailable —
-        // required for Edge reliability (#89/#90). Probe may already have run from
-        // SnipWindow so the frozen preview was kept for the window-capture path.
+        // Probe may already have run from SnipWindow so the frozen preview was kept
+        // for the window-capture path.
         EnsureWindowCaptureProbed();
-        if (!_preferWindowCapture)
-        {
-            BeginSessionOverlayHide();
-            Log.Info(
-                "Snip scroll: overlay session SW_HIDE for Edge wheel/capture (window-capture unavailable)",
-                typeof(ScrollCaptureController));
-        }
-        else
-        {
-            Log.Info(
-                $"Snip scroll: prefer window capture hwnd=0x{_windowCaptureHwnd.ToInt64():X} (overlay stays visible)",
-                typeof(ScrollCaptureController));
-        }
+
+        // Always SW_HIDE the overlay for the whole scroll session, even on the
+        // window-capture path: Chromium/Edge ignore the injected wheel while the
+        // topmost overlay covers the selection. #101 kept the overlay visible
+        // (ClearScrollCaptureHole) and the wheel stopped reaching Chrome — every
+        // PrintWindow tile came back identical and the loop auto-stopped after 4
+        // duplicates. Hiding the overlay lets SendInput hit-test Chrome directly
+        // (the #89/#90 mechanism); PrintWindow tiles are unaffected by overlay
+        // visibility. The stop strip is a separate window and stays visible.
+        BeginSessionOverlayHide();
+        Log.Info(
+            _preferWindowCapture
+                ? $"Snip scroll: session SW_HIDE for Edge wheel (window-capture tiles via PrintWindow hwnd=0x{_windowCaptureHwnd.ToInt64():X})"
+                : "Snip scroll: overlay session SW_HIDE for Edge wheel/capture (window-capture unavailable)",
+            typeof(ScrollCaptureController));
 
         try
         {
@@ -253,7 +252,20 @@ public sealed class ScrollCaptureController
 
                 PostToOverlay(() => _overlay.ShowCapturing(_tiles.Count + 1));
 
-                bool wheeled = SimulateWheelAtCenter();
+                // A single injected-wheel failure must not kill the whole session:
+                // an unhandled exception here used to abort the loop body and leave
+                // _active true with the hint stuck on the next tile.
+                bool wheeled;
+                try
+                {
+                    wheeled = SimulateWheelAtCenter();
+                }
+                catch (Exception ex)
+                {
+                    Log.Exception($"Snip scroll wheel injection failed: {ex.Message}", ex, typeof(ScrollCaptureController));
+                    wheeled = false;
+                }
+
                 if (wheeled)
                 {
                     consecutiveWheelFails = 0;
@@ -381,14 +393,26 @@ public sealed class ScrollCaptureController
                     typeof(ScrollCaptureController));
             }
         }
+        catch (Exception ex)
+        {
+            // Fire-and-forget task: an exception escaping here would leave _active=true
+            // (IsActive stuck) and the UI hint frozen on the next tile. Log it, end the
+            // session, and keep the captured tiles so the user can still stitch them.
+            autoStopReason = $"loop exception: {ex.Message}";
+            Log.Exception($"Snip scroll loop crashed: {ex.Message}", ex, typeof(ScrollCaptureController));
+        }
         finally
         {
+            _active = false;
+
             // Strip first, then unhide overlay — avoids z-order race (strip over restored
             // snip / toolbar flash) when mid-stop and loop exit interleave.
             RestoreAfterScrollSession();
         }
 
-        _active = false;
+        Log.Info(
+            $"Snip scroll loop exit: {_tiles.Count} tile(s), reason={autoStopReason ?? "stop signal"}",
+            typeof(ScrollCaptureController));
         await FinishCapturingUiAsync(autoStopped: !ct.IsCancellationRequested).ConfigureAwait(false);
     }
 
