@@ -774,6 +774,15 @@
   <data name="pin_menu_copy" xml:space="preserve">
     <value>Copy image (Ctrl+C)</value>
   </data>
+  <data name="pin_copied" xml:space="preserve">
+    <value>Image copied to clipboard</value>
+  </data>
+  <data name="pin_copy_failed" xml:space="preserve">
+    <value>Couldn't copy the image</value>
+  </data>
+  <data name="pin_saved" xml:space="preserve">
+    <value>Saved</value>
+  </data>
   <data name="pin_menu_save" xml:space="preserve">
     <value>Save image… (Ctrl+S)</value>
   </data>

@@ -47,6 +47,8 @@ public sealed class PinImageWindow : Window
     private long _baseExStyle;
     private bool _baseExStyleCaptured;
     private Window _clickThroughBadge;
+    private Window _statusBadge;
+    private System.Windows.Threading.DispatcherTimer _statusBadgeTimer;
 
     public PinImageWindow(BitmapSource image)
     {
@@ -133,7 +135,13 @@ public sealed class PinImageWindow : Window
         MouseMove += OnMouseMove;
         LocationChanged += (sender, e) => RepositionClickThroughBadge();
         SizeChanged += (sender, e) => RepositionClickThroughBadge();
-        Closed += (sender, e) => CloseClickThroughBadge();
+        LocationChanged += (sender, e) => RepositionStatusBadge();
+        SizeChanged += (sender, e) => RepositionStatusBadge();
+        Closed += (sender, e) =>
+        {
+            CloseClickThroughBadge();
+            CloseStatusBadge();
+        };
         MouseDoubleClick += (sender, e) =>
         {
             Close();
@@ -239,10 +247,12 @@ public sealed class PinImageWindow : Window
         try
         {
             await ClipboardService.CopyBitmapAsync(_bitmap).ConfigureAwait(true);
+            ShowTransientBadge(Properties.Resources.pin_copied, Color.FromRgb(48, 175, 85));
         }
         catch (Exception ex)
         {
             Log.Exception($"Pin window copy image failed: {ex.Message}", ex, GetType());
+            ShowTransientBadge(Properties.Resources.pin_copy_failed, Color.FromRgb(214, 48, 49));
         }
     }
 
@@ -268,10 +278,120 @@ public sealed class PinImageWindow : Window
             string path = dialog.FileName;
             var format = PngEncoder.FormatFromPath(path);
             await PngEncoder.EncodeToFileAsync(_bitmap, path, format).ConfigureAwait(true);
+            ShowTransientBadge(
+                $"{Properties.Resources.pin_saved}: {System.IO.Path.GetFileName(path)}",
+                Color.FromRgb(48, 175, 85));
         }
         catch (Exception ex)
         {
             Log.Exception($"Pin window save image failed: {ex.Message}", ex, GetType());
+            ShowTransientBadge(ex.Message, Color.FromRgb(214, 48, 49));
+        }
+    }
+
+    /// <summary>
+    /// Shows a small self-dismissing status pill at the pin's bottom edge
+    /// (success / failure of copy and save), matching the click-through badge style.
+    /// </summary>
+    private void ShowTransientBadge(string message, Color color)
+    {
+        if (_statusBadge != null)
+        {
+            _statusBadge.Close();
+            _statusBadge = null;
+        }
+
+        var pill = new Border
+        {
+            Background = new SolidColorBrush(Color.FromArgb(230, 20, 24, 32)),
+            BorderBrush = new SolidColorBrush(color),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(6),
+            Padding = new Thickness(10, 4, 10, 4),
+            Child = new TextBlock
+            {
+                Text = message,
+                Foreground = Brushes.White,
+                FontSize = 12,
+                MaxWidth = 320,
+                TextTrimming = TextTrimming.CharacterEllipsis,
+            },
+        };
+
+        var badge = new Window
+        {
+            WindowStyle = WindowStyle.None,
+            ResizeMode = ResizeMode.NoResize,
+            ShowInTaskbar = false,
+            ShowActivated = false,
+            Topmost = true,
+            AllowsTransparency = true,
+            Background = Brushes.Transparent,
+            SizeToContent = SizeToContent.WidthAndHeight,
+            Content = pill,
+        };
+        badge.Deactivated += (sender, e) =>
+        {
+            // A click anywhere else dismisses immediately; the timer is the fallback.
+            _statusBadgeTimer?.Stop();
+            CloseStatusBadge();
+        };
+        badge.MouseLeftButtonDown += (sender, e) => CloseStatusBadge();
+        _statusBadge = badge;
+
+        badge.Show();
+        RepositionStatusBadge();
+
+        _statusBadgeTimer ??= new System.Windows.Threading.DispatcherTimer
+        {
+            Interval = TimeSpan.FromSeconds(2),
+        };
+        _statusBadgeTimer.Stop();
+        _statusBadgeTimer.Tick += (sender, e) =>
+        {
+            _statusBadgeTimer.Stop();
+            CloseStatusBadge();
+        };
+        _statusBadgeTimer.Start();
+    }
+
+    private void RepositionStatusBadge()
+    {
+        var badge = _statusBadge;
+        if (badge == null)
+        {
+            return;
+        }
+
+        try
+        {
+            double w = badge.ActualWidth > 0 ? badge.ActualWidth : badge.Width;
+            double h = badge.ActualHeight > 0 ? badge.ActualHeight : badge.Height;
+            badge.Left = Left + Math.Max(0, (ActualWidth - w) / 2);
+            badge.Top = Top + Math.Max(0, ActualHeight - h - 8);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Pin status badge reposition failed: {ex.Message}", GetType());
+        }
+    }
+
+    private void CloseStatusBadge()
+    {
+        var badge = _statusBadge;
+        _statusBadge = null;
+        if (badge == null)
+        {
+            return;
+        }
+
+        try
+        {
+            badge.Close();
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Failed to close pin status badge: {ex.Message}", ex, GetType());
         }
     }
 

@@ -19,6 +19,7 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 变更 / Changed
 
+- 钉图窗复制/保存后显示自消失状态徽标（成功绿色/失败红色，2 秒或点击后消失，移动/缩放跟随）——此前操作完全静默，失败无感知 — Pinned image window now shows a transient status pill after copy/save (@Jotaro2025)
 - 工具栏马赛克工具 tooltip 随点击循环显示当前效果（像素化/高斯模糊/纯色涂抹）与下一步切换目标 — Mosaic toolbar tooltip now shows the active effect while cycling (@Jotaro2025)
 
 ### 性能 / Performance

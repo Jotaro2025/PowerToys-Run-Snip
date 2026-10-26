@@ -774,6 +774,15 @@
   <data name="pin_menu_copy" xml:space="preserve">
     <value>复制图片 (Ctrl+C)</value>
   </data>
+  <data name="pin_copied" xml:space="preserve">
+    <value>图片已复制到剪贴板</value>
+  </data>
+  <data name="pin_copy_failed" xml:space="preserve">
+    <value>复制图片失败</value>
+  </data>
+  <data name="pin_saved" xml:space="preserve">
+    <value>已保存</value>
+  </data>
   <data name="pin_menu_save" xml:space="preserve">
     <value>另存为… (Ctrl+S)</value>
   </data>

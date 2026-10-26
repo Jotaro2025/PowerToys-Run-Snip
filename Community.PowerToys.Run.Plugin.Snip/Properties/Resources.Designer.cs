@@ -2144,5 +2144,11 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         internal static string mosaic_effect_blur => ResourceManager.GetString("mosaic_effect_blur", resourceCulture);
 
         internal static string mosaic_effect_redact => ResourceManager.GetString("mosaic_effect_redact", resourceCulture);
+
+        internal static string pin_copied => ResourceManager.GetString("pin_copied", resourceCulture);
+
+        internal static string pin_copy_failed => ResourceManager.GetString("pin_copy_failed", resourceCulture);
+
+        internal static string pin_saved => ResourceManager.GetString("pin_saved", resourceCulture);
     }
 }
