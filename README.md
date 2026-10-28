@@ -41,7 +41,7 @@ PowerToys Run（PowerToys 启动器）的**区域截屏**插件：框选标注�
 - **图片翻译**：OCR 取框后翻译，擦除原文并重绘译文；可「重新贴图」/「保存图片」
 - **会话保持**：OCR / 翻译时先隐藏遮罩，关闭结果窗后恢复同一选区与标注；钉住不关遮罩
 - 多显示器 + 高 DPI：单显示器时只捕获该屏（行为不变）；多显示器时遮罩覆盖整个虚拟桌面，**选区可跨显示器**，按物理像素捕获，混合缩放（如 100% + 150%）下统一按遮罩窗口实际 DPI 换算；工具栏与滚动提示放在选区所在的显示器内。显示器尺寸不同时，虚拟桌面中没有显示器的空白区域截出来为黑色
-- **WinRT Graphics Capture**（优先，失败回退 GDI BitBlt）：整屏 / 活动窗口更易保留光标与合成内容；跨屏虚拟桌面、滚动分片与任意矩形仍走 GDI。导出仍为 SDR BGRA32（HDR 由系统拷贝时色调映射）。需 Windows 10 1903+；受保护内容可能黑屏并自动回退 GDI。详见下方「截图后端」。
+- **WinRT Graphics Capture**（优先，失败回退 GDI BitBlt）：整屏 / 活动窗口更易保留光标与合成内容；跨屏虚拟桌面、滚动分片与任意矩形仍走 GDI。导出为 SDR BGRA32；HDR 显示器改用 FP16 scRGB 捕获并按系统 SDR 白电平做 HDR→SDR 映射，避免 8 位合成剪辑导致的发白。需 Windows 10 1903+；受保护内容可能黑屏并自动回退 GDI。详见下方「截图后端」。
 
 界面语言默认跟随 PowerToys / 系统（内置英文 + 简体中文）；可在专用设置窗口「常规」顶部或 AdditionalOptions `UiLanguage`（`system` / `en` / `zh-CN`）手动切换，立即刷新设置页文案。
 
@@ -56,8 +56,8 @@ PowerToys Run（PowerToys 启动器）的**区域截屏**插件：框选标注�
 
 | 路径 | 用途 | 限制 |
 |------|------|------|
-| **WinRT Graphics Capture** | 单显示器整屏、活动窗口（`CreateForMonitor` / `CreateForWindow`） | Win10 1903+；光标可选；HDR→导出 SDR BGRA32；DRM/受保护内容可能黑屏 |
-| **GDI BitBlt**（回退） | 虚拟桌面跨屏、滚动分片、矩形裁剪、WinRT 失败时 | 不含硬件光标合成；HDR 内容通常被降为 SDR |
+| **WinRT Graphics Capture** | 单显示器整屏、活动窗口（`CreateForMonitor` / `CreateForWindow`） | Win10 1903+；光标可选；HDR→FP16 scRGB 按 SDR 白电平映射为 SDR BGRA32；DRM/受保护内容可能黑屏 |
+| **GDI BitBlt**（回退） | 虚拟桌面跨屏、滚动分片、矩形裁剪、WinRT 失败时 | 不含硬件光标合成；HDR 显示器的矩形/分片捕获自动改走 WGC FP16 路径 |
 
 `CaptureFactory` 在 Windows 上返回 `PreferWinRtCaptureService`：能走 WinRT 则优先，否则静默回退 GDI。
 

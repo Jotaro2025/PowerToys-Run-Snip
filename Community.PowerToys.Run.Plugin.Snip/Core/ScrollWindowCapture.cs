@@ -83,6 +83,17 @@ internal static class ScrollWindowCapture
             return true;
         }
 
+        // PrintWindow renders through the 8-bit composition on HDR desktops and
+        // would return washed-out tiles; let the caller use the HDR-aware
+        // per-monitor capture fallback instead.
+        if (WinRtGraphicsCapture.NeedsHdrToneMapping(Win32.MonitorFromWindow(windowHwnd, Win32.MonitorDefaultToNearest)))
+        {
+            Log.Info(
+                "Snip scroll PrintWindow skipped on HDR monitor — using desktop HDR fallback",
+                typeof(ScrollWindowCapture));
+            return false;
+        }
+
         if (TryCaptureViaPrintWindow(windowHwnd, winW, winH, cropX, cropY, width, height, out frame))
         {
             return true;

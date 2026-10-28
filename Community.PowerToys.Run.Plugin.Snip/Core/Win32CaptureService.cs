@@ -972,12 +972,45 @@ public sealed class Win32CaptureService : ICaptureService
         return current;
     }
 
+    /// <summary>
+    /// True when the rect lives on a monitor whose HDR composition needs the
+    /// FP16 WGC path. Captures and returns the frame in that case.
+    /// </summary>
+    private static bool TryCaptureHdrRect(int physicalX, int physicalY, int width, int height, out CapturedFrame frame)
+    {
+        frame = null;
+        var rect = new Win32.RECT
+        {
+            Left = physicalX,
+            Top = physicalY,
+            Right = physicalX + width,
+            Bottom = physicalY + height,
+        };
+
+        IntPtr monitor = Win32.MonitorFromRect(ref rect, Win32.MonitorDefaultToNearest);
+        if (monitor == IntPtr.Zero || !WinRtGraphicsCapture.NeedsHdrToneMapping(monitor))
+        {
+            return false;
+        }
+
+        return WinRtGraphicsCapture.TryCaptureMonitorRect(monitor, physicalX, physicalY, width, height, out frame)
+            && frame != null;
+    }
+
     /// <inheritdoc />
     public CapturedFrame CaptureScreenRectPixels(int physicalX, int physicalY, int width, int height)
     {
         if (width <= 0 || height <= 0)
         {
             throw new ArgumentException("Capture rect has zero area.", nameof(width));
+        }
+
+        // HDR desktops: an 8-bit BitBlt clips SDR white and produces washed-out
+        // colors. Capture the owning monitor through WGC (FP16 + tone map) and
+        // read back just this rect instead.
+        if (TryCaptureHdrRect(physicalX, physicalY, width, height, out CapturedFrame hdrFrame))
+        {
+            return hdrFrame;
         }
 
         _ = Win32.DwmFlush();

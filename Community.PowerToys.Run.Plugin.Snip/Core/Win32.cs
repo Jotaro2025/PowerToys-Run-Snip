@@ -217,6 +217,12 @@ internal static partial class Win32
     [LibraryImport(User32)]
     internal static partial IntPtr MonitorFromPoint(POINT pt, uint dwFlags);
 
+    [LibraryImport(User32)]
+    internal static partial IntPtr MonitorFromWindow(IntPtr hwnd, uint dwFlags);
+
+    [LibraryImport(User32)]
+    internal static partial IntPtr MonitorFromRect(ref RECT rect, uint dwFlags);
+
     [LibraryImport(User32, SetLastError = true)]
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool SetWindowPos(
