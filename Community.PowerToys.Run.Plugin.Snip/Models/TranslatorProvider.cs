@@ -15,4 +15,7 @@ public enum TranslatorProvider
 
     /// <summary>In-process HyMT2Sharp loaded from a user-supplied GGUF path.</summary>
     HyMT2Sharp = 2,
+
+    /// <summary>Tencent Cloud Machine Translation (TMT) with a SecretId / SecretKey pair.</summary>
+    Tencent = 3,
 }

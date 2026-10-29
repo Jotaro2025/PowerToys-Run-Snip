@@ -76,6 +76,15 @@ public sealed class SnipSettings
     /// <summary>Model name sent in the chat completions request.</summary>
     public string HttpModel { get; set; } = "hy-mt2";
 
+    /// <summary>Tencent Cloud API SecretId (TMT translator).</summary>
+    public string TencentSecretId { get; set; } = string.Empty;
+
+    /// <summary>Tencent Cloud API SecretKey (TMT translator).</summary>
+    public string TencentSecretKey { get; set; } = string.Empty;
+
+    /// <summary>Tencent Cloud TMT region, e.g. <c>ap-guangzhou</c> or <c>ap-beijing</c>.</summary>
+    public string TencentRegion { get; set; } = "ap-guangzhou";
+
     /// <summary>Path to a Hy-MT2 GGUF file (required when provider is HyMT2Sharp).</summary>
     public string HyMtGgufPath { get; set; } = string.Empty;
 
@@ -163,6 +172,9 @@ public sealed class SnipSettings
             HttpBaseUrl = HttpBaseUrl,
             HttpApiKey = HttpApiKey,
             HttpModel = HttpModel,
+            TencentSecretId = TencentSecretId,
+            TencentSecretKey = TencentSecretKey,
+            TencentRegion = TencentRegion,
             HyMtGgufPath = HyMtGgufPath,
             HyMtBackend = HyMtBackend,
             HyMtCustomDownloadUrl = HyMtCustomDownloadUrl,
@@ -194,6 +206,9 @@ public sealed class SnipSettings
         HttpBaseUrl = other.HttpBaseUrl;
         HttpApiKey = other.HttpApiKey;
         HttpModel = other.HttpModel;
+        TencentSecretId = other.TencentSecretId;
+        TencentSecretKey = other.TencentSecretKey;
+        TencentRegion = other.TencentRegion;
         HyMtGgufPath = other.HyMtGgufPath;
         HyMtBackend = other.HyMtBackend;
         HyMtCustomDownloadUrl = other.HyMtCustomDownloadUrl;

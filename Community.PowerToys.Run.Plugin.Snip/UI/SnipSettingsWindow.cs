@@ -10,6 +10,7 @@ using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Documents;
 using System.Windows.Input;
+using System.Windows.Markup;
 using System.Windows.Media;
 using System.Windows.Navigation;
 
@@ -42,8 +43,8 @@ public sealed class SnipSettingsWindow : Window
     private TextBlock _hotkeyStatus;
     private ComboBox _provider;
     private TextBox _targetLang;
-    private StackPanel _httpPanel;
-    private StackPanel _hymtPanel;
+    private Border _httpPanel;
+    private Border _hymtPanel;
     private TextBox _httpUrl;
     private PasswordBox _httpKeyPassword;
     private TextBox _httpKeyPlain;
@@ -64,10 +65,10 @@ public sealed class SnipSettingsWindow : Window
         _target = settings;
         _draft = settings.Clone();
 
-        Width = 520;
-        MinWidth = 480;
-        Height = 520;
-        MinHeight = 420;
+        Width = 640;
+        MinWidth = 560;
+        Height = 680;
+        MinHeight = 500;
         ResizeMode = ResizeMode.CanResizeWithGrip;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
         ShowInTaskbar = false;
@@ -75,6 +76,9 @@ public sealed class SnipSettingsWindow : Window
         Background = Brushes.White;
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
         FontSize = 13;
+        UseLayoutRounding = true;
+        SnapsToDevicePixels = true;
+        TextOptions.SetTextFormattingMode(this, TextFormattingMode.Display);
 
         BuildUi();
         LoadDraftIntoUi();
@@ -88,65 +92,58 @@ public sealed class SnipSettingsWindow : Window
 
         Title = Properties.Resources.settings_window_title;
 
-        var root = new DockPanel { Margin = new Thickness(12) };
+        var root = new DockPanel { LastChildFill = true };
         Content = root;
+
+        // Footer: hairline separator + right-aligned actions.
+        var footer = new Border
+        {
+            Background = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xE6, 0xE6, 0xEA)),
+            BorderThickness = new Thickness(0, 1, 0, 0),
+            Padding = new Thickness(16, 12, 16, 14),
+        };
+        DockPanel.SetDock(footer, Dock.Bottom);
 
         var buttons = new StackPanel
         {
             Orientation = Orientation.Horizontal,
             HorizontalAlignment = HorizontalAlignment.Right,
-            Margin = new Thickness(0, 12, 0, 0),
         };
-        DockPanel.SetDock(buttons, Dock.Bottom);
 
-        var cancel = new Button
-        {
-            Content = Properties.Resources.settings_cancel,
-            MinWidth = 88,
-            Height = 28,
-            Margin = new Thickness(0, 0, 8, 0),
-            IsCancel = true,
-        };
+        var cancel = SecondaryButton(Properties.Resources.settings_cancel);
+        cancel.MinWidth = 96;
+        cancel.Height = 32;
+        cancel.Margin = new Thickness(0, 0, 8, 0);
+        cancel.IsCancel = true;
         cancel.Click += (_, _) =>
         {
             DialogResult = false;
             Close();
         };
 
-        var save = new Button
-        {
-            Content = Properties.Resources.settings_save,
-            MinWidth = 88,
-            Height = 28,
-            IsDefault = true,
-        };
+        var save = PrimaryButton(Properties.Resources.settings_save);
+        save.MinWidth = 96;
+        save.Height = 32;
+        save.IsDefault = true;
         save.Click += (_, _) => OnSave();
 
         buttons.Children.Add(cancel);
         buttons.Children.Add(save);
-        root.Children.Add(buttons);
+        footer.Child = buttons;
+        root.Children.Add(footer);
 
-        _tabs = new TabControl();
-        _tabs.Items.Add(new TabItem
+        _tabs = new TabControl
         {
-            Header = Properties.Resources.settings_tab_general,
-            Content = BuildGeneralTab(),
-        });
-        _tabs.Items.Add(new TabItem
-        {
-            Header = Properties.Resources.settings_tab_hotkey,
-            Content = BuildHotkeyTab(),
-        });
-        _tabs.Items.Add(new TabItem
-        {
-            Header = Properties.Resources.settings_tab_translate,
-            Content = BuildTranslateTab(),
-        });
-        _tabs.Items.Add(new TabItem
-        {
-            Header = Properties.Resources.settings_tab_about,
-            Content = BuildAboutTab(),
-        });
+            Padding = new Thickness(0),
+            BorderThickness = new Thickness(0),
+            Background = Brushes.White,
+            Margin = new Thickness(6, 6, 6, 0),
+        };
+        _tabs.Items.Add(CreateTab(Properties.Resources.settings_tab_general, BuildGeneralTab()));
+        _tabs.Items.Add(CreateTab(Properties.Resources.settings_tab_hotkey, BuildHotkeyTab()));
+        _tabs.Items.Add(CreateTab(Properties.Resources.settings_tab_translate, BuildTranslateTab()));
+        _tabs.Items.Add(CreateTab(Properties.Resources.settings_tab_about, BuildAboutTab()));
         root.Children.Add(_tabs);
 
         if (selectedTab >= 0 && selectedTab < _tabs.Items.Count)
@@ -155,16 +152,166 @@ public sealed class SnipSettingsWindow : Window
         }
     }
 
+    private static TabItem CreateTab(string header, UIElement content)
+        => new TabItem
+        {
+            Header = header,
+            Content = content,
+            Padding = new Thickness(14, 7, 14, 7),
+            FontSize = 13,
+        };
+
+    private static UIElement TabPage(params UIElement[] cards)
+    {
+        var panel = new StackPanel { Margin = new Thickness(16, 14, 16, 16) };
+        foreach (var card in cards)
+        {
+            panel.Children.Add(card);
+        }
+
+        return new ScrollViewer
+        {
+            Content = panel,
+            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
+            HorizontalScrollBarVisibility = ScrollBarVisibility.Disabled,
+        };
+    }
+
+    private static Border Card(params UIElement[] children)
+    {
+        var stack = new StackPanel();
+        foreach (var child in children)
+        {
+            stack.Children.Add(child);
+        }
+
+        return new Border
+        {
+            Background = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xE3, 0xE3, 0xE9)),
+            BorderThickness = new Thickness(1),
+            CornerRadius = new CornerRadius(8),
+            Padding = new Thickness(14, 12, 14, 4),
+            Margin = new Thickness(0, 0, 0, 12),
+            Child = stack,
+        };
+    }
+
+    private static TextBlock SectionHeader(string title)
+        => new TextBlock
+        {
+            Text = title,
+            FontSize = 12,
+            FontWeight = FontWeights.SemiBold,
+            Foreground = new SolidColorBrush(Color.FromRgb(0x5A, 0x5A, 0x66)),
+            Margin = new Thickness(0, 0, 0, 10),
+        };
+
+    /// <summary>Label + control + optional hint, with uniform spacing.</summary>
+    private static UIElement Field(string label, UIElement control, string hint = null)
+    {
+        var stack = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        if (!string.IsNullOrEmpty(label))
+        {
+            stack.Children.Add(Label(label));
+        }
+
+        stack.Children.Add(control);
+        if (!string.IsNullOrEmpty(hint))
+        {
+            stack.Children.Add(Hint(hint));
+        }
+
+        return stack;
+    }
+
+    private static TextBox CreateTextBox(string text = null, bool readOnly = false)
+        => new TextBox
+        {
+            Text = text ?? string.Empty,
+            IsReadOnly = readOnly,
+            MinHeight = 30,
+            Padding = new Thickness(8, 5, 8, 5),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xDA)),
+        };
+
+    private static TextBox NumberBox()
+    {
+        var box = CreateTextBox();
+        box.Width = 110;
+        box.HorizontalAlignment = HorizontalAlignment.Left;
+        return box;
+    }
+
+    private static PasswordBox CreatePasswordBox()
+        => new PasswordBox
+        {
+            MinHeight = 30,
+            Padding = new Thickness(8, 5, 8, 5),
+            VerticalContentAlignment = VerticalAlignment.Center,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xDA)),
+        };
+
+    private static ComboBox CreateCombo()
+        => new ComboBox
+        {
+            MinHeight = 30,
+            Padding = new Thickness(8, 4, 6, 4),
+            VerticalContentAlignment = VerticalAlignment.Center,
+        };
+
+    private static Button PrimaryButton(string text)
+        => new Button
+        {
+            Content = text,
+            Height = 30,
+            MinWidth = 88,
+            Padding = new Thickness(14, 0, 14, 0),
+            Foreground = Brushes.White,
+            Background = new SolidColorBrush(Color.FromRgb(0x0F, 0x6C, 0xBD)),
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0x0F, 0x6C, 0xBD)),
+            BorderThickness = new Thickness(1),
+            Template = RoundedButtonTemplate(),
+        };
+
+    private static Button SecondaryButton(string text)
+        => new Button
+        {
+            Content = text,
+            Height = 30,
+            MinWidth = 76,
+            Padding = new Thickness(12, 0, 12, 0),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x2B, 0x2B, 0x31)),
+            Background = Brushes.White,
+            BorderBrush = new SolidColorBrush(Color.FromRgb(0xD4, 0xD4, 0xDA)),
+            BorderThickness = new Thickness(1),
+            Template = RoundedButtonTemplate(),
+        };
+
+    private static ControlTemplate RoundedButtonTemplate()
+    {
+        const string xaml =
+            "<ControlTemplate xmlns='http://schemas.microsoft.com/winfx/2006/xaml/presentation'"
+            + " xmlns:x='http://schemas.microsoft.com/winfx/2006/xaml' TargetType='Button'>"
+            + "<Border x:Name='chrome' CornerRadius='5' Background='{TemplateBinding Background}'"
+            + " BorderBrush='{TemplateBinding BorderBrush}' BorderThickness='{TemplateBinding BorderThickness}'"
+            + " Padding='{TemplateBinding Padding}'>"
+            + "<ContentPresenter HorizontalAlignment='Center' VerticalAlignment='Center'/>"
+            + "</Border>"
+            + "<ControlTemplate.Triggers>"
+            + "<Trigger Property='IsMouseOver' Value='True'><Setter TargetName='chrome' Property='Opacity' Value='0.86'/></Trigger>"
+            + "<Trigger Property='IsPressed' Value='True'><Setter TargetName='chrome' Property='Opacity' Value='0.72'/></Trigger>"
+            + "<Trigger Property='IsEnabled' Value='False'><Setter TargetName='chrome' Property='Opacity' Value='0.45'/></Trigger>"
+            + "</ControlTemplate.Triggers>"
+            + "</ControlTemplate>";
+
+        return (ControlTemplate)XamlReader.Parse(xaml);
+    }
+
     private UIElement BuildGeneralTab()
     {
-        var panel = new StackPanel { Margin = new Thickness(8) };
-
-        panel.Children.Add(Label(Properties.Resources.opt_ui_lang_label));
-        _uiLanguage = new ComboBox
-        {
-            Margin = new Thickness(0, 0, 0, 4),
-            MinHeight = 28,
-        };
+        _uiLanguage = CreateCombo();
         _uiLanguage.Items.Add(new ComboBoxItem
         {
             Content = "跟随系统 / Follow system",
@@ -181,61 +328,28 @@ public sealed class SnipSettingsWindow : Window
             Tag = UiLanguageHelper.ChineseSimplified,
         });
         _uiLanguage.SelectionChanged += OnUiLanguageSelectionChanged;
-        panel.Children.Add(_uiLanguage);
-        panel.Children.Add(Hint(Properties.Resources.opt_ui_lang_desc));
 
-        panel.Children.Add(Label(Properties.Resources.opt_save_dir_label));
-        _saveDir = new TextBox { Margin = new Thickness(0, 0, 0, 4) };
-        panel.Children.Add(_saveDir);
-        panel.Children.Add(Hint(Properties.Resources.opt_save_dir_desc));
-
+        _saveDir = CreateTextBox();
         _copyAfter = new CheckBox
         {
             Content = Properties.Resources.opt_copy_label,
-            Margin = new Thickness(0, 8, 0, 4),
+            Margin = new Thickness(0, 0, 0, 8),
         };
-        panel.Children.Add(_copyAfter);
-
         _autoSave = new CheckBox
         {
             Content = Properties.Resources.opt_autosave_label,
-            Margin = new Thickness(0, 4, 0, 8),
+            Margin = new Thickness(0, 0, 0, 8),
         };
-        panel.Children.Add(_autoSave);
+        _delayMs = NumberBox();
+        _scrollIntervalMs = NumberBox();
+        _scrollMaxTiles = NumberBox();
 
-        panel.Children.Add(Label(Properties.Resources.opt_delay_label));
-        _delayMs = new TextBox { Width = 100, HorizontalAlignment = HorizontalAlignment.Left };
-        panel.Children.Add(_delayMs);
-        panel.Children.Add(Hint(Properties.Resources.opt_delay_desc));
-
-        panel.Children.Add(Label(Properties.Resources.opt_scroll_interval_label));
-        _scrollIntervalMs = new TextBox { Width = 100, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
-        panel.Children.Add(_scrollIntervalMs);
-        panel.Children.Add(Hint(Properties.Resources.opt_scroll_interval_desc));
-
-        panel.Children.Add(Label(Properties.Resources.opt_scroll_maxtiles_label));
-        _scrollMaxTiles = new TextBox { Width = 100, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 8, 0, 0) };
-        panel.Children.Add(_scrollMaxTiles);
-        panel.Children.Add(Hint(Properties.Resources.opt_scroll_maxtiles_desc));
-
-        panel.Children.Add(Label(Properties.Resources.opt_ocr_engine_label));
-        _ocrEngine = new ComboBox
-        {
-            Margin = new Thickness(0, 0, 0, 4),
-            MinHeight = 28,
-        };
+        _ocrEngine = CreateCombo();
         _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_auto, Tag = OcrEngineKind.Auto });
         _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_wechat, Tag = OcrEngineKind.WeChat });
         _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_windows, Tag = OcrEngineKind.Windows });
-        panel.Children.Add(_ocrEngine);
-        panel.Children.Add(Hint(Properties.Resources.opt_ocr_engine_desc));
 
-        panel.Children.Add(Label(Properties.Resources.opt_windows_ocr_lang_label));
-        _windowsOcrLang = new ComboBox
-        {
-            Margin = new Thickness(0, 0, 0, 4),
-            MinHeight = 28,
-        };
+        _windowsOcrLang = CreateCombo();
         _windowsOcrLang.Items.Add(new ComboBoxItem
         {
             Content = Properties.Resources.opt_windows_ocr_lang_auto,
@@ -246,31 +360,38 @@ public sealed class SnipSettingsWindow : Window
             _windowsOcrLang.Items.Add(new ComboBoxItem { Content = tag, Tag = tag });
         }
 
-        panel.Children.Add(_windowsOcrLang);
-        panel.Children.Add(Hint(Properties.Resources.opt_windows_ocr_lang_desc));
-
-        return new ScrollViewer
-        {
-            Content = panel,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        };
+        return TabPage(
+            Card(
+                SectionHeader(Properties.Resources.settings_section_interface),
+                Field(Properties.Resources.opt_ui_lang_label, _uiLanguage, Properties.Resources.opt_ui_lang_desc)),
+            Card(
+                SectionHeader(Properties.Resources.settings_section_capture),
+                Field(Properties.Resources.opt_save_dir_label, _saveDir, Properties.Resources.opt_save_dir_desc),
+                Field(null, _copyAfter),
+                Field(null, _autoSave),
+                Field(Properties.Resources.opt_delay_label, _delayMs, Properties.Resources.opt_delay_desc)),
+            Card(
+                SectionHeader(Properties.Resources.settings_section_scroll),
+                Field(Properties.Resources.opt_scroll_interval_label, _scrollIntervalMs, Properties.Resources.opt_scroll_interval_desc),
+                Field(Properties.Resources.opt_scroll_maxtiles_label, _scrollMaxTiles, Properties.Resources.opt_scroll_maxtiles_desc)),
+            Card(
+                SectionHeader(Properties.Resources.settings_section_ocr),
+                Field(Properties.Resources.opt_ocr_engine_label, _ocrEngine, Properties.Resources.opt_ocr_engine_desc),
+                Field(Properties.Resources.opt_windows_ocr_lang_label, _windowsOcrLang, Properties.Resources.opt_windows_ocr_lang_desc)));
     }
 
     private UIElement BuildHotkeyTab()
     {
-        var panel = new StackPanel { Margin = new Thickness(8) };
-        panel.Children.Add(Hint(Properties.Resources.settings_hotkey_hint));
+        _hotkeyBox = CreateTextBox(readOnly: true);
+        _hotkeyBox.PreviewKeyDown += OnHotkeyPreviewKeyDown;
 
-        panel.Children.Add(Label(Properties.Resources.opt_hotkey_label));
-        var row = new DockPanel { Margin = new Thickness(0, 0, 0, 8) };
-        var clear = new Button
-        {
-            Content = Properties.Resources.settings_hotkey_clear,
-            MinWidth = 72,
-            Height = 28,
-            Margin = new Thickness(8, 0, 0, 0),
-        };
+        var clear = SecondaryButton(Properties.Resources.settings_hotkey_clear);
+        clear.Margin = new Thickness(8, 0, 0, 0);
         DockPanel.SetDock(clear, Dock.Right);
+
+        var row = new DockPanel();
+        row.Children.Add(clear);
+        row.Children.Add(_hotkeyBox);
         clear.Click += (_, _) =>
         {
             _hotkeyBox.Text = string.Empty;
@@ -278,136 +399,158 @@ public sealed class SnipSettingsWindow : Window
             _hotkeyStatus.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108));
         };
 
-        _hotkeyBox = new TextBox
-        {
-            IsReadOnly = true,
-            Height = 28,
-            VerticalContentAlignment = VerticalAlignment.Center,
-        };
-        _hotkeyBox.PreviewKeyDown += OnHotkeyPreviewKeyDown;
-        row.Children.Add(clear);
-        row.Children.Add(_hotkeyBox);
-        panel.Children.Add(row);
-
         _hotkeyStatus = new TextBlock
         {
             Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108)),
+            FontSize = 12,
             TextWrapping = TextWrapping.Wrap,
-            Margin = new Thickness(0, 4, 0, 0),
+            Margin = new Thickness(0, 6, 0, 10),
         };
-        panel.Children.Add(_hotkeyStatus);
-        panel.Children.Add(Hint(Properties.Resources.opt_hotkey_desc));
 
-        return new ScrollViewer
-        {
-            Content = panel,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        };
+        return TabPage(
+            Card(
+                SectionHeader(Properties.Resources.settings_section_hotkey),
+                WithBottomGap(Hint(Properties.Resources.settings_hotkey_hint)),
+                Field(Properties.Resources.opt_hotkey_label, row),
+                _hotkeyStatus,
+                Hint(Properties.Resources.opt_hotkey_desc)));
+    }
+
+    private static TextBlock WithBottomGap(TextBlock block)
+    {
+        block.Margin = new Thickness(block.Margin.Left, block.Margin.Top, block.Margin.Right, 12);
+        return block;
     }
 
     private UIElement BuildTranslateTab()
     {
-        var panel = new StackPanel { Margin = new Thickness(8) };
-
-        panel.Children.Add(Label(Properties.Resources.opt_tr_provider_label));
-        _provider = new ComboBox
-        {
-            Margin = new Thickness(0, 0, 0, 8),
-            MinHeight = 28,
-        };
+        _provider = CreateCombo();
         _provider.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_provider_off, Tag = TranslatorProvider.Off });
         _provider.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_provider_http, Tag = TranslatorProvider.HttpOpenAi });
         _provider.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_provider_hymt, Tag = TranslatorProvider.HyMT2Sharp });
         _provider.SelectionChanged += (_, _) => UpdateTranslateVisibility();
-        panel.Children.Add(_provider);
-        panel.Children.Add(Hint(Properties.Resources.settings_tr_fold_hint));
 
-        panel.Children.Add(Label(Properties.Resources.opt_tr_lang_label));
-        _targetLang = new TextBox { Margin = new Thickness(0, 0, 0, 8) };
-        panel.Children.Add(_targetLang);
+        _targetLang = CreateTextBox();
+        _httpUrl = CreateTextBox();
+        _httpModel = CreateTextBox();
 
-        _httpPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
-        _httpPanel.Children.Add(SectionTitle("HTTP"));
-        _httpPanel.Children.Add(Label(Properties.Resources.opt_tr_http_url_label));
-        _httpUrl = new TextBox { Margin = new Thickness(0, 0, 0, 6) };
-        _httpPanel.Children.Add(_httpUrl);
-        _httpPanel.Children.Add(Label(Properties.Resources.opt_tr_http_key_label));
-        var keyRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
+        _httpPanel = Card(
+            SectionHeader("HTTP"),
+            Field(StripEnginePrefix(Properties.Resources.opt_tr_http_url_label, "HTTP"), _httpUrl),
+            Field(StripEnginePrefix(Properties.Resources.opt_tr_http_key_label, "HTTP"), BuildHttpKeyRow()),
+            Field(StripEnginePrefix(Properties.Resources.opt_tr_http_model_label, "HTTP"), _httpModel));
+
+        _hymtPanel = Card(
+            SectionHeader("HyMT"),
+            Field(StripEnginePrefix(Properties.Resources.opt_tr_hymt_path_label, "HyMT"), BuildHyMtPathRow()),
+            BuildHyMtActionsRow(),
+            Field(StripEnginePrefix(Properties.Resources.opt_tr_hymt_custom_url_label, "HyMT"), _hymtCustomUrl = CreateTextBox()),
+            Field(StripEnginePrefix(Properties.Resources.opt_tr_hymt_backend_label, "HyMT"), BuildBackendCombo()),
+            Field(
+                StripEnginePrefix(Properties.Resources.opt_hymt_idle_unload_label, "HyMT"),
+                _hymtIdleUnload = NumberBox(),
+                Properties.Resources.opt_hymt_idle_unload_desc),
+            BuildUnloadRow());
+
+        return TabPage(
+            Card(
+                SectionHeader(Properties.Resources.settings_section_translate),
+                Field(StripEnginePrefix(Properties.Resources.opt_tr_provider_label, "翻译"), _provider, Properties.Resources.settings_tr_fold_hint),
+                Field(StripEnginePrefix(Properties.Resources.opt_tr_lang_label, "翻译"), _targetLang)),
+            _httpPanel,
+            _hymtPanel);
+    }
+
+    /// <summary>
+    /// Drops the «HTTP ·» / «HyMT ·» / «翻译 ·» prefixes the PowerToys settings page needs
+    /// for flat lists; inside an engine card the header already says which engine it is.
+    /// </summary>
+    private static string StripEnginePrefix(string label, string engine)
+    {
+        if (string.IsNullOrEmpty(label))
+        {
+            return label;
+        }
+
+        string prefix = engine + " · ";
+        if (label.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return label[prefix.Length..];
+        }
+
+        prefix = engine + " ";
+        if (label.StartsWith(prefix, StringComparison.Ordinal))
+        {
+            return label[prefix.Length..];
+        }
+
+        return label;
+    }
+
+    private UIElement BuildHttpKeyRow()
+    {
         _httpKeyShow = new CheckBox
         {
             Content = Properties.Resources.settings_http_key_show,
             VerticalAlignment = VerticalAlignment.Center,
-            Margin = new Thickness(8, 0, 0, 0),
+            Margin = new Thickness(10, 0, 0, 0),
         };
         DockPanel.SetDock(_httpKeyShow, Dock.Right);
-        keyRow.Children.Add(_httpKeyShow);
-        _httpKeyPassword = new PasswordBox { Margin = new Thickness(0) };
-        _httpKeyPlain = new TextBox { Margin = new Thickness(0), Visibility = Visibility.Collapsed };
+
+        _httpKeyPassword = CreatePasswordBox();
+        _httpKeyPlain = CreateTextBox();
+        _httpKeyPlain.Visibility = Visibility.Collapsed;
+
         var keyHost = new Grid();
         keyHost.Children.Add(_httpKeyPassword);
         keyHost.Children.Add(_httpKeyPlain);
-        keyRow.Children.Add(keyHost);
+
+        var row = new DockPanel();
+        row.Children.Add(_httpKeyShow);
+        row.Children.Add(keyHost);
         _httpKeyShow.Checked += OnHttpKeyShowToggled;
         _httpKeyShow.Unchecked += OnHttpKeyShowToggled;
-        _httpPanel.Children.Add(keyRow);
-        _httpPanel.Children.Add(Label(Properties.Resources.opt_tr_http_model_label));
-        _httpModel = new TextBox { Margin = new Thickness(0, 0, 0, 6) };
-        _httpPanel.Children.Add(_httpModel);
-        panel.Children.Add(_httpPanel);
+        return row;
+    }
 
-        _hymtPanel = new StackPanel { Margin = new Thickness(0, 4, 0, 0) };
-        _hymtPanel.Children.Add(SectionTitle("HyMT"));
-        _hymtPanel.Children.Add(Label(Properties.Resources.opt_tr_hymt_path_label));
-        var pathRow = new DockPanel { Margin = new Thickness(0, 0, 0, 6) };
-        var browse = new Button
-        {
-            Content = Properties.Resources.settings_browse,
-            MinWidth = 72,
-            Height = 28,
-            Margin = new Thickness(8, 0, 0, 0),
-        };
+    private UIElement BuildHyMtPathRow()
+    {
+        var browse = SecondaryButton(Properties.Resources.settings_browse);
+        browse.Margin = new Thickness(8, 0, 0, 0);
         DockPanel.SetDock(browse, Dock.Right);
         browse.Click += (_, _) => BrowseGguf();
-        _hymtPath = new TextBox { VerticalContentAlignment = VerticalAlignment.Center, Height = 28 };
-        pathRow.Children.Add(browse);
-        pathRow.Children.Add(_hymtPath);
-        _hymtPanel.Children.Add(pathRow);
 
-        var download = new Button
-        {
-            Content = Properties.Resources.opt_tr_hymt_download_label,
-            Height = 28,
-            Margin = new Thickness(0, 0, 0, 8),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(10, 0, 10, 0),
-        };
+        _hymtPath = CreateTextBox();
+
+        var row = new DockPanel();
+        row.Children.Add(browse);
+        row.Children.Add(_hymtPath);
+        return row;
+    }
+
+    private UIElement BuildHyMtActionsRow()
+    {
+        var download = SecondaryButton(StripEnginePrefix(Properties.Resources.opt_tr_hymt_download_label, "HyMT"));
+        download.Margin = new Thickness(0, 0, 0, 12);
+        download.HorizontalAlignment = HorizontalAlignment.Left;
         download.Click += (_, _) => DownloadRecommended();
-        _hymtPanel.Children.Add(download);
+        return download;
+    }
 
-        _hymtPanel.Children.Add(Label(Properties.Resources.opt_tr_hymt_custom_url_label));
-        _hymtCustomUrl = new TextBox { Margin = new Thickness(0, 0, 0, 6) };
-        _hymtPanel.Children.Add(_hymtCustomUrl);
-
-        _hymtPanel.Children.Add(Label(Properties.Resources.opt_tr_hymt_backend_label));
-        _hymtBackend = new ComboBox { MinHeight = 28, Margin = new Thickness(0, 0, 0, 6) };
+    private ComboBox BuildBackendCombo()
+    {
+        _hymtBackend = CreateCombo();
         _hymtBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_hymt_backend_auto, Tag = HyMtBackendKind.Auto });
         _hymtBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_hymt_backend_cpu, Tag = HyMtBackendKind.Cpu });
         _hymtBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_tr_hymt_backend_vulkan, Tag = HyMtBackendKind.Vulkan });
-        _hymtPanel.Children.Add(_hymtBackend);
+        return _hymtBackend;
+    }
 
-        _hymtPanel.Children.Add(Label(Properties.Resources.opt_hymt_idle_unload_label));
-        _hymtIdleUnload = new TextBox { Width = 100, HorizontalAlignment = HorizontalAlignment.Left, Margin = new Thickness(0, 0, 0, 2) };
-        _hymtPanel.Children.Add(_hymtIdleUnload);
-        _hymtPanel.Children.Add(Hint(Properties.Resources.opt_hymt_idle_unload_desc));
-
-        var unload = new Button
-        {
-            Content = Properties.Resources.settings_unload_hymt,
-            Height = 28,
-            Margin = new Thickness(0, 4, 0, 0),
-            HorizontalAlignment = HorizontalAlignment.Left,
-            Padding = new Thickness(10, 0, 10, 0),
-        };
+    private UIElement BuildUnloadRow()
+    {
+        var unload = SecondaryButton(Properties.Resources.settings_unload_hymt);
+        unload.Margin = new Thickness(0, 0, 0, 12);
+        unload.HorizontalAlignment = HorizontalAlignment.Left;
         unload.Click += (_, _) =>
         {
             HyMT2SharpTranslatorCache.Unload();
@@ -417,38 +560,34 @@ public sealed class SnipSettingsWindow : Window
                 MessageBoxButton.OK,
                 MessageBoxImage.Information);
         };
-        _hymtPanel.Children.Add(unload);
 
-        panel.Children.Add(_hymtPanel);
-
-        return new ScrollViewer
-        {
-            Content = panel,
-            VerticalScrollBarVisibility = ScrollBarVisibility.Auto,
-        };
+        return unload;
     }
 
     private UIElement BuildAboutTab()
     {
-        var panel = new StackPanel { Margin = new Thickness(8) };
         var version = ReadPluginVersion();
 
-        panel.Children.Add(new TextBlock
+        var header = new StackPanel { Margin = new Thickness(0, 0, 0, 12) };
+        header.Children.Add(new TextBlock
         {
             Text = Properties.Resources.plugin_name,
-            FontSize = 18,
+            FontSize = 17,
             FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 0, 0, 4),
+            Margin = new Thickness(0, 0, 0, 6),
         });
-        panel.Children.Add(new TextBlock
+        header.Children.Add(new TextBlock
         {
             Text = $"{Properties.Resources.settings_about_version}: {version}",
-            Margin = new Thickness(0, 0, 0, 4),
+            FontSize = 12,
+            Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108)),
         });
-        panel.Children.Add(new TextBlock
+        header.Children.Add(new TextBlock
         {
             Text = $"{Properties.Resources.settings_about_author}: Jotaro2025",
-            Margin = new Thickness(0, 0, 0, 8),
+            FontSize = 12,
+            Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108)),
+            Margin = new Thickness(0, 2, 0, 0),
         });
 
         var linkBlock = new TextBlock { Margin = new Thickness(0, 0, 0, 12) };
@@ -469,16 +608,17 @@ public sealed class SnipSettingsWindow : Window
         };
         linkBlock.Inlines.Add(new System.Windows.Documents.Run(Properties.Resources.settings_about_github + ": "));
         linkBlock.Inlines.Add(link);
-        panel.Children.Add(linkBlock);
 
-        panel.Children.Add(new TextBlock
+        var note = new TextBlock
         {
             Text = Properties.Resources.settings_about_ocr_note,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Color.FromRgb(80, 80, 88)),
-        });
+            FontSize = 12,
+            Foreground = new SolidColorBrush(Color.FromRgb(85, 85, 94)),
+            Margin = new Thickness(0, 0, 0, 10),
+        };
 
-        return panel;
+        return TabPage(Card(SectionHeader(Properties.Resources.settings_section_about), header, linkBlock, note));
     }
 
     private void LoadDraftIntoUi()
@@ -914,8 +1054,10 @@ public sealed class SnipSettingsWindow : Window
         => new TextBlock
         {
             Text = text,
+            FontSize = 12,
             FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 0, 0, 4),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x3A, 0x3A, 0x42)),
+            Margin = new Thickness(0, 0, 0, 5),
         };
 
     private static TextBlock Hint(string text)
@@ -923,17 +1065,8 @@ public sealed class SnipSettingsWindow : Window
         {
             Text = text,
             TextWrapping = TextWrapping.Wrap,
-            Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108)),
+            Foreground = new SolidColorBrush(Color.FromRgb(0x6E, 0x6E, 0x78)),
             FontSize = 12,
-            Margin = new Thickness(0, 0, 0, 8),
-        };
-
-    private static TextBlock SectionTitle(string text)
-        => new TextBlock
-        {
-            Text = text,
-            FontWeight = FontWeights.SemiBold,
-            Margin = new Thickness(0, 4, 0, 6),
-            Foreground = new SolidColorBrush(Color.FromRgb(40, 40, 48)),
+            Margin = new Thickness(0, 5, 0, 0),
         };
 }

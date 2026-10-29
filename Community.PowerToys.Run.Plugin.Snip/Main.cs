@@ -352,31 +352,41 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     /// protected value, which needs no further migration.
     /// </summary>
     private static void MigrateApiKeyToProtected(string plainApiKey)
+        => MigrateSecretToProtected(OptionHttpApiKey, plainApiKey);
+
+    private static void EnsureProtectedApiKeyPersisted(string plainApiKey)
+        => EnsureProtectedSecretPersisted(OptionHttpApiKey, plainApiKey);
+
+    /// <summary>
+    /// Re-saves a legacy plaintext secret (HTTP key, Tencent SecretKey) encrypted with DPAPI.
+    /// Runs off the calling thread; the resulting settings.json change re-enters UpdateSettings.
+    /// </summary>
+    private static void MigrateSecretToProtected(string optionKey, string plainSecret)
     {
         _ = System.Threading.Tasks.Task.Run(() =>
         {
             try
             {
-                var patch = SnipSettingsPersister.OptionPatch.Text(OptionHttpApiKey, SecretProtector.Protect(plainApiKey));
+                var patch = SnipSettingsPersister.OptionPatch.Text(optionKey, SecretProtector.Protect(plainSecret));
                 if (SnipSettingsPersister.Persist([patch]))
                 {
-                    Log.Info("Snip: migrated plaintext HTTP API key to DPAPI-protected storage.", typeof(Main));
+                    Log.Info($"Snip: migrated plaintext {optionKey} to DPAPI-protected storage.", typeof(Main));
                 }
             }
             catch (Exception ex)
             {
-                Log.Exception($"Snip: API key migration failed: {ex.Message}", ex, typeof(Main));
+                Log.Exception($"Snip: {optionKey} migration failed: {ex.Message}", ex, typeof(Main));
             }
         });
     }
 
     /// <summary>
-    /// Re-writes the protected form of an already-known plaintext key so PowerToys saving an
+    /// Re-writes the protected form of an already-known plaintext secret so PowerToys saving an
     /// empty AdditionalOptions TextValue cannot clear settings.json.
     /// </summary>
-    private static void EnsureProtectedApiKeyPersisted(string plainApiKey)
+    private static void EnsureProtectedSecretPersisted(string optionKey, string plainSecret)
     {
-        if (string.IsNullOrEmpty(plainApiKey))
+        if (string.IsNullOrEmpty(plainSecret))
         {
             return;
         }
@@ -385,12 +395,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         {
             try
             {
-                var patch = SnipSettingsPersister.OptionPatch.Text(OptionHttpApiKey, SecretProtector.Protect(plainApiKey));
+                var patch = SnipSettingsPersister.OptionPatch.Text(optionKey, SecretProtector.Protect(plainSecret));
                 SnipSettingsPersister.Persist([patch]);
             }
             catch (Exception ex)
             {
-                Log.Exception($"Snip: re-persist protected HTTP API key failed: {ex.Message}", ex, typeof(Main));
+                Log.Exception($"Snip: re-persist protected {optionKey} failed: {ex.Message}", ex, typeof(Main));
             }
         });
     }
@@ -557,6 +567,13 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             && Enum.IsDefined(typeof(TranslatorProvider), providerOpt.ComboBoxValue))
         {
             _settings.TranslatorProvider = (TranslatorProvider)providerOpt.ComboBoxValue;
+
+            // Tencent TMT is implemented but hidden from the UI for now; a settings.json
+            // left on it falls back to Off instead of silently using a hidden engine.
+            if (_settings.TranslatorProvider == TranslatorProvider.Tencent)
+            {
+                _settings.TranslatorProvider = TranslatorProvider.Off;
+            }
         }
 
         _settings.TargetLanguage = options.FirstOrDefault(x => x.Key == OptionTargetLanguage)?.TextValue

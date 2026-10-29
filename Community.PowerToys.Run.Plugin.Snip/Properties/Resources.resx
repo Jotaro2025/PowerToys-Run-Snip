@@ -828,4 +828,58 @@
   <data name="mosaic_effect_redact" xml:space="preserve">
     <value>Mosaic · Solid redact (click again for pixelate)</value>
   </data>
+  <data name="opt_tr_provider_tencent" xml:space="preserve">
+    <value>Tencent TMT (API key)</value>
+  </data>
+  <data name="opt_tr_tencent_id_label" xml:space="preserve">
+    <value>Tencent translate · SecretId</value>
+  </data>
+  <data name="opt_tr_tencent_id_desc" xml:space="preserve">
+    <value>Tencent Cloud API key pair (CAM console → API key management). The free tier covers 5M characters per month.</value>
+  </data>
+  <data name="opt_tr_tencent_key_label" xml:space="preserve">
+    <value>Tencent translate · SecretKey</value>
+  </data>
+  <data name="opt_tr_tencent_key_desc" xml:space="preserve">
+    <value>Stored encrypted with Windows DPAPI (current user).</value>
+  </data>
+  <data name="opt_tr_tencent_key_placeholder" xml:space="preserve">
+    <value>Leave empty to keep the saved key</value>
+  </data>
+  <data name="opt_tr_tencent_region_label" xml:space="preserve">
+    <value>Tencent translate · Region</value>
+  </data>
+  <data name="opt_tr_tencent_region_desc" xml:space="preserve">
+    <value>e.g. ap-guangzhou (default) or ap-beijing.</value>
+  </data>
+  <data name="tr_err_tencent" xml:space="preserve">
+    <value>Tencent translate error:</value>
+  </data>
+  <data name="tr_err_tencent_key" xml:space="preserve">
+    <value>Please set the Tencent Cloud SecretId and SecretKey in the Snip plugin settings.</value>
+  </data>
+  <data name="tr_err_tencent_lang" xml:space="preserve">
+    <value>Tencent TMT does not support this target language. Use zh, zh-TW, en, ja, ko, fr, de, es, it, pt, ru, tr, vi, th, id, ms, ar or hi.</value>
+  </data>
+  <data name="settings_section_interface" xml:space="preserve">
+    <value>Interface</value>
+  </data>
+  <data name="settings_section_capture" xml:space="preserve">
+    <value>Capture and save</value>
+  </data>
+  <data name="settings_section_scroll" xml:space="preserve">
+    <value>Scroll capture</value>
+  </data>
+  <data name="settings_section_ocr" xml:space="preserve">
+    <value>Text recognition</value>
+  </data>
+  <data name="settings_section_hotkey" xml:space="preserve">
+    <value>Global hotkey</value>
+  </data>
+  <data name="settings_section_translate" xml:space="preserve">
+    <value>Image translation</value>
+  </data>
+  <data name="settings_section_about" xml:space="preserve">
+    <value>About</value>
+  </data>
 </root>

@@ -2150,5 +2150,41 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         internal static string pin_copy_failed => ResourceManager.GetString("pin_copy_failed", resourceCulture);
 
         internal static string pin_saved => ResourceManager.GetString("pin_saved", resourceCulture);
+
+        internal static string opt_tr_provider_tencent => ResourceManager.GetString("opt_tr_provider_tencent", resourceCulture);
+
+        internal static string opt_tr_tencent_id_label => ResourceManager.GetString("opt_tr_tencent_id_label", resourceCulture);
+
+        internal static string opt_tr_tencent_id_desc => ResourceManager.GetString("opt_tr_tencent_id_desc", resourceCulture);
+
+        internal static string opt_tr_tencent_key_label => ResourceManager.GetString("opt_tr_tencent_key_label", resourceCulture);
+
+        internal static string opt_tr_tencent_key_desc => ResourceManager.GetString("opt_tr_tencent_key_desc", resourceCulture);
+
+        internal static string opt_tr_tencent_key_placeholder => ResourceManager.GetString("opt_tr_tencent_key_placeholder", resourceCulture);
+
+        internal static string opt_tr_tencent_region_label => ResourceManager.GetString("opt_tr_tencent_region_label", resourceCulture);
+
+        internal static string opt_tr_tencent_region_desc => ResourceManager.GetString("opt_tr_tencent_region_desc", resourceCulture);
+
+        internal static string tr_err_tencent => ResourceManager.GetString("tr_err_tencent", resourceCulture);
+
+        internal static string tr_err_tencent_key => ResourceManager.GetString("tr_err_tencent_key", resourceCulture);
+
+        internal static string tr_err_tencent_lang => ResourceManager.GetString("tr_err_tencent_lang", resourceCulture);
+
+        internal static string settings_section_interface => ResourceManager.GetString("settings_section_interface", resourceCulture);
+
+        internal static string settings_section_capture => ResourceManager.GetString("settings_section_capture", resourceCulture);
+
+        internal static string settings_section_scroll => ResourceManager.GetString("settings_section_scroll", resourceCulture);
+
+        internal static string settings_section_ocr => ResourceManager.GetString("settings_section_ocr", resourceCulture);
+
+        internal static string settings_section_hotkey => ResourceManager.GetString("settings_section_hotkey", resourceCulture);
+
+        internal static string settings_section_translate => ResourceManager.GetString("settings_section_translate", resourceCulture);
+
+        internal static string settings_section_about => ResourceManager.GetString("settings_section_about", resourceCulture);
     }
 }

@@ -72,6 +72,29 @@ public static class TranslatorFactory
                 return null;
             }
 
+            case TranslatorProvider.Tencent:
+                if (string.IsNullOrWhiteSpace(settings.TencentSecretId)
+                    || string.IsNullOrWhiteSpace(settings.TencentSecretKey))
+                {
+                    return Properties.Resources.tr_err_tencent_key;
+                }
+
+                if (string.IsNullOrWhiteSpace(settings.TargetLanguage))
+                {
+                    return Properties.Resources.tr_err_no_language;
+                }
+
+                try
+                {
+                    TencentTranslateTranslator.ResolveLanguageCode(settings.TargetLanguage);
+                }
+                catch (TranslatorException ex)
+                {
+                    return ex.Message;
+                }
+
+                return null;
+
             default:
                 return Properties.Resources.tr_err_provider_off;
         }
@@ -100,6 +123,10 @@ public static class TranslatorFactory
                 settings.HttpApiKey?.Trim() ?? string.Empty,
                 settings.HttpModel.Trim()),
             TranslatorProvider.HyMT2Sharp => GetHyMt(settings),
+            TranslatorProvider.Tencent => new TencentTranslateTranslator(
+                settings.TencentSecretId.Trim(),
+                settings.TencentSecretKey.Trim(),
+                settings.TencentRegion),
             _ => throw new TranslatorException(Properties.Resources.tr_err_provider_off),
         };
     }
