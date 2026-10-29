@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using System.Threading;
 using System.Windows;
 using System.Windows.Media;
@@ -231,6 +232,249 @@ public class ImageTranslateRendererTests
             Assert.ThrowsException<ArgumentException>(() =>
                 ImageTranslateRenderer.Render(source, lines, new[] { "one", "two" }));
         });
+    }
+
+    [TestMethod]
+    public void RenderDrawsTextForEveryBoxHeight()
+    {
+        // Regression: a fitted font whose line box sat a fraction above the clip
+        // height made FormattedText report 0×0, so the source text was erased and
+        // nothing was painted (blank result image). Sweep heights so at least one
+        // of them lands on that knife edge.
+        RunOnStaThread(() =>
+        {
+            foreach (int boxHeight in new[] { 12, 14, 16, 17, 18, 19, 20, 21, 22, 24, 26 })
+            {
+                var source = CreateSolidBitmap(300, 90, Colors.White);
+                var box = new Rect(10, 20, 200, boxHeight);
+                var line = new OcrTextLine("源文", box, 0.9f);
+
+                var rendered = ImageTranslateRenderer.Render(source, new[] { line }, new[] { "译文内容" });
+
+                int dark = CountDarkPixels(rendered, new Int32Rect(0, 0, rendered.PixelWidth, rendered.PixelHeight));
+                Assert.AreNotEqual(0, dark, $"no translated text drawn for box height {boxHeight}");
+            }
+        });
+    }
+
+    [TestMethod]
+    public void RenderGrowsBoxSoLongTranslationStaysVisible()
+    {
+        RunOnStaThread(() =>
+        {
+            var source = CreateSolidBitmap(240, 160, Colors.White);
+            var box = new Rect(10, 30, 120, 18);
+            var line = new OcrTextLine("源", box, 0.9f);
+            var translation = string.Concat(Enumerable.Repeat("很长的译文", 8));
+
+            var rendered = ImageTranslateRenderer.Render(source, new[] { line }, new[] { translation });
+
+            var bounds = DarkPixelBounds(rendered);
+            Assert.IsTrue(bounds.HasValue, "no translated text drawn at all");
+
+            // One 8 px line is ~10 px tall; several wrapped lines prove the tail was
+            // kept instead of being clipped after the first line.
+            Assert.IsTrue(
+                bounds.Value.Height > 20,
+                $"expected multiple text lines (drawn height {bounds.Value.Height:0.#})");
+
+            // The paint box grows downward past the original OCR box.
+            Assert.IsTrue(
+                bounds.Value.Bottom > box.Bottom + 4,
+                $"expected text below the OCR box (bottom {bounds.Value.Bottom:0.#} vs box {box.Bottom:0.#})");
+        });
+    }
+
+    [TestMethod]
+    public void GrowBoxToFitExpandsDownThenUpAndCaps()
+    {
+        var box = new Rect(10, 10, 100, 20);
+
+        var fits = ImageTranslateRenderer.GrowBoxToFit(box, 20, width: 200, height: 200);
+        Assert.AreEqual(10, fits.Y, 0.01);
+        Assert.AreEqual(20, fits.Height, 0.01);
+
+        var grown = ImageTranslateRenderer.GrowBoxToFit(box, 50, width: 200, height: 200);
+        Assert.AreEqual(10, grown.Y, 0.01);
+        Assert.AreEqual(50, grown.Height, 0.01);
+
+        // Near the bottom edge the box moves up instead of overflowing.
+        var nearBottom = new Rect(10, 80, 100, 20);
+        var shifted = ImageTranslateRenderer.GrowBoxToFit(nearBottom, 50, width: 200, height: 100);
+        Assert.AreEqual(50, shifted.Y, 0.01);
+        Assert.AreEqual(50, shifted.Height, 0.01);
+        Assert.IsTrue(shifted.Bottom <= 100);
+
+        // Growth is capped so one line cannot erase an unbounded area.
+        var capped = ImageTranslateRenderer.GrowBoxToFit(box, 5000, width: 200, height: 2000);
+        Assert.AreEqual(20 + ImageTranslateRenderer.MaxBoxGrowth, capped.Height, 0.01);
+    }
+
+    [TestMethod]
+    public void ExpandToCoverInkGrowsOverAscendersAndDescenders()
+    {
+        // 120x60 white page: ink rows above (y=17..19) and below (y=39..41) a box
+        // y=22..38, mimicking an OCR box that hugs the x-height of the line.
+        const int w = 120;
+        const int h = 60;
+        int stride = w * 4;
+        var pixels = new byte[stride * h];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 255;
+            pixels[i + 1] = 255;
+            pixels[i + 2] = 255;
+            pixels[i + 3] = 255;
+        }
+
+        foreach (int y in new[] { 19, 20, 21, 38, 39, 40 })
+        {
+            for (int x = 20; x < 60; x++)
+            {
+                int i = (y * stride) + (x * 4);
+                pixels[i] = 0;
+                pixels[i + 1] = 0;
+                pixels[i + 2] = 0;
+            }
+        }
+
+        var box = new Rect(10, 22, 80, 16);
+        var expanded = ImageTranslateRenderer.ExpandToCoverInk(pixels, stride, w, h, box, Colors.White);
+
+        Assert.IsTrue(expanded.Top <= 19, $"top not covered: {expanded.Top}");
+        Assert.IsTrue(expanded.Bottom >= 41, $"descenders not covered: {expanded.Bottom}");
+        Assert.AreEqual(box.Left, expanded.Left, 0.01);
+        Assert.AreEqual(box.Width, expanded.Width, 0.01);
+    }
+
+    [TestMethod]
+    public void ExpandToCoverInkStopsAtBackgroundRows()
+    {
+        const int w = 120;
+        const int h = 60;
+        int stride = w * 4;
+        var pixels = new byte[stride * h];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 255;
+            pixels[i + 1] = 255;
+            pixels[i + 2] = 255;
+            pixels[i + 3] = 255;
+        }
+
+        var box = new Rect(10, 22, 80, 16);
+        var expanded = ImageTranslateRenderer.ExpandToCoverInk(pixels, stride, w, h, box, Colors.White);
+
+        Assert.AreEqual(box.Y, expanded.Y, 0.01);
+        Assert.AreEqual(box.Height, expanded.Height, 0.01);
+    }
+
+    [TestMethod]
+    public void ExpandToCoverInkIsCapped()
+    {
+        const int w = 120;
+        const int h = 80;
+        int stride = w * 4;
+        var pixels = new byte[stride * h];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 0;
+            pixels[i + 1] = 0;
+            pixels[i + 2] = 0;
+            pixels[i + 3] = 255;
+        }
+
+        var box = new Rect(10, 30, 80, 16);
+        var expanded = ImageTranslateRenderer.ExpandToCoverInk(pixels, stride, w, h, box, Colors.White);
+
+        int maxExtra = Math.Max(2, Math.Min(6, (int)Math.Ceiling(box.Height * 0.4)));
+        Assert.IsTrue(
+            expanded.Top >= box.Top - maxExtra - ImageTranslateRenderer.TintRowBudget,
+            $"top expanded too far: top={expanded.Top} box={box.Top} maxExtra={maxExtra}");
+        Assert.IsTrue(
+            expanded.Bottom <= box.Bottom + maxExtra + ImageTranslateRenderer.TintRowBudget,
+            $"bottom expanded too far: bottom={expanded.Bottom} box={box.Bottom} maxExtra={maxExtra}");
+    }
+
+    [TestMethod]
+    public void ExpandToCoverInkCoversFlatTintStrip()
+    {
+        // Inline-code background: a light-grey strip one row above/below the box.
+        const int w = 200;
+        const int h = 80;
+        int stride = w * 4;
+        var pixels = new byte[stride * h];
+        for (int i = 0; i < pixels.Length; i += 4)
+        {
+            pixels[i] = 255;
+            pixels[i + 1] = 255;
+            pixels[i + 2] = 255;
+            pixels[i + 3] = 255;
+        }
+
+        foreach (int y in new[] { 29, 47 })
+        {
+            for (int x = 40; x < 120; x++)
+            {
+                int i = (y * stride) + (x * 4);
+                pixels[i] = 243;
+                pixels[i + 1] = 243;
+                pixels[i + 2] = 243;
+            }
+        }
+
+        var box = new Rect(10, 30, 180, 17);
+        var expanded = ImageTranslateRenderer.ExpandToCoverInk(pixels, stride, w, h, box, Colors.White);
+
+        Assert.IsTrue(expanded.Top <= 29, $"tint above not covered: {expanded.Top}");
+        Assert.IsTrue(expanded.Bottom >= 48, $"tint below not covered: {expanded.Bottom}");
+    }
+
+    private static int CountDarkPixels(BitmapSource bitmap, Int32Rect area, int threshold = 128)
+    {
+        var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+        int stride = area.Width * 4;
+        var buffer = new byte[stride * area.Height];
+        converted.CopyPixels(area, buffer, stride, 0);
+
+        int dark = 0;
+        for (int i = 0; i < buffer.Length; i += 4)
+        {
+            if ((buffer[i] + buffer[i + 1] + buffer[i + 2]) / 3 < threshold)
+            {
+                dark++;
+            }
+        }
+
+        return dark;
+    }
+
+    private static Rect? DarkPixelBounds(BitmapSource bitmap, int threshold = 128)
+    {
+        var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+        int width = bitmap.PixelWidth;
+        int height = bitmap.PixelHeight;
+        int stride = width * 4;
+        var buffer = new byte[stride * height];
+        converted.CopyPixels(buffer, stride, 0);
+
+        int minX = int.MaxValue, minY = int.MaxValue, maxX = -1, maxY = -1;
+        for (int y = 0; y < height; y++)
+        {
+            for (int x = 0; x < width; x++)
+            {
+                int i = (y * stride) + (x * 4);
+                if ((buffer[i] + buffer[i + 1] + buffer[i + 2]) / 3 < threshold)
+                {
+                    minX = Math.Min(minX, x);
+                    minY = Math.Min(minY, y);
+                    maxX = Math.Max(maxX, x);
+                    maxY = Math.Max(maxY, y);
+                }
+            }
+        }
+
+        return maxX < 0 ? null : new Rect(minX, minY, maxX - minX + 1, maxY - minY + 1);
     }
 
     [TestMethod]

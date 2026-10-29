@@ -5,6 +5,7 @@
 using System;
 using System.IO;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
@@ -12,6 +13,7 @@ using System.Windows.Input;
 using System.Windows.Interop;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
 using Community.PowerToys.Run.Plugin.Snip.Models;
@@ -1549,8 +1551,9 @@ public sealed class SnipWindow : Window
                 return;
             }
 
-            var child = new OcrResultWindow(built.Value.Bitmap, built.Value.Png, _settings);
-            OpenSessionChild(child);
+            var bitmap = FreezeForHostThread(built.Value.Bitmap);
+            var png = built.Value.Png;
+            OpenSessionWindow(() => new OcrResultWindow(bitmap, png, _settings));
         }
         catch (Exception ex)
         {
@@ -1599,8 +1602,9 @@ public sealed class SnipWindow : Window
                 return;
             }
 
-            var child = new TranslateResultWindow(built.Value.Bitmap, built.Value.Png, _settings);
-            OpenSessionChild(child);
+            var bitmap = FreezeForHostThread(built.Value.Bitmap);
+            var png = built.Value.Png;
+            OpenSessionWindow(() => new TranslateResultWindow(bitmap, png, _settings));
         }
         catch (Exception ex)
         {
@@ -1783,9 +1787,95 @@ public sealed class SnipWindow : Window
     }
 
     /// <summary>
+    /// Opens an OCR / translate result window for this session on PowerToys Run's
+    /// WPF dispatcher when available. Those dialogs create TextBoxes after the
+    /// pipeline finishes; doing that on the snip capture STA applies the host's
+    /// application-level styles from another thread, which throws VerifyAccess while
+    /// a style setter seals a host-owned Freezable ("The calling thread cannot access
+    /// this object"). Same rule as <see cref="SnipController.ShowSettingsWindow"/>.
+    /// </summary>
+    private void OpenSessionWindow(Func<Window> create)
+    {
+        ArgumentNullException.ThrowIfNull(create);
+
+        var host = System.Windows.Application.Current?.Dispatcher;
+        if (host == null || host.Thread == Thread.CurrentThread)
+        {
+            Log.Info("Snip session window: created on the snip STA (no host dispatcher).", GetType());
+            OpenSessionChild(create());
+            return;
+        }
+
+        if (_sessionChild != null || _hiddenForSessionChild)
+        {
+            return;
+        }
+
+        Log.Info("Snip session window: created on the PowerToys Run dispatcher.", GetType());
+
+        _hiddenForSessionChild = true;
+        Hide();
+
+        host.BeginInvoke(
+            new Action(() =>
+            {
+                if (!_hiddenForSessionChild)
+                {
+                    // The session ended (save / cancel) while this callback was queued.
+                    return;
+                }
+
+                Window child = null;
+                try
+                {
+                    child = create();
+                }
+                catch (Exception ex)
+                {
+                    Log.Exception($"Snip session window create failed: {ex.Message}", ex, GetType());
+                }
+
+                if (child == null)
+                {
+                    Dispatcher.BeginInvoke(new Action(RestoreOverlayAfterChild));
+                    return;
+                }
+
+                _sessionChild = child;
+                child.Closed += (sender, e) =>
+                {
+                    if (ReferenceEquals(_sessionChild, sender))
+                    {
+                        _sessionChild = null;
+                    }
+
+                    // Runs on the host dispatcher; the overlay belongs to the snip STA.
+                    Dispatcher.BeginInvoke(new Action(RestoreOverlayAfterChild));
+                };
+
+                child.Show();
+                child.Activate();
+            }),
+            DispatcherPriority.Normal);
+    }
+
+    /// <summary>
     /// Hides the fullscreen overlay and shows a modeless child; when the child
     /// closes, the overlay is shown again (same capture / selection / annotations).
     /// </summary>
+    /// <summary>
+    /// The result windows run on PowerToys Run's dispatcher, so the capture bitmap they
+    /// receive must be frozen: it was created on the snip STA, and even reading
+    /// <c>IsFrozen</c> from another thread throws VerifyAccess. MaterializeFrozen copies
+    /// the pixels (never freezes the editor's live WriteableBitmap) and freezes the copy,
+    /// so this must run here, on the owning thread.
+    /// </summary>
+    private static BitmapSource FreezeForHostThread(BitmapSource bitmap)
+    {
+        ArgumentNullException.ThrowIfNull(bitmap);
+        return bitmap.IsFrozen ? bitmap : BitmapPreview.MaterializeFrozen(bitmap);
+    }
+
     private void OpenSessionChild(Window child)
     {
         ArgumentNullException.ThrowIfNull(child);
@@ -1856,22 +1946,37 @@ public sealed class SnipWindow : Window
 
         _sessionChild = null;
         child.Closed -= OnSessionChildClosed;
+
+        // Clear the flag before closing: a host-dispatcher child fires Closed
+        // asynchronously and its handler marshals RestoreOverlayAfterChild back here.
+        if (!restoreOverlay)
+        {
+            _hiddenForSessionChild = false;
+        }
+
+        CloseSessionChild(child);
+
+        if (restoreOverlay)
+        {
+            RestoreOverlayAfterChild();
+        }
+    }
+
+    private static void CloseSessionChild(Window child)
+    {
+        if (!child.Dispatcher.CheckAccess())
+        {
+            child.Dispatcher.BeginInvoke(new Action(() => CloseSessionChild(child)));
+            return;
+        }
+
         try
         {
             child.Close();
         }
         catch (Exception ex)
         {
-            Log.Exception($"SnipWindow dismiss session child failed: {ex.Message}", ex, GetType());
-        }
-
-        if (restoreOverlay)
-        {
-            RestoreOverlayAfterChild();
-        }
-        else
-        {
-            _hiddenForSessionChild = false;
+            Log.Exception($"SnipWindow dismiss session child failed: {ex.Message}", ex, typeof(SnipWindow));
         }
     }
 

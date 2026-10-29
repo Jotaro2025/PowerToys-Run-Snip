@@ -360,7 +360,10 @@ public sealed class TranslateResultWindow : Window, IDisposable
         ITranslator translator = null;
         try
         {
-            _lines = await OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token);
+            // OCR returns fragments for inline code / punctuation runs; translating each
+            // in place paints stray 1–2 character glyphs ("black dots"). Merge to one box
+            // per visual line before translating and erasing.
+            _lines = TranslateLineMerger.Merge(await OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token));
             if (_closed)
             {
                 return;
@@ -388,7 +391,13 @@ public sealed class TranslateResultWindow : Window, IDisposable
                 SetBusy(Properties.Resources.tr_busy_translate_progress
                     .Replace("{0}", p.Completed.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)
                     .Replace("{1}", p.Total.ToString(System.Globalization.CultureInfo.CurrentCulture), StringComparison.Ordinal)));
-            var translations = await translator.TranslateAsync(sources, _settings.TargetLanguage, translateProgress, _cts.Token);
+
+            // HyMT2Sharp loads the GGUF and runs inference synchronously on the calling
+            // thread; on the UI dispatcher that froze the busy animation and the progress
+            // bar for the whole model load / generation. Progress<T> still marshals back.
+            var translations = await Task.Run(
+                () => translator.TranslateAsync(sources, _settings.TargetLanguage, translateProgress, _cts.Token),
+                _cts.Token);
             if (_closed)
             {
                 return;
@@ -527,22 +536,46 @@ public sealed class TranslateResultWindow : Window, IDisposable
                 Margin = new Thickness(0, 0, 0, 4),
             });
 
-            var box = new TextBox
+            var box = CreateTranslationBox(i < translations.Count ? translations[i] : null);
+            try
             {
-                Text = i < translations.Count ? (translations[i] ?? string.Empty) : string.Empty,
-                TextWrapping = TextWrapping.Wrap,
-                AcceptsReturn = true,
-                MinHeight = 28,
-                BorderThickness = new Thickness(0),
-                Background = Brushes.Transparent,
-                Padding = new Thickness(0),
-            };
+                stack.Children.Add(box);
+            }
+            catch (InvalidOperationException ex) when (ex.Message.Contains("different thread", StringComparison.OrdinalIgnoreCase))
+            {
+                // PowerToys Run's application-level TextBox style can be owned by the
+                // host UI thread, so applying it here throws VerifyAccess. A local empty
+                // style keeps this box off the implicit style path.
+                Log.Exception($"Snip translate editor style fallback: {ex.Message}", ex, GetType());
+                box = CreateTranslationBox(i < translations.Count ? translations[i] : null, withLocalStyle: true);
+                stack.Children.Add(box);
+            }
+
             _translationBoxes.Add(box);
-            stack.Children.Add(box);
 
             card.Child = stack;
             _linesPanel.Children.Add(card);
         }
+    }
+
+    private static TextBox CreateTranslationBox(string translation, bool withLocalStyle = false)
+    {
+        var box = new TextBox
+        {
+            Text = translation ?? string.Empty,
+            TextWrapping = TextWrapping.Wrap,
+            AcceptsReturn = true,
+            MinHeight = 28,
+            BorderThickness = new Thickness(0),
+            Background = Brushes.Transparent,
+            Padding = new Thickness(0),
+        };
+        if (withLocalStyle)
+        {
+            box.Style = new Style(typeof(TextBox));
+        }
+
+        return box;
     }
 
     private string JoinTranslations()
