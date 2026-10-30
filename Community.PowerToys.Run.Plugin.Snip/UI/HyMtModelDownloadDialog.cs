@@ -42,8 +42,7 @@ public sealed class HyMtModelDownloadDialog : Window, IDisposable
         Height = 180;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        ShowInTaskbar = false;
-        Topmost = true;
+        ShowInTaskbar = true;
         Background = Brushes.White;
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
         FontSize = 13;

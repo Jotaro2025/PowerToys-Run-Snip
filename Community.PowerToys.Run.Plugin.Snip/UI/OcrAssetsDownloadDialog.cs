@@ -40,8 +40,7 @@ public sealed class OcrAssetsDownloadDialog : Window, IDisposable
         Height = 190;
         ResizeMode = ResizeMode.NoResize;
         WindowStartupLocation = WindowStartupLocation.CenterScreen;
-        ShowInTaskbar = false;
-        Topmost = true;
+        ShowInTaskbar = true;
         Background = Brushes.White;
         FontFamily = new FontFamily("Microsoft YaHei UI, Segoe UI");
         FontSize = 13;
