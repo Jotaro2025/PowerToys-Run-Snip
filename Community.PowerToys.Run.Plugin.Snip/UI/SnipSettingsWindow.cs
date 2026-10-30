@@ -348,6 +348,7 @@ public sealed class SnipSettingsWindow : Window
         _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_auto, Tag = OcrEngineKind.Auto });
         _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_wechat, Tag = OcrEngineKind.WeChat });
         _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_windows, Tag = OcrEngineKind.Windows });
+        _ocrEngine.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_engine_paddle, Tag = OcrEngineKind.SimdPaddle });
 
         _windowsOcrLang = CreateCombo();
         _windowsOcrLang.Items.Add(new ComboBoxItem

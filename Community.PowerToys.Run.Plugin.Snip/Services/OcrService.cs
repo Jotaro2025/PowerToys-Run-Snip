@@ -24,10 +24,18 @@ public static class OcrService
 {
     /// <summary>
     /// Effective engine (never <see cref="OcrEngineKind.Auto"/>):
-    /// non-x64 → Windows; explicit choice otherwise; Auto → WeChat when its assets exist, else Windows.
+    /// explicit Paddle → Paddle on any architecture; non-x64 → Windows; explicit
+    /// choice otherwise; Auto → WeChat when its assets exist, else Windows.
     /// </summary>
     public static OcrEngineKind ResolveEngine(OcrEngineKind setting, Architecture processArchitecture, bool weChatAssetsAvailable)
     {
+        // PaddleOCR is pure managed code and ships its models embedded, so it is
+        // the only engine that also runs on non-x64 besides Windows OCR.
+        if (setting == OcrEngineKind.SimdPaddle)
+        {
+            return OcrEngineKind.SimdPaddle;
+        }
+
         if (processArchitecture != Architecture.X64)
         {
             return OcrEngineKind.Windows;
@@ -50,7 +58,12 @@ public static class OcrService
 
     /// <summary>True when the effective engine is already running another recognition.</summary>
     public static bool IsBusy(SnipSettings settings)
-        => ResolveEngine(settings) == OcrEngineKind.WeChat ? WeChatOcrService.IsBusy : WindowsOcrService.IsBusy;
+        => ResolveEngine(settings) switch
+        {
+            OcrEngineKind.WeChat => WeChatOcrService.IsBusy,
+            OcrEngineKind.SimdPaddle => SimdPaddleOcrService.IsBusy,
+            _ => WindowsOcrService.IsBusy,
+        };
 
     /// <summary>Recognizes lines with the effective engine.</summary>
     /// <remarks>
@@ -65,7 +78,13 @@ public static class OcrService
         SnipSettings settings,
         CancellationToken cancellationToken = default)
     {
-        if (ResolveEngine(settings) == OcrEngineKind.WeChat)
+        var engine = ResolveEngine(settings);
+        if (engine == OcrEngineKind.SimdPaddle)
+        {
+            return await RecognizeWithSimdPaddleAsync(png, cancellationToken).ConfigureAwait(false);
+        }
+
+        if (engine == OcrEngineKind.WeChat)
         {
             return await RecognizeWithWeChatAsync(png, cancellationToken).ConfigureAwait(false);
         }
@@ -80,6 +99,32 @@ public static class OcrService
             // Auto on x64 fell back to Windows OCR because WeChat assets are missing: point at the other engine.
             throw new OcrException($"{ex.Message} {Properties.Resources.ocr_hint_switch_wechat}", ex);
         }
+    }
+
+    /// <summary>
+    /// Mirrors the WeChat path: small selections are upscaled up front (the
+    /// detector does not enlarge below its side-length limit either, and a 2x
+    /// upscale only ever helps), then boxes are mapped back to source space.
+    /// </summary>
+    private static async Task<IReadOnlyList<OcrTextLine>> RecognizeWithSimdPaddleAsync(
+        byte[] png,
+        CancellationToken cancellationToken)
+    {
+        var size = PngReader.TryReadSize(png);
+        if (size is { Width: > 0, Height: > 0 } && OcrUpscalePolicy.NeedsUpscale(size.Value.Width, size.Value.Height))
+        {
+            var (upscaled, scale) = await UpscalePngAsync(png, cancellationToken).ConfigureAwait(false);
+            if (upscaled != null)
+            {
+                Log.Info(
+                    $"Snip OCR: upscaled small image for recognition (scale {scale:0.##}).",
+                    typeof(OcrService));
+                var lines = await SimdPaddleOcrService.RecognizeLinesAsync(upscaled, cancellationToken).ConfigureAwait(false);
+                return MapLinesToSource(lines, scale);
+            }
+        }
+
+        return await SimdPaddleOcrService.RecognizeLinesAsync(png, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<IReadOnlyList<OcrTextLine>> RecognizeWithWeChatAsync(

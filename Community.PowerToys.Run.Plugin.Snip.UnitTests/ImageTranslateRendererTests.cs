@@ -430,6 +430,193 @@ public class ImageTranslateRendererTests
         Assert.IsTrue(expanded.Bottom >= 48, $"tint below not covered: {expanded.Bottom}");
     }
 
+    [TestMethod]
+    public void RenderKeepsSubtleBackgroundInsideTheBox()
+    {
+        // Light-beige panel behind the text: the old whole-box erase turned it white,
+        // the glyph mask must leave every non-ink pixel untouched.
+        var result = RunOnStaThread(() =>
+        {
+            var source = CreateSolidBitmap(220, 90, Colors.White);
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(new SolidColorBrush(Color.FromRgb(250, 246, 238)), null, new Rect(25, 24, 145, 28));
+                var ink = new SolidColorBrush(Color.FromRgb(40, 40, 40));
+                for (int i = 0; i < 6; i++)
+                {
+                    dc.DrawRectangle(ink, null, new Rect(40 + (i * 9), 28, 4, 18));
+                }
+            }
+
+            var rtb = new RenderTargetBitmap(220, 90, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+            rtb.Freeze();
+
+            var line = new OcrTextLine("源", new Rect(20, 20, 150, 30), 0.9f);
+            return ImageTranslateRenderer.Render(rtb, new[] { line }, new[] { "Hi" });
+        });
+
+        var pixel = ReadPixel(result, 150, 40);
+        Assert.IsTrue(
+            Math.Abs(pixel.R - 250) <= 6 && Math.Abs(pixel.G - 246) <= 6 && Math.Abs(pixel.B - 238) <= 6,
+            $"panel pixel inside the box must survive, got {pixel}");
+    }
+
+    [TestMethod]
+    public void RenderUsesSampledOriginalTextColor()
+    {
+        var result = RunOnStaThread(() =>
+        {
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, 220, 90));
+                var ink = new SolidColorBrush(Color.FromRgb(200, 40, 40));
+                for (int i = 0; i < 6; i++)
+                {
+                    dc.DrawRectangle(ink, null, new Rect(40 + (i * 9), 28, 4, 18));
+                }
+            }
+
+            var rtb = new RenderTargetBitmap(220, 90, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+            rtb.Freeze();
+
+            var line = new OcrTextLine("源", new Rect(20, 20, 150, 30), 0.9f);
+            return ImageTranslateRenderer.Render(rtb, new[] { line }, new[] { "Hi" });
+        });
+
+        var converted = new FormatConvertedBitmap(result, PixelFormats.Bgra32, null, 0);
+        int stride = converted.PixelWidth * 4;
+        var buffer = new byte[stride * converted.PixelHeight];
+        converted.CopyPixels(buffer, stride, 0);
+
+        bool foundRed = false;
+        for (int i = 0; i < buffer.Length; i += 4)
+        {
+            if (buffer[i + 2] > 150 && buffer[i + 1] < 120 && buffer[i] < 120)
+            {
+                foundRed = true;
+                break;
+            }
+        }
+
+        Assert.IsTrue(foundRed, "translated glyphs should be painted in the sampled red ink color");
+    }
+
+    [TestMethod]
+    public void RenderParagraphReflowAcrossTwoLines()
+    {
+        var result = RunOnStaThread(() =>
+        {
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, 320, 140));
+                var ink = new SolidColorBrush(Color.FromRgb(30, 30, 30));
+                for (int i = 0; i < 10; i++)
+                {
+                    dc.DrawRectangle(ink, null, new Rect(20 + (i * 12), 24, 5, 16));
+                    dc.DrawRectangle(ink, null, new Rect(20 + (i * 12), 48, 5, 16));
+                }
+            }
+
+            var rtb = new RenderTargetBitmap(320, 140, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+            rtb.Freeze();
+
+            var lines = new[]
+            {
+                new OcrTextLine("源文一行", new Rect(15, 20, 160, 24), 0.9f),
+                new OcrTextLine("源文二行", new Rect(15, 44, 160, 24), 0.9f),
+            };
+            var translations = new[] { "Alpha beta gamma delta", "epsilon zeta eta theta" };
+            return ImageTranslateRenderer.Render(rtb, lines, translations);
+        });
+
+        Assert.IsNotNull(result);
+        Assert.AreEqual(320, result.PixelWidth);
+        Assert.AreEqual(140, result.PixelHeight);
+
+        var converted = new FormatConvertedBitmap(result, PixelFormats.Bgra32, null, 0);
+        int stride = converted.PixelWidth * 4;
+        var buffer = new byte[stride * converted.PixelHeight];
+        converted.CopyPixels(buffer, stride, 0);
+
+        int dark = 0;
+        for (int i = 0; i < buffer.Length; i += 4)
+        {
+            if ((buffer[i] + buffer[i + 1] + buffer[i + 2]) / 3 < 128)
+            {
+                dark++;
+            }
+        }
+
+        Assert.IsTrue(dark > 50, $"reflowed paragraph should draw text, dark pixels={dark}");
+    }
+
+    [TestMethod]
+    public void RenderKeepsSeparateRowsWhenTranslationsFit()
+    {
+        // Two close, overlapping UI rows: each translation fits its own box, so they
+        // must stay on their own lines instead of being joined into one paragraph.
+        var result = RunOnStaThread(() =>
+        {
+            var source = CreateSolidBitmap(320, 120, Colors.White);
+            var lines = new[]
+            {
+                new OcrTextLine("source one", new Rect(20, 20, 200, 20), 0.9f),
+                new OcrTextLine("source two", new Rect(100, 50, 100, 20), 0.9f),
+            };
+            return ImageTranslateRenderer.Render(source, lines, new[] { "AAAA", "BBBB" });
+        });
+
+        int darkOnSecondRow = CountDarkPixels(result, new Int32Rect(0, 52, 320, 22));
+        Assert.AreNotEqual(0, darkOnSecondRow, "second row must keep its own translation");
+    }
+
+    [TestMethod]
+    public void RenderCapsFontByInkHeightNotPaddedBox()
+    {
+        // OCR box is 34 px tall but the glyph bars are only 20 px: the translation
+        // must match the ink, not grow to the padded box height.
+        var result = RunOnStaThread(() =>
+        {
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, 220, 90));
+                var ink = new SolidColorBrush(Color.FromRgb(30, 30, 30));
+                for (int i = 0; i < 4; i++)
+                {
+                    dc.DrawRectangle(ink, null, new Rect(40 + (i * 12), 25, 5, 20));
+                }
+            }
+
+            var rtb = new RenderTargetBitmap(220, 90, 96, 96, PixelFormats.Pbgra32);
+            rtb.Render(visual);
+            rtb.Freeze();
+
+            var line = new OcrTextLine("源", new Rect(20, 20, 150, 34), 0.9f);
+            return ImageTranslateRenderer.Render(rtb, new[] { line }, new[] { "国" });
+        });
+
+        var bounds = DarkPixelBounds(result);
+        Assert.IsTrue(bounds.HasValue, "translation must be drawn");
+        Assert.IsTrue(
+            bounds.Value.Height < 26,
+            $"font should follow the 20 px ink height, not the 34 px box (drawn {bounds.Value.Height:0.#} px)");
+    }
+
+    private static Color ReadPixel(BitmapSource bitmap, int x, int y)
+    {
+        var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);
+        var buffer = new byte[4];
+        converted.CopyPixels(new Int32Rect(x, y, 1, 1), buffer, 4, 0);
+        return Color.FromRgb(buffer[2], buffer[1], buffer[0]);
+    }
+
     private static int CountDarkPixels(BitmapSource bitmap, Int32Rect area, int threshold = 128)
     {
         var converted = new FormatConvertedBitmap(bitmap, PixelFormats.Bgra32, null, 0);

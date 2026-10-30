@@ -815,6 +815,9 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             // Kill the warm WeChatOCR.exe child process started by the shared OCR component.
             WeChatOcrService.ShutdownOcr();
 
+            // Release the PaddleOCR models held by the shared inference pipeline.
+            SimdPaddleOcrService.ShutdownOcr();
+
             _disposed = true;
         }
     }

@@ -33,7 +33,8 @@ public static class LightInpaint
 
     /// <summary>
     /// Length of the region-local unknown mask from the last <see cref="TryInpaintRect"/>
-    /// that allocated one (0 if the call returned early). For unit tests.
+    /// or <see cref="TryInpaintMask"/> that allocated one (0 if the call returned early).
+    /// For unit tests.
     /// </summary>
     internal static int LastRegionMaskLength { get; private set; }
 
@@ -73,10 +74,7 @@ public static class LightInpaint
             return false;
         }
 
-        x0 = Math.Clamp(x0, 0, width);
-        y0 = Math.Clamp(y0, 0, height);
-        x1 = Math.Clamp(x1, 0, width);
-        y1 = Math.Clamp(y1, 0, height);
+        ClampRegion(ref x0, ref y0, ref x1, ref y1, width, height);
         int rw = x1 - x0;
         int rh = y1 - y0;
         if (rw < MinSide || rh < MinSide)
@@ -90,26 +88,162 @@ public static class LightInpaint
             return false;
         }
 
+        // Region-local mask only (not bool[width*height]).
+        var unknown = new bool[interior];
+        LastRegionMaskLength = interior;
+        Array.Fill(unknown, true);
+        return TryInpaintCore(
+            pixels,
+            stride,
+            width,
+            height,
+            x0,
+            y0,
+            rw,
+            rh,
+            unknown,
+            interior,
+            radius,
+            filledMask: null);
+    }
+
+    /// <summary>
+    /// Inpaint only the pixels marked in <paramref name="mask"/> (non-zero = erase)
+    /// inside the half-open rect [<paramref name="x0"/>,<paramref name="x1"/>) ×
+    /// [<paramref name="y0"/>,<paramref name="y1"/>). The mask is region-local:
+    /// <c>mask[0, 0]</c> corresponds to image pixel (<paramref name="x0"/>,
+    /// <paramref name="y0"/>). Every pixel outside the mask keeps its original value,
+    /// so a text-line background survives intact.
+    /// </summary>
+    /// <param name="maskStride">Row stride of <paramref name="mask"/> in bytes.</param>
+    /// <returns>
+    /// <c>false</c> when the region is too large or could not be filled; <c>true</c>
+    /// when the mask was empty (nothing to erase) or the fill completed.
+    /// </returns>
+    public static bool TryInpaintMask(
+        Span<byte> pixels,
+        int stride,
+        int width,
+        int height,
+        ReadOnlySpan<byte> mask,
+        int maskStride,
+        int x0,
+        int y0,
+        int x1,
+        int y1,
+        int radius = DefaultRadius)
+    {
+        LastRegionMaskLength = 0;
+        if (width <= 0 || height <= 0 || stride < width * 4 || maskStride <= 0)
+        {
+            return false;
+        }
+
+        if (pixels.Length < checked(stride * height))
+        {
+            return false;
+        }
+
+        ClampRegion(ref x0, ref y0, ref x1, ref y1, width, height);
+        int rw = x1 - x0;
+        int rh = y1 - y0;
+        if (rw < 3 || rh < 3)
+        {
+            return false;
+        }
+
+        int interior = rw * rh;
+        if (interior > MaxInteriorPixels)
+        {
+            return false;
+        }
+
+        if (mask.Length < ((rh - 1) * maskStride) + rw)
+        {
+            return false;
+        }
+
+        var unknown = new bool[interior];
+        LastRegionMaskLength = interior;
+        int unknownCount = 0;
+        for (int y = 0; y < rh; y++)
+        {
+            int maskRow = y * maskStride;
+            int localRow = y * rw;
+            for (int x = 0; x < rw; x++)
+            {
+                bool isInk = mask[maskRow + x] != 0;
+                unknown[localRow + x] = isInk;
+                if (isInk)
+                {
+                    unknownCount++;
+                }
+            }
+        }
+
+        if (unknownCount == 0)
+        {
+            // Nothing marked: a successful no-op (caller keeps the real background).
+            return true;
+        }
+
+        if (unknownCount < MinInteriorPixels)
+        {
+            // Too few glyph pixels to peel; caller can solid-fill instead.
+            return false;
+        }
+
+        // Snapshot of the erased pixels for masked smoothing (unknown is mutated below).
+        var filledMask = new byte[interior];
+        for (int i = 0; i < interior; i++)
+        {
+            filledMask[i] = unknown[i] ? (byte)1 : (byte)0;
+        }
+
+        return TryInpaintCore(
+            pixels,
+            stride,
+            width,
+            height,
+            x0,
+            y0,
+            rw,
+            rh,
+            unknown,
+            unknownCount,
+            radius,
+            filledMask);
+    }
+
+    /// <summary>
+    /// Onion-peel fill shared by the rect and mask entry points. <paramref name="unknown"/>
+    /// is consumed (pixels become known as they are committed); <paramref name="filledMask"/>
+    /// is null for whole-rect fills and otherwise marks which pixels may be smoothed.
+    /// </summary>
+    private static bool TryInpaintCore(
+        Span<byte> pixels,
+        int stride,
+        int width,
+        int height,
+        int x0,
+        int y0,
+        int rw,
+        int rh,
+        bool[] unknown,
+        int unknownCount,
+        int radius,
+        byte[] filledMask)
+    {
         if (radius < 1)
         {
             radius = 1;
         }
 
-        // Region-local mask only (not bool[width*height]).
-        var unknown = new bool[interior];
-        LastRegionMaskLength = unknown.Length;
-        for (int i = 0; i < unknown.Length; i++)
-        {
-            unknown[i] = true;
-        }
-
-        int unknownCount = interior;
-
-        // Onion-peel frontier: seed from the rect perimeter, then expand via neighbors
-        // of filled pixels (no full-region rescan each band).
-        var frontier = new List<int>(Math.Min(interior, 4096));
-        var nextFrontier = new List<int>(Math.Min(interior, 4096));
-        var queued = new bool[interior];
+        // Onion-peel frontier: seed from every unknown pixel that touches a known
+        // one (rect mode: the perimeter; mask mode: every glyph outline).
+        var frontier = new List<int>(Math.Min(rw * rh, 4096));
+        var nextFrontier = new List<int>(Math.Min(rw * rh, 4096));
+        var queued = new bool[rw * rh];
         SeedFrontier(unknown, queued, frontier, rw, rh, x0, y0, width, height);
 
         int guard = unknownCount + 8;
@@ -198,13 +332,31 @@ public static class LightInpaint
             return false;
         }
 
-        // Onion-peeling commits each band against the same known set, which leaves
-        // ring-shaped steps between bands (visible as high-frequency energy on smooth
-        // backgrounds). Two 3×3 averaging passes inside the region blend the steps;
-        // neighborhoods reach one pixel past the rect so the fill stays glued to the
-        // real border pixels. Linear gradients pass through unchanged (mean == self).
-        SmoothRegion(pixels, stride, width, height, x0, y0, x1, y1, passes: 8);
+        if (filledMask == null)
+        {
+            // Onion-peeling commits each band against the same known set, which leaves
+            // ring-shaped steps between bands (visible as high-frequency energy on smooth
+            // backgrounds). Two 3×3 averaging passes inside the region blend the steps;
+            // neighborhoods reach one pixel past the rect so the fill stays glued to the
+            // real border pixels. Linear gradients pass through unchanged (mean == self).
+            SmoothRegion(pixels, stride, width, height, x0, y0, x0 + rw, y0 + rh, passes: 8);
+        }
+        else
+        {
+            // Mask fills are thin strokes: a couple of passes on the erased pixels
+            // remove banding without touching the real background around them.
+            SmoothFilled(pixels, stride, width, height, x0, y0, rw, rh, filledMask, passes: 2);
+        }
+
         return true;
+    }
+
+    private static void ClampRegion(ref int x0, ref int y0, ref int x1, ref int y1, int width, int height)
+    {
+        x0 = Math.Clamp(x0, 0, width);
+        y0 = Math.Clamp(y0, 0, height);
+        x1 = Math.Clamp(x1, 0, width);
+        y1 = Math.Clamp(y1, 0, height);
     }
 
     private static void SmoothRegion(
@@ -265,6 +417,88 @@ public static class LightInpaint
             {
                 for (int x = 0; x < rw; x++)
                 {
+                    int pi = ((y0 + y) * stride) + ((x0 + x) * 4);
+                    int ti = ((y * rw) + x) * 3;
+                    pixels[pi] = temp[ti];
+                    pixels[pi + 1] = temp[ti + 1];
+                    pixels[pi + 2] = temp[ti + 2];
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Like <see cref="SmoothRegion"/> but only rewrites pixels marked in
+    /// <paramref name="filledMask"/>, so untouched background pixels around glyphs
+    /// keep their exact values.
+    /// </summary>
+    private static void SmoothFilled(
+        Span<byte> pixels,
+        int stride,
+        int width,
+        int height,
+        int x0,
+        int y0,
+        int rw,
+        int rh,
+        byte[] filledMask,
+        int passes)
+    {
+        var temp = new byte[rw * rh * 3];
+        for (int p = 0; p < passes; p++)
+        {
+            for (int y = 0; y < rh; y++)
+            {
+                int sy = y0 + y;
+                for (int x = 0; x < rw; x++)
+                {
+                    int ti = ((y * rw) + x) * 3;
+                    if (filledMask[(y * rw) + x] == 0)
+                    {
+                        continue;
+                    }
+
+                    int sx = x0 + x;
+                    int sb = 0, sg = 0, sr = 0, n = 0;
+                    for (int dy = -1; dy <= 1; dy++)
+                    {
+                        int qy = sy + dy;
+                        if (qy < 0 || qy >= height)
+                        {
+                            continue;
+                        }
+
+                        for (int dx = -1; dx <= 1; dx++)
+                        {
+                            int qx = sx + dx;
+                            if (qx < 0 || qx >= width)
+                            {
+                                continue;
+                            }
+
+                            int qi = (qy * stride) + (qx * 4);
+                            sb += pixels[qi];
+                            sg += pixels[qi + 1];
+                            sr += pixels[qi + 2];
+                            n++;
+                        }
+                    }
+
+                    temp[ti] = (byte)(sb / n);
+                    temp[ti + 1] = (byte)(sg / n);
+                    temp[ti + 2] = (byte)(sr / n);
+                }
+            }
+
+            for (int y = 0; y < rh; y++)
+            {
+                for (int x = 0; x < rw; x++)
+                {
+                    if (filledMask[(y * rw) + x] == 0)
+                    {
+                        continue;
+                    }
+
                     int pi = ((y0 + y) * stride) + ((x0 + x) * 4);
                     int ti = ((y * rw) + x) * 3;
                     pixels[pi] = temp[ti];
@@ -380,8 +614,8 @@ public static class LightInpaint
     }
 
     /// <summary>
-    /// Seed the first peel band: region perimeter pixels that already touch known
-    /// (outside the OCR box or image-known neighbors).
+    /// Seed the first peel band: every unknown pixel that already touches a known
+    /// pixel (rect mode: the region perimeter; mask mode: each glyph outline).
     /// </summary>
     private static void SeedFrontier(
         bool[] unknown,
@@ -394,40 +628,25 @@ public static class LightInpaint
         int width,
         int height)
     {
-        void TryAdd(int lx, int ly)
+        for (int ly = 0; ly < rh; ly++)
         {
-            int li = (ly * rw) + lx;
-            if (queued[li] || !unknown[li])
+            for (int lx = 0; lx < rw; lx++)
             {
-                return;
-            }
+                int li = (ly * rw) + lx;
+                if (!unknown[li] || queued[li])
+                {
+                    continue;
+                }
 
-            int x = x0 + lx;
-            int y = y0 + ly;
-            if (!HasKnownNeighbor(unknown, rw, rh, x0, y0, width, height, x, y))
-            {
-                return;
-            }
+                int x = x0 + lx;
+                int y = y0 + ly;
+                if (!HasKnownNeighbor(unknown, rw, rh, x0, y0, width, height, x, y))
+                {
+                    continue;
+                }
 
-            queued[li] = true;
-            frontier.Add(li);
-        }
-
-        for (int lx = 0; lx < rw; lx++)
-        {
-            TryAdd(lx, 0);
-            if (rh > 1)
-            {
-                TryAdd(lx, rh - 1);
-            }
-        }
-
-        for (int ly = 1; ly < rh - 1; ly++)
-        {
-            TryAdd(0, ly);
-            if (rw > 1)
-            {
-                TryAdd(rw - 1, ly);
+                queued[li] = true;
+                frontier.Add(li);
             }
         }
     }
@@ -669,9 +888,13 @@ public static class LightInpaint
 
         if (sumW <= 0)
         {
-            dest[destOffset] = 0;
-            dest[destOffset + 1] = 0;
-            dest[destOffset + 2] = 0;
+            // No known pixel inside the radius (image edge / isolated island): keep the
+            // source value rather than stamping a black dot. A later smoothing pass
+            // blends it with whatever neighbours were filled.
+            int pi = (y * stride) + (x * 4);
+            dest[destOffset] = pixels[pi];
+            dest[destOffset + 1] = pixels[pi + 1];
+            dest[destOffset + 2] = pixels[pi + 2];
             dest[destOffset + 3] = 255;
             return;
         }

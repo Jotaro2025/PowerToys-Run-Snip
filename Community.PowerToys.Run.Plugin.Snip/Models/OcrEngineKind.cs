@@ -15,4 +15,11 @@ public enum OcrEngineKind
 
     /// <summary>Built-in <c>Windows.Media.Ocr</c> (works on x64 and ARM64; needs an OCR language).</summary>
     Windows = 2,
+
+    /// <summary>
+    /// Built-in PaddleOCR (PP-OCRv6) via the pure C# <c>Sdcb.SimdPaddleOCR</c>
+    /// package: offline, no native binaries, works on x64 and ARM64.
+    /// Chinese-only dictionary for now.
+    /// </summary>
+    SimdPaddle = 3,
 }

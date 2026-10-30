@@ -378,7 +378,7 @@
     <value>OCR 引擎</value>
   </data>
   <data name="opt_ocr_engine_desc" xml:space="preserve">
-    <value>自动：x64 上已具备微信 OCR 组件（full 包或已下载）时用微信 OCR，否则用 Windows OCR。ARM64 始终使用 Windows OCR（微信 OCR 仅有 x64 组件）。</value>
+    <value>自动：x64 上已具备微信 OCR 组件（full 包或已下载）时用微信 OCR，否则用 Windows OCR。ARM64 使用 Windows OCR 或 PaddleOCR（微信 OCR 仅有 x64 组件）。PaddleOCR 为内置离线引擎（中文），任意 CPU 架构均可用。</value>
   </data>
   <data name="opt_windows_ocr_lang_label" xml:space="preserve">
     <value>Windows OCR 语言</value>
@@ -397,6 +397,9 @@
   </data>
   <data name="opt_ocr_engine_windows" xml:space="preserve">
     <value>Windows OCR（系统自带）</value>
+  </data>
+  <data name="opt_ocr_engine_paddle" xml:space="preserve">
+    <value>PaddleOCR（内置离线）</value>
   </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>翻译 · 目标语言</value>

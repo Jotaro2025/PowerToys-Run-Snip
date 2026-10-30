@@ -138,6 +138,80 @@ public class LightInpaintTests
         }
     }
 
+    [TestMethod]
+    public void MaskInpaintLeavesUnmaskedPixelsUntouched()
+    {
+        var truth = CreateHorizontalGradient();
+        var buffer = (byte[])truth.Clone();
+        int x0 = 20, y0 = 10, x1 = 60, y1 = 30;
+        PaintCheckerText(buffer, x0, y0, x1, y1);
+        var before = (byte[])buffer.Clone();
+
+        // Region-local mask (mask[0,0] == image (x0,y0)): only the left half of the rect.
+        int rw = x1 - x0;
+        int rh = y1 - y0;
+        var mask = new byte[rw * rh];
+        for (int y = 0; y < rh; y++)
+        {
+            for (int x = 0; x < rw / 2; x++)
+            {
+                mask[(y * rw) + x] = 1;
+            }
+        }
+
+        Assert.IsTrue(LightInpaint.TryInpaintMask(buffer, Stride, Width, Height, mask, rw, x0, y0, x1, y1));
+
+        for (int y = 0; y < Height; y++)
+        {
+            for (int x = 0; x < Width; x++)
+            {
+                bool masked = x >= x0 && x < x1 && y >= y0 && y < y1
+                    && mask[((y - y0) * rw) + (x - x0)] != 0;
+                if (masked)
+                {
+                    continue;
+                }
+
+                int i = (y * Stride) + (x * 4);
+                Assert.AreEqual(before[i], buffer[i], $"B at ({x},{y}) must stay untouched");
+                Assert.AreEqual(before[i + 1], buffer[i + 1], $"G at ({x},{y}) must stay untouched");
+                Assert.AreEqual(before[i + 2], buffer[i + 2], $"R at ({x},{y}) must stay untouched");
+            }
+        }
+    }
+
+    [TestMethod]
+    public void MaskInpaintOnGradientReconstructsStrokes()
+    {
+        var truth = CreateHorizontalGradient();
+        var buffer = (byte[])truth.Clone();
+        int x0 = 20, y0 = 10, x1 = 60, y1 = 30;
+        PaintCheckerText(buffer, x0, y0, x1, y1);
+
+        int rw = x1 - x0;
+        int rh = y1 - y0;
+        var mask = new byte[rw * rh];
+        Array.Fill(mask, (byte)1);
+
+        Assert.IsTrue(LightInpaint.TryInpaintMask(buffer, Stride, Width, Height, mask, rw, x0, y0, x1, y1));
+
+        double mae = LightInpaint.MeanAbsErrorBgr(buffer, truth, Stride, x0, y0, x1, y1);
+        Assert.IsTrue(mae < 12, $"mask inpaint MAE {mae:F2} should stay low on a gradient");
+    }
+
+    [TestMethod]
+    public void EmptyMaskIsNoOp()
+    {
+        var buffer = CreateHorizontalGradient();
+        var before = (byte[])buffer.Clone();
+        int rw = 50;
+        int rh = 20;
+        var mask = new byte[rw * rh];
+
+        Assert.IsTrue(LightInpaint.TryInpaintMask(buffer, Stride, Width, Height, mask, rw, 10, 10, 60, 30));
+        CollectionAssert.AreEqual(before, buffer);
+    }
+
     private static byte[] CreateHorizontalGradient()
     {
         var pixels = new byte[Stride * Height];

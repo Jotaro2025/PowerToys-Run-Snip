@@ -378,7 +378,7 @@
     <value>OCR engine</value>
   </data>
   <data name="opt_ocr_engine_desc" xml:space="preserve">
-    <value>Auto: WeChat OCR on x64 when its component is installed (full package or already downloaded), otherwise Windows OCR. ARM64 always uses Windows OCR (WeChat OCR is x64-only).</value>
+    <value>Auto: WeChat OCR on x64 when its component is installed (full package or already downloaded), otherwise Windows OCR. ARM64 uses Windows OCR or PaddleOCR (WeChat OCR is x64-only). PaddleOCR is a built-in offline engine (Chinese) that works on any CPU architecture.</value>
   </data>
   <data name="opt_windows_ocr_lang_label" xml:space="preserve">
     <value>Windows OCR language</value>
@@ -397,6 +397,9 @@
   </data>
   <data name="opt_ocr_engine_windows" xml:space="preserve">
     <value>Windows OCR (built-in)</value>
+  </data>
+  <data name="opt_ocr_engine_paddle" xml:space="preserve">
+    <value>PaddleOCR (built-in offline)</value>
   </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>Translate · Target language</value>

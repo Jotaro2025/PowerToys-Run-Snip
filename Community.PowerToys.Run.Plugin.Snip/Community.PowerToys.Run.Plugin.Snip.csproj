@@ -76,6 +76,15 @@
     -->
     <PackageReference Include="Sdcb.HyMT2Sharp" Version="2.0.0" />
 
+    <!--
+      PaddleOCR text extraction (Apache-2.0, pure C# PP-OCRv6 inference, no native
+      binaries). ChineseV6Tiny embeds DET+REC+dictionary (+CLS) as assembly
+      resources (~6 MB), so the engine works offline on x64 and ARM64 with no
+      download step. Chinese-only dictionary for now.
+    -->
+    <PackageReference Include="Sdcb.SimdPaddleOCR" Version="2.0.0" />
+    <PackageReference Include="Sdcb.SimdPaddleOCR.Models.ChineseV6Tiny" Version="1.0.0" />
+
   </ItemGroup>
 
   <!--

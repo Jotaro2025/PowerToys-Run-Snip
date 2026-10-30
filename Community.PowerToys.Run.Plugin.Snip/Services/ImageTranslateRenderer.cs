@@ -17,22 +17,28 @@ using Community.PowerToys.Run.Plugin.Snip.Models;
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
-/// WeChat-style image translate rendering: sample background near each OCR
-/// region (multi-ring median for text color), erase original text with a pure-C#
-/// Telea-like inpaint on <c>WriteableBitmap.BackBuffer</c> via <see cref="Span{T}"/>
-/// (median fill fallback; no full-frame <c>byte[]</c> Marshal.Copy), then draw the translation with
-/// wrapping + adaptive font size into per-region RTBs blended back (no full-frame rematerialize).
-/// Quad path uses a pure WPF affine transform — no OpenCV.
+/// WeChat-style image translate rendering. For each OCR region it builds a glyph mask
+/// (local background plane / interior median), erases only the glyph pixels (Telea-like
+/// inpaint or exact plane fill), then paints the translation in the sampled original
+/// color with wrapping + adaptive font size. Axis-aligned lines are grouped into
+/// paragraphs so long translations reflow instead of shrinking per line. Quad path uses
+/// a pure WPF affine transform — no OpenCV.
 /// </summary>
 public static class ImageTranslateRenderer
 {
     private const double MinQuadArea = 8.0;
     private const double MinEdgeLength = 2.0;
 
-    private static readonly Typeface Typeface = new Typeface(
+    private static readonly Typeface SemiBoldTypeface = new Typeface(
         new FontFamily("Microsoft YaHei UI, Segoe UI, Arial"),
         FontStyles.Normal,
         FontWeights.SemiBold,
+        FontStretches.Normal);
+
+    private static readonly Typeface BoldTypeface = new Typeface(
+        new FontFamily("Microsoft YaHei UI, Segoe UI, Arial"),
+        FontStyles.Normal,
+        FontWeights.Bold,
         FontStretches.Normal);
 
     /// <summary>Outward expansion of the OCR box before erase/paint (pixels).</summary>
@@ -117,59 +123,36 @@ public static class ImageTranslateRenderer
                 pixels = new Span<byte>((void*)writable.BackBuffer, byteCount);
             }
 
-            // Pass 1: sample contrast colors from the *original* buffer, then erase
-            // each OCR region via Telea-like inpaint (median solid fill as fallback).
-            // Dirty only the erased boxes (not the whole frame).
-            for (int i = 0; i < lines.Count; i++)
+            // Group visual lines into paragraphs: a long translation reflows over the
+            // paragraph's union box instead of being squeezed into one line box.
+            var paragraphs = TranslateParagraph.Group(lines);
+            foreach (var paragraph in paragraphs)
             {
-                var text = translations[i];
-                if (string.IsNullOrWhiteSpace(text))
+                if (paragraph.IsSingleLine)
                 {
-                    continue;
-                }
-
-                if (TryGetUsableQuad(lines[i], width, height, out var quad, out double localW, out double localH))
-                {
-                    var bounds = Clamp(BoundsOf(quad), width, height);
-                    if (bounds.Width < 2 || bounds.Height < 2)
-                    {
-                        continue;
-                    }
-
-                    var bg = SampleBackground(pixels, stride, width, height, bounds);
-                    EraseRegion(pixels, stride, width, height, bounds, bg);
-                    AddDirtyRegion(writable, bounds, width, height);
-                    var layout = BuildTextLayout(
-                        text,
-                        Math.Max(1, localW - (TextPaddingX * 2)),
-                        Math.Max(1, localH - (TextPaddingY * 2)));
-                    jobs.Add(DrawJob.ForQuad(quad, localW, localH, layout, ContrastingText(bg)));
+                    RenderSingleLine(
+                        pixels,
+                        stride,
+                        width,
+                        height,
+                        writable,
+                        lines,
+                        translations,
+                        paragraph.LineIndices[0],
+                        jobs);
                 }
                 else
                 {
-                    var raw = Clamp(lines[i].Box, width, height);
-                    if (raw.Width < 2 || raw.Height < 2)
-                    {
-                        continue;
-                    }
-
-                    // Sample the surround before the box grows: the extra rows the
-                    // translation needs may already hold neighbouring text.
-                    var bg = SampleBackground(pixels, stride, width, height, raw);
-                    var paintBox = ExpandBox(raw, BoxExpandX, BoxExpandY, width, height);
-                    paintBox = ExpandToCoverInk(pixels, stride, width, height, paintBox, bg);
-                    var layout = BuildTextLayout(
-                        text,
-                        Math.Max(1, paintBox.Width - (TextPaddingX * 2)),
-                        Math.Max(1, paintBox.Height - (TextPaddingY * 2)));
-                    paintBox = GrowBoxToFit(
-                        paintBox,
-                        layout.Size.Height + (TextPaddingY * 2),
+                    RenderParagraph(
+                        pixels,
+                        stride,
                         width,
-                        height);
-                    EraseRegion(pixels, stride, width, height, paintBox, bg);
-                    AddDirtyRegion(writable, paintBox, width, height);
-                    jobs.Add(DrawJob.ForAxis(paintBox, layout, ContrastingText(bg)));
+                        height,
+                        writable,
+                        lines,
+                        translations,
+                        paragraph,
+                        jobs);
                 }
             }
         }
@@ -182,13 +165,17 @@ public static class ImageTranslateRenderer
         // (no second full-frame RenderTargetBitmap — cuts peak ~1× frame).
         foreach (var job in jobs)
         {
-            if (job.IsQuad)
+            switch (job.Kind)
             {
-                BlitQuadText(writable, job.Quad, job.LocalWidth, job.LocalHeight, job.Layout, job.Foreground);
-            }
-            else
-            {
-                BlitAxisText(writable, job.PaintBox, job.Layout, job.Foreground);
+                case DrawKind.Quad:
+                    BlitQuadText(writable, job);
+                    break;
+                case DrawKind.Paragraph:
+                    BlitParagraphText(writable, job);
+                    break;
+                default:
+                    BlitAxisText(writable, job);
+                    break;
             }
         }
 
@@ -200,17 +187,431 @@ public static class ImageTranslateRenderer
         return writable;
     }
 
+    private static void RenderSingleLine(
+        Span<byte> pixels,
+        int stride,
+        int width,
+        int height,
+        WriteableBitmap dest,
+        IReadOnlyList<OcrTextLine> lines,
+        IReadOnlyList<string> translations,
+        int index,
+        List<DrawJob> jobs)
+    {
+        var line = lines[index];
+        var text = translations[index];
+        if (line == null || string.IsNullOrWhiteSpace(text))
+        {
+            return;
+        }
+
+        if (TryGetUsableQuad(line, width, height, out var quad, out double localW, out double localH))
+        {
+            var bounds = Clamp(BoundsOf(quad), width, height);
+            if (bounds.Width < 2 || bounds.Height < 2)
+            {
+                return;
+            }
+
+            var eraseBox = ExpandBox(bounds, 1, 1, width, height);
+            var style = EraseSmart(pixels, stride, width, height, eraseBox, dest);
+            double cap = FontCap(new Rect(0, 0, localW, localH), style.InkHeight);
+            var quadLayout = BuildTextLayout(
+                text,
+                Math.Max(1, localW - (TextPaddingX * 2)),
+                Math.Max(1, localH - (TextPaddingY * 2)),
+                cap,
+                style.Bold);
+            jobs.Add(DrawJob.ForQuad(quad, localW, localH, quadLayout, style.Foreground, style.Bold));
+            return;
+        }
+
+        var raw = Clamp(line.Box, width, height);
+        if (raw.Width < 2 || raw.Height < 2)
+        {
+            return;
+        }
+
+        // Sample the surround before the box grows: the extra rows the translation
+        // needs may already hold neighbouring text.
+        var bg = SampleBackground(pixels, stride, width, height, raw);
+        var paintBox = ExpandBox(raw, BoxExpandX, BoxExpandY, width, height);
+        paintBox = ExpandToCoverInk(pixels, stride, width, height, paintBox, bg);
+        var textStyle = EraseSmart(pixels, stride, width, height, paintBox, dest);
+
+        // Font size is capped by the original line height, so growing the box only
+        // buys wrapped lines, never an inflated font.
+        double contentWidth = Math.Max(1, paintBox.Width - (TextPaddingX * 2));
+        double fontCap = FontCap(raw, textStyle.InkHeight);
+        var layout = BuildTextLayout(
+            text,
+            contentWidth,
+            Math.Max(1, paintBox.Height - (TextPaddingY * 2)),
+            fontCap,
+            textStyle.Bold);
+
+        var grown = GrowBoxToFit(paintBox, layout.Size.Height + (TextPaddingY * 2), width, height);
+        if (grown.Height > paintBox.Height + 0.5)
+        {
+            // Re-fit after growth: the extra height may allow a larger (but still
+            // capped) font, and the layout must match the box we actually draw into.
+            paintBox = grown;
+            layout = BuildTextLayout(
+                text,
+                contentWidth,
+                Math.Max(1, paintBox.Height - (TextPaddingY * 2)),
+                fontCap,
+                textStyle.Bold);
+        }
+
+        jobs.Add(DrawJob.ForAxis(paintBox, raw, layout, textStyle.Foreground, textStyle.Bold));
+    }
+
+    /// <summary>
+    /// Font-size ceiling for one source line. The OCR box includes leading/padding, so
+    /// its height overestimates the original font; the glyph-mask height
+    /// (ascender→descender) tracks the real size much more closely. The box cap still
+    /// bounds the result, and lines without a usable mask keep the old box-based cap.
+    /// </summary>
+    private static double FontCap(Rect raw, double inkHeight)
+    {
+        double boxCap = Math.Max(MinFontSize + 0.5, raw.Height - (TextPaddingY * 2));
+        if (inkHeight <= 1)
+        {
+            return boxCap;
+        }
+
+        double inkCap = Math.Max(MinFontSize + 0.5, inkHeight * 1.05);
+        return Math.Min(boxCap, inkCap);
+    }
+
+    private static void RenderParagraph(
+        Span<byte> pixels,
+        int stride,
+        int width,
+        int height,
+        WriteableBitmap dest,
+        IReadOnlyList<OcrTextLine> lines,
+        IReadOnlyList<string> translations,
+        TranslateParagraph paragraph,
+        List<DrawJob> jobs)
+    {
+        TextStyle style = default;
+        bool hasStyle = false;
+        var entries = new List<ParagraphLine>(paragraph.LineIndices.Count);
+
+        foreach (int index in paragraph.LineIndices)
+        {
+            var text = translations[index];
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                // Do not erase a source line that has no replacement to paint.
+                continue;
+            }
+
+            var raw = Clamp(lines[index].Box, width, height);
+            if (raw.Width < 2 || raw.Height < 2)
+            {
+                continue;
+            }
+
+            var bg = SampleBackground(pixels, stride, width, height, raw);
+            var paintBox = ExpandToCoverInk(
+                pixels,
+                stride,
+                width,
+                height,
+                ExpandBox(raw, BoxExpandX, BoxExpandY, width, height),
+                bg);
+
+            var lineStyle = EraseSmart(pixels, stride, width, height, paintBox, dest);
+            if (!hasStyle || lineStyle.InkPixels > style.InkPixels)
+            {
+                style = lineStyle;
+                hasStyle = true;
+            }
+
+            entries.Add(new ParagraphLine(raw, paintBox, lineStyle, text));
+        }
+
+        if (!hasStyle || entries.Count == 0)
+        {
+            return;
+        }
+
+        // Separate UI rows can sit close enough to look like one paragraph. When every
+        // translation still fits its own line box at a readable size, keep the original
+        // line structure; only reflow when a translation genuinely does not fit.
+        if (TryRenderPerLine(entries, width, height, jobs))
+        {
+            return;
+        }
+
+        string joined = JoinTranslationParts(entries.Select(e => e.Text).ToList());
+        double top = paragraph.Box.Top;
+        double maxHeight = AvailableHeight(lines, paragraph, height);
+
+        double contentWidth = Math.Max(1, paragraph.Box.Width - (TextPaddingX * 2));
+        double fontCap = FontCap(entries[0].Raw, entries[0].Style.InkHeight);
+        for (int i = 1; i < entries.Count; i++)
+        {
+            fontCap = Math.Min(fontCap, FontCap(entries[i].Raw, entries[i].Style.InkHeight));
+        }
+
+        var layout = BuildTextLayout(
+            joined,
+            contentWidth,
+            Math.Max(1, maxHeight - (TextPaddingY * 2)),
+            fontCap,
+            style.Bold);
+
+        double blockHeight = Math.Min(
+            Math.Max(1, maxHeight),
+            Math.Max(paragraph.Box.Height, layout.Size.Height + (TextPaddingY * 2)));
+        var block = new Rect(paragraph.Box.X, top, paragraph.Box.Width, blockHeight);
+
+        var first = Clamp(lines[paragraph.LineIndices[0]].Box, width, height);
+        var alignment = paragraph.Alignment switch
+        {
+            ParagraphAlignment.Center => TextAlignment.Center,
+            ParagraphAlignment.Right => TextAlignment.Right,
+            _ => TextAlignment.Left,
+        };
+
+        jobs.Add(DrawJob.ForParagraph(block, first, layout, style.Foreground, style.Bold, alignment));
+    }
+
+    /// <summary>
+    /// Paints each paragraph line into its own box when the translation fits at no less
+    /// than 80% of the line's natural font size. Returns false when any line needs more
+    /// room, in which case the caller reflows the whole paragraph as one block.
+    /// </summary>
+    private static bool TryRenderPerLine(
+        List<ParagraphLine> entries,
+        int width,
+        int height,
+        List<DrawJob> jobs)
+    {
+        var layouts = new TextLayout[entries.Count];
+        var boxes = new Rect[entries.Count];
+
+        // One cap for the whole paragraph: OCR box heights vary by a few pixels with
+        // ascenders/descenders, and per-line caps would paint neighbouring rows at
+        // visibly different sizes. The smallest cap wins so every line still fits.
+        double sharedCap = FontCap(entries[0].Raw, entries[0].Style.InkHeight);
+        for (int i = 1; i < entries.Count; i++)
+        {
+            sharedCap = Math.Min(sharedCap, FontCap(entries[i].Raw, entries[i].Style.InkHeight));
+        }
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            var layout = BuildTextLayout(
+                entry.Text,
+                Math.Max(1, entry.PaintBox.Width - (TextPaddingX * 2)),
+                Math.Max(1, entry.PaintBox.Height - (TextPaddingY * 2)),
+                sharedCap,
+                entry.Style.Bold);
+
+            if (layout.FontSize < Math.Max(MinFontSize + 0.5, sharedCap * 0.8))
+            {
+                return false;
+            }
+
+            layouts[i] = layout;
+            boxes[i] = entry.PaintBox;
+        }
+
+        for (int i = 0; i < entries.Count; i++)
+        {
+            var entry = entries[i];
+            var layout = layouts[i];
+            var grown = GrowBoxToFit(boxes[i], layout.Size.Height + (TextPaddingY * 2), width, height);
+            if (grown.Height > boxes[i].Height + 0.5)
+            {
+                boxes[i] = grown;
+                layout = BuildTextLayout(
+                    entry.Text,
+                    Math.Max(1, grown.Width - (TextPaddingX * 2)),
+                    Math.Max(1, grown.Height - (TextPaddingY * 2)),
+                    sharedCap,
+                    entry.Style.Bold);
+            }
+
+            jobs.Add(DrawJob.ForAxis(boxes[i], entry.Raw, layout, entry.Style.Foreground, entry.Style.Bold));
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Vertical room a paragraph may use: down to the next (non-member) line, capped so
+    /// one paragraph cannot paint over a large unrelated area.
+    /// </summary>
+    private static double AvailableHeight(
+        IReadOnlyList<OcrTextLine> lines,
+        TranslateParagraph paragraph,
+        int imageHeight)
+    {
+        double nextTop = imageHeight;
+        for (int i = 0; i < lines.Count; i++)
+        {
+            if (lines[i] == null || paragraph.LineIndices.Contains(i))
+            {
+                continue;
+            }
+
+            double top = lines[i].Box.Top;
+            if (top > paragraph.Box.Top + 1 && top < nextTop)
+            {
+                nextTop = top;
+            }
+        }
+
+        double capBottom = Math.Min(
+            nextTop - 2,
+            paragraph.Box.Top + (paragraph.Box.Height * 2.5) + 60);
+        return Math.Max(paragraph.Box.Height, capBottom - paragraph.Box.Top);
+    }
+
+    /// <summary>
+    /// Joins per-line translations into one paragraph. A space is inserted only when the
+    /// boundary is not CJK↔CJK, so Chinese output stays tight and Latin stays readable.
+    /// </summary>
+    internal static string JoinTranslationParts(IReadOnlyList<string> parts)
+    {
+        ArgumentNullException.ThrowIfNull(parts);
+        var builder = new StringBuilder();
+        foreach (string part in parts)
+        {
+            string trimmed = part?.Trim();
+            if (string.IsNullOrEmpty(trimmed))
+            {
+                continue;
+            }
+
+            if (builder.Length > 0 && NeedsSpace(builder[^1], trimmed[0]))
+            {
+                builder.Append(' ');
+            }
+
+            builder.Append(trimmed);
+        }
+
+        return builder.ToString();
+    }
+
+    private static bool NeedsSpace(char left, char right)
+        => !(IsCjk(left) && IsCjk(right));
+
+    private static bool IsCjk(char value)
+        => (value >= 0x2E80 && value <= 0x9FFF)
+        || (value >= 0xF900 && value <= 0xFAFF)
+        || (value >= 0xFF00 && value <= 0xFFEF)
+        || (value >= 0x3000 && value <= 0x303F);
+
+    /// <summary>
+    /// Erases one region and returns the style to paint with. Preferred path: analyze a
+    /// glyph mask and erase only those pixels (exact plane fill / flat fill / inpaint).
+    /// Fallback (no plausible mask): erase the whole box with a plane or Telea fill.
+    /// </summary>
+    private static TextStyle EraseSmart(
+        Span<byte> pixels,
+        int stride,
+        int width,
+        int height,
+        Rect box,
+        WriteableBitmap dest)
+    {
+        var mask = TextMaskAnalyzer.TryBuild(pixels, stride, width, height, box);
+        if (mask != null && mask.IsUsable && mask.MaskPixelCount > 0)
+        {
+            bool filled = mask.FillKind switch
+            {
+                MaskFillKind.Plane => mask.FillWithPlane(pixels, stride, width, height),
+                MaskFillKind.Solid => FillMaskSolid(mask, pixels, stride, width, height),
+                _ => LightInpaint.TryInpaintMask(
+                    pixels,
+                    stride,
+                    width,
+                    height,
+                    mask.Mask,
+                    mask.Width,
+                    mask.Left,
+                    mask.Top,
+                    mask.Left + mask.Width,
+                    mask.Top + mask.Height,
+                    mask.InpaintRadius),
+            };
+
+            if (!filled)
+            {
+                mask.FillSolid(pixels, stride, width, height);
+            }
+
+            AddDirtyRegion(dest, mask.Bounds, width, height);
+            return new TextStyle(
+                mask.Foreground,
+                mask.Bold,
+                mask.MaskPixelCount,
+                Math.Max(0, mask.Bounds.Height - 2));
+        }
+
+        // No reliable glyph mask (photo background, very low contrast, tiny box).
+        var bg = SampleBackground(pixels, stride, width, height, box);
+        var ring = new List<BackgroundSample>(160);
+        CollectRingSamples(pixels, stride, width, height, box, ring);
+        var plane = BackgroundPlane.Fit(ring);
+        if (plane != null)
+        {
+            plane.FillRect(
+                pixels,
+                stride,
+                width,
+                height,
+                (int)Math.Floor(box.X),
+                (int)Math.Floor(box.Y),
+                (int)Math.Ceiling(box.Right),
+                (int)Math.Ceiling(box.Bottom));
+        }
+        else
+        {
+            EraseRegion(pixels, stride, width, height, box, bg);
+        }
+
+        AddDirtyRegion(dest, box, width, height);
+        Color foreground = mask is { IsUsable: true } ? mask.Foreground : ContrastingText(bg);
+        return new TextStyle(foreground, bold: false, inkPixels: 0, inkHeight: 0);
+    }
+
+    private static bool FillMaskSolid(
+        TextMaskResult mask,
+        Span<byte> pixels,
+        int stride,
+        int width,
+        int height)
+    {
+        mask.FillSolid(pixels, stride, width, height);
+        return true;
+    }
+
     /// <summary>
     /// Measures and wraps the translation once, up front: every draw call must use
     /// the same numbers, otherwise a size that merely "fits" by measurement can be
     /// clipped away entirely at draw time.
     /// </summary>
-    private static TextLayout BuildTextLayout(string text, double maxWidth, double maxHeight)
+    private static TextLayout BuildTextLayout(
+        string text,
+        double maxWidth,
+        double maxHeight,
+        double maxFontSize,
+        bool bold)
     {
-        var cache = new TextMeasureCache();
-        double fontSize = FitFontSize(text, maxWidth, maxHeight, cache);
+        var cache = new TextMeasureCache(bold);
+        double fontSize = FitFontSize(text, maxWidth, maxHeight, maxFontSize, cache);
         string display = WrapTextCore(text, maxWidth, fontSize, cache);
-        var size = MeasureUnclipped(display, fontSize, maxWidth);
+        var size = MeasureUnclipped(display, fontSize, maxWidth, bold);
         return new TextLayout(display, fontSize, size);
     }
 
@@ -241,10 +642,10 @@ public static class ImageTranslateRenderer
     /// <summary>
     /// Grows a paint box vertically while the rows just outside it still hold ink.
     /// OCR boxes hug the x-height, so ascenders/descenders of the very line being
-    /// translated poke out of the fixed expansion. The inpaint then samples those
-    /// border strokes and drags their color inward (grey smudges), while the uncovered
-    /// tips survive as stray "black dots". Growth is capped at a fraction of the box
-    /// height so a tight line pitch cannot swallow the neighbouring line.
+    /// translated poke out of the fixed expansion. The mask then samples those border
+    /// strokes and drags their color inward (grey smudges), while the uncovered tips
+    /// survive as stray "black dots". Growth is capped at a fraction of the box height
+    /// so a tight line pitch cannot swallow the neighbouring line.
     /// </summary>
     internal static Rect ExpandToCoverInk(ReadOnlySpan<byte> pixels, int stride, int width, int height, Rect box, Color background)
     {
@@ -342,20 +743,21 @@ public static class ImageTranslateRenderer
         return tinted * 100 >= (x1 - x0) * (int)(MinTintFraction * 100);
     }
 
-    private static void BlitAxisText(WriteableBitmap dest, Rect paintBox, TextLayout layout, Color fg)
+    private static void BlitAxisText(WriteableBitmap dest, DrawJob job)
     {
-        var region = ComputeBlitRegion(paintBox, dest.PixelWidth, dest.PixelHeight);
+        var region = ComputeBlitRegion(job.Box, dest.PixelWidth, dest.PixelHeight);
         if (region.IsEmpty)
         {
             return;
         }
 
         // Draw in region-local space so a box clipped at the image edge keeps its layout.
-        var localBox = new Rect(paintBox.X - region.X, paintBox.Y - region.Y, paintBox.Width, paintBox.Height);
+        var localBox = new Rect(job.Box.X - region.X, job.Box.Y - region.Y, job.Box.Width, job.Box.Height);
+        var localAnchor = new Rect(job.Anchor.X - region.X, job.Anchor.Y - region.Y, job.Anchor.Width, job.Anchor.Height);
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
-            DrawAxisText(dc, localBox, layout, fg);
+            DrawAxisText(dc, localBox, localAnchor, job.Layout, job.Foreground, job.Bold);
         }
 
         var rtb = new RenderTargetBitmap(region.Width, region.Height, 96, 96, PixelFormats.Pbgra32);
@@ -363,27 +765,42 @@ public static class ImageTranslateRenderer
         AlphaBlendInto(dest, rtb, region.X, region.Y);
     }
 
-    private static void BlitQuadText(
-        WriteableBitmap dest,
-        Point[] quad,
-        double localW,
-        double localH,
-        TextLayout layout,
-        Color fg)
+    private static void BlitParagraphText(WriteableBitmap dest, DrawJob job)
     {
-        var region = ComputeBlitRegion(BoundsOf(quad), dest.PixelWidth, dest.PixelHeight);
+        var region = ComputeBlitRegion(job.Box, dest.PixelWidth, dest.PixelHeight);
+        if (region.IsEmpty)
+        {
+            return;
+        }
+
+        var localBox = new Rect(job.Box.X - region.X, job.Box.Y - region.Y, job.Box.Width, job.Box.Height);
+        var localAnchor = new Rect(job.Anchor.X - region.X, job.Anchor.Y - region.Y, job.Anchor.Width, job.Anchor.Height);
+        var dv = new DrawingVisual();
+        using (var dc = dv.RenderOpen())
+        {
+            DrawParagraphText(dc, localBox, localAnchor, job.Layout, job.Foreground, job.Bold, job.Alignment);
+        }
+
+        var rtb = new RenderTargetBitmap(region.Width, region.Height, 96, 96, PixelFormats.Pbgra32);
+        rtb.Render(dv);
+        AlphaBlendInto(dest, rtb, region.X, region.Y);
+    }
+
+    private static void BlitQuadText(WriteableBitmap dest, DrawJob job)
+    {
+        var region = ComputeBlitRegion(BoundsOf(job.Quad), dest.PixelWidth, dest.PixelHeight);
         if (region.IsEmpty)
         {
             return;
         }
 
         // Draw in region-local space: translate quad so region top-left is (0,0).
-        var localQuad = OffsetQuad(quad, -region.X, -region.Y);
+        var localQuad = OffsetQuad(job.Quad, -region.X, -region.Y);
 
         var dv = new DrawingVisual();
         using (var dc = dv.RenderOpen())
         {
-            DrawQuadText(dc, localQuad, localW, localH, layout, fg);
+            DrawQuadText(dc, localQuad, job.LocalWidth, job.LocalHeight, job.Layout, job.Foreground, job.Bold);
         }
 
         var rtb = new RenderTargetBitmap(region.Width, region.Height, 96, 96, PixelFormats.Pbgra32);
@@ -570,7 +987,7 @@ public static class ImageTranslateRenderer
         return false;
     }
 
-    /// <summary>Marks only the OCR erase box dirty (not the full bitmap).</summary>
+    /// <summary>Marks only the erased box dirty (not the full bitmap).</summary>
     private static void AddDirtyRegion(WriteableBitmap bitmap, Rect region, int width, int height)
     {
         int x0 = Math.Clamp((int)Math.Floor(region.X), 0, width);
@@ -583,14 +1000,61 @@ public static class ImageTranslateRenderer
         }
     }
 
-    private static void DrawAxisText(DrawingContext dc, Rect paintBox, TextLayout layout, Color fg)
+    private static void AddDirtyRegion(WriteableBitmap bitmap, Int32Rect region, int width, int height)
+        => AddDirtyRegion(bitmap, new Rect(region.X, region.Y, region.Width, region.Height), width, height);
+
+    private static void DrawAxisText(
+        DrawingContext dc,
+        Rect paintBox,
+        Rect anchor,
+        TextLayout layout,
+        Color fg,
+        bool bold)
     {
         double contentWidth = Math.Max(1, paintBox.Width - (TextPaddingX * 2));
-        var ft = CreateLaidOutText(layout.Display, layout.FontSize, contentWidth, fg);
+        var ft = CreateLaidOutText(layout.Display, layout.FontSize, contentWidth, fg, bold);
+        double y = BaselineTop(paintBox, anchor, layout, ft);
+        dc.DrawText(ft, new Point(paintBox.X + TextPaddingX, y));
+    }
 
-        double x = paintBox.X + TextPaddingX;
-        double y = paintBox.Y + TextPaddingY + Math.Max(0, (paintBox.Height - (TextPaddingY * 2) - ft.Height) / 2);
-        dc.DrawText(ft, new Point(x, y));
+    private static void DrawParagraphText(
+        DrawingContext dc,
+        Rect block,
+        Rect anchor,
+        TextLayout layout,
+        Color fg,
+        bool bold,
+        TextAlignment alignment)
+    {
+        double contentWidth = Math.Max(1, block.Width - (TextPaddingX * 2));
+        var ft = CreateLaidOutText(layout.Display, layout.FontSize, contentWidth, fg, bold);
+        ft.TextAlignment = alignment;
+        double y = BaselineTop(block, anchor, layout, ft);
+        dc.DrawText(ft, new Point(block.X + TextPaddingX, y));
+    }
+
+    /// <summary>
+    /// Places the first text baseline on the original line's baseline (box bottom minus
+    /// an estimated descent), clamped so the block stays inside the paint box. When the
+    /// block is taller than the box (grown for a long translation) it starts at the top.
+    /// </summary>
+    private static double BaselineTop(Rect paintBox, Rect anchor, TextLayout layout, FormattedText ft)
+    {
+        double descent = Math.Min(Math.Max(0, anchor.Height) * 0.18, layout.FontSize * 0.22);
+        double y = anchor.Bottom - descent - ft.Baseline;
+        double minY = paintBox.Y + TextPaddingY;
+        if (y < minY)
+        {
+            y = minY;
+        }
+
+        double maxY = paintBox.Bottom - TextPaddingY - ft.Height;
+        if (maxY >= minY && y > maxY)
+        {
+            y = maxY;
+        }
+
+        return y;
     }
 
     private static void DrawQuadText(
@@ -599,23 +1063,72 @@ public static class ImageTranslateRenderer
         double localW,
         double localH,
         TextLayout layout,
-        Color fg)
+        Color fg,
+        bool bold)
     {
         var matrix = CreateAffineFromQuad(quad, localW, localH);
         dc.PushTransform(new MatrixTransform(matrix));
         try
         {
             double contentWidth = Math.Max(1, localW - (TextPaddingX * 2));
-            var ft = CreateLaidOutText(layout.Display, layout.FontSize, contentWidth, fg);
+            var ft = CreateLaidOutText(layout.Display, layout.FontSize, contentWidth, fg, bold);
 
-            double x = TextPaddingX;
-            double y = TextPaddingY + Math.Max(0, (localH - (TextPaddingY * 2) - ft.Height) / 2);
-            dc.DrawText(ft, new Point(x, y));
+            double descent = Math.Min(localH * 0.18, layout.FontSize * 0.22);
+            double y = localH - TextPaddingY - descent - ft.Baseline;
+            double minY = TextPaddingY;
+            if (y < minY)
+            {
+                y = minY;
+            }
+
+            dc.DrawText(ft, new Point(TextPaddingX, y));
         }
         finally
         {
             dc.Pop();
         }
+    }
+
+    private readonly struct TextStyle
+    {
+        public TextStyle(Color foreground, bool bold, int inkPixels, double inkHeight)
+        {
+            Foreground = foreground;
+            Bold = bold;
+            InkPixels = inkPixels;
+            InkHeight = inkHeight;
+        }
+
+        public Color Foreground { get; }
+
+        public bool Bold { get; }
+
+        /// <summary>Mask pixels erased for this line; the paragraph keeps the busiest style.</summary>
+        public int InkPixels { get; }
+
+        /// <summary>Height of the detected glyph ink (0 when no mask was usable).</summary>
+        public double InkHeight { get; }
+    }
+
+    private readonly struct ParagraphLine
+    {
+        public ParagraphLine(Rect raw, Rect paintBox, TextStyle style, string text)
+        {
+            Raw = raw;
+            PaintBox = paintBox;
+            Style = style;
+            Text = text;
+        }
+
+        /// <summary>Original OCR box (baseline anchor).</summary>
+        public Rect Raw { get; }
+
+        /// <summary>Expanded erase/paint box.</summary>
+        public Rect PaintBox { get; }
+
+        public TextStyle Style { get; }
+
+        public string Text { get; }
     }
 
     private readonly struct TextLayout
@@ -636,38 +1149,87 @@ public static class ImageTranslateRenderer
         public Size Size { get; }
     }
 
-    private readonly struct DrawJob
+    private enum DrawKind
     {
-        private DrawJob(Rect paintBox, Point[] quad, double localW, double localH, TextLayout layout, Color fg, bool isQuad)
+        Axis,
+        Quad,
+        Paragraph,
+    }
+
+    private sealed class DrawJob
+    {
+        private DrawJob()
         {
-            PaintBox = paintBox;
-            Quad = quad;
-            LocalWidth = localW;
-            LocalHeight = localH;
-            Layout = layout;
-            Foreground = fg;
-            IsQuad = isQuad;
         }
 
-        public Rect PaintBox { get; }
+        public DrawKind Kind { get; private init; }
 
-        public Point[] Quad { get; }
+        /// <summary>Paint/paragraph box in image coordinates.</summary>
+        public Rect Box { get; private init; }
 
-        public double LocalWidth { get; }
+        /// <summary>Original first-line box used as the baseline anchor.</summary>
+        public Rect Anchor { get; private init; }
 
-        public double LocalHeight { get; }
+        public Point[] Quad { get; private init; }
 
-        public TextLayout Layout { get; }
+        public double LocalWidth { get; private init; }
 
-        public Color Foreground { get; }
+        public double LocalHeight { get; private init; }
 
-        public bool IsQuad { get; }
+        public TextLayout Layout { get; private init; }
 
-        public static DrawJob ForAxis(Rect paintBox, TextLayout layout, Color fg)
-            => new DrawJob(paintBox, null, 0, 0, layout, fg, isQuad: false);
+        public Color Foreground { get; private init; }
 
-        public static DrawJob ForQuad(Point[] quad, double localW, double localH, TextLayout layout, Color fg)
-            => new DrawJob(default, quad, localW, localH, layout, fg, isQuad: true);
+        public bool Bold { get; private init; }
+
+        public TextAlignment Alignment { get; private init; }
+
+        public static DrawJob ForAxis(Rect paintBox, Rect anchor, TextLayout layout, Color fg, bool bold)
+            => new DrawJob
+            {
+                Kind = DrawKind.Axis,
+                Box = paintBox,
+                Anchor = anchor,
+                Layout = layout,
+                Foreground = fg,
+                Bold = bold,
+            };
+
+        public static DrawJob ForParagraph(
+            Rect block,
+            Rect anchor,
+            TextLayout layout,
+            Color fg,
+            bool bold,
+            TextAlignment alignment)
+            => new DrawJob
+            {
+                Kind = DrawKind.Paragraph,
+                Box = block,
+                Anchor = anchor,
+                Layout = layout,
+                Foreground = fg,
+                Bold = bold,
+                Alignment = alignment,
+            };
+
+        public static DrawJob ForQuad(
+            Point[] quad,
+            double localW,
+            double localH,
+            TextLayout layout,
+            Color fg,
+            bool bold)
+            => new DrawJob
+            {
+                Kind = DrawKind.Quad,
+                Quad = quad,
+                LocalWidth = localW,
+                LocalHeight = localH,
+                Layout = layout,
+                Foreground = fg,
+                Bold = bold,
+            };
     }
 
     /// <summary>
@@ -832,13 +1394,18 @@ public static class ImageTranslateRenderer
     }
 
     /// <summary>
-    /// Multi-ring samples around <paramref name="box"/> and returns the per-channel median.
-    /// Avoids the muddy average of mixed edge pixels on complex backgrounds.
+    /// Collects background samples on rings around <paramref name="box"/> (positions
+    /// plus colors, for both the median and the plane fit).
     /// </summary>
-    internal static Color SampleBackground(ReadOnlySpan<byte> pixels, int stride, int width, int height, Rect box)
+    internal static void CollectRingSamples(
+        ReadOnlySpan<byte> pixels,
+        int stride,
+        int width,
+        int height,
+        Rect box,
+        List<BackgroundSample> samples)
     {
-        var samples = new List<(byte R, byte G, byte B)>(64);
-
+        ArgumentNullException.ThrowIfNull(samples);
         int left = (int)Math.Floor(box.X);
         int top = (int)Math.Floor(box.Y);
         int right = (int)Math.Ceiling(box.Right);
@@ -852,29 +1419,49 @@ public static class ImageTranslateRenderer
         {
             for (int x = left; x <= right; x += stepX)
             {
-                TryAddBackgroundSample(pixels, samples, stride, width, height, x, top - ring);
-                TryAddBackgroundSample(pixels, samples, stride, width, height, x, bottom + ring - 1);
+                AddBackgroundSample(pixels, samples, stride, width, height, x, top - ring);
+                AddBackgroundSample(pixels, samples, stride, width, height, x, bottom + ring - 1);
             }
 
             for (int y = top; y <= bottom; y += stepY)
             {
-                TryAddBackgroundSample(pixels, samples, stride, width, height, left - ring, y);
-                TryAddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, y);
+                AddBackgroundSample(pixels, samples, stride, width, height, left - ring, y);
+                AddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, y);
             }
 
-            TryAddBackgroundSample(pixels, samples, stride, width, height, left - ring, top - ring);
-            TryAddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, top - ring);
-            TryAddBackgroundSample(pixels, samples, stride, width, height, left - ring, bottom + ring - 1);
-            TryAddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, bottom + ring - 1);
+            AddBackgroundSample(pixels, samples, stride, width, height, left - ring, top - ring);
+            AddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, top - ring);
+            AddBackgroundSample(pixels, samples, stride, width, height, left - ring, bottom + ring - 1);
+            AddBackgroundSample(pixels, samples, stride, width, height, right + ring - 1, bottom + ring - 1);
+        }
+    }
+
+    /// <summary>
+    /// Multi-ring samples around <paramref name="box"/> and returns the per-channel median.
+    /// Avoids the muddy average of mixed edge pixels on complex backgrounds.
+    /// </summary>
+    internal static Color SampleBackground(ReadOnlySpan<byte> pixels, int stride, int width, int height, Rect box)
+    {
+        var ring = new List<BackgroundSample>(64);
+        CollectRingSamples(pixels, stride, width, height, box, ring);
+
+        var samples = new List<(byte R, byte G, byte B)>(ring.Count + 5);
+        foreach (var sample in ring)
+        {
+            samples.Add((sample.R, sample.G, sample.B));
         }
 
         if (samples.Count == 0)
         {
-            TryAddBackgroundSample(pixels, samples, stride, width, height, left + 1, top + 1);
-            TryAddBackgroundSample(pixels, samples, stride, width, height, right - 2, top + 1);
-            TryAddBackgroundSample(pixels, samples, stride, width, height, left + 1, bottom - 2);
-            TryAddBackgroundSample(pixels, samples, stride, width, height, right - 2, bottom - 2);
-            TryAddBackgroundSample(pixels, samples, stride, width, height, (left + right) / 2, (top + bottom) / 2);
+            int left = (int)Math.Floor(box.X);
+            int top = (int)Math.Floor(box.Y);
+            int right = (int)Math.Ceiling(box.Right);
+            int bottom = (int)Math.Ceiling(box.Bottom);
+            TryAppendSample(pixels, samples, stride, width, height, left + 1, top + 1);
+            TryAppendSample(pixels, samples, stride, width, height, right - 2, top + 1);
+            TryAppendSample(pixels, samples, stride, width, height, left + 1, bottom - 2);
+            TryAppendSample(pixels, samples, stride, width, height, right - 2, bottom - 2);
+            TryAppendSample(pixels, samples, stride, width, height, (left + right) / 2, (top + bottom) / 2);
         }
 
         if (samples.Count == 0)
@@ -885,7 +1472,25 @@ public static class ImageTranslateRenderer
         return MedianColor(samples);
     }
 
-    private static void TryAddBackgroundSample(
+    private static void AddBackgroundSample(
+        ReadOnlySpan<byte> pixels,
+        List<BackgroundSample> samples,
+        int stride,
+        int width,
+        int height,
+        int px,
+        int py)
+    {
+        if (px < 0 || py < 0 || px >= width || py >= height)
+        {
+            return;
+        }
+
+        int i = (py * stride) + (px * 4);
+        samples.Add(new BackgroundSample(px, py, pixels[i + 2], pixels[i + 1], pixels[i]));
+    }
+
+    private static void TryAppendSample(
         ReadOnlySpan<byte> pixels,
         List<(byte R, byte G, byte B)> samples,
         int stride,
@@ -960,7 +1565,7 @@ public static class ImageTranslateRenderer
             return text;
         }
 
-        return WrapTextCore(text, maxWidth, fontSize, new TextMeasureCache());
+        return WrapTextCore(text, maxWidth, fontSize, new TextMeasureCache(bold: false));
     }
 
     private static string WrapTextCore(string text, double maxWidth, double fontSize, TextMeasureCache cache)
@@ -1129,12 +1734,19 @@ public static class ImageTranslateRenderer
     }
 
     internal static double FitFontSize(string text, double maxWidth, double maxHeight)
-        => FitFontSize(text, maxWidth, maxHeight, new TextMeasureCache());
+        => FitFontSize(text, maxWidth, maxHeight, MaxFontSize, new TextMeasureCache(bold: false));
 
-    private static double FitFontSize(string text, double maxWidth, double maxHeight, TextMeasureCache cache)
+    private static double FitFontSize(
+        string text,
+        double maxWidth,
+        double maxHeight,
+        double maxFontSize,
+        TextMeasureCache cache)
     {
         double lo = MinFontSize;
-        double hi = Math.Max(MinFontSize + 0.5, Math.Min(MaxFontSize, maxHeight));
+        double hi = Math.Max(
+            MinFontSize + 0.5,
+            Math.Min(Math.Min(MaxFontSize, maxFontSize), maxHeight));
         double best = MinFontSize;
 
         // One cache shared across binary-search iterations + wrap measurements.
@@ -1142,7 +1754,7 @@ public static class ImageTranslateRenderer
         {
             double mid = (lo + hi) / 2;
             var display = WrapTextCore(text, maxWidth, mid, cache);
-            var size = MeasureUnclipped(display, mid, maxWidth);
+            var size = MeasureUnclipped(display, mid, maxWidth, cache.Bold);
             if (size.Width <= maxWidth + 0.5 && size.Height <= maxHeight + 0.5)
             {
                 best = mid;
@@ -1161,7 +1773,8 @@ public static class ImageTranslateRenderer
         string display,
         double fontSize,
         double maxWidth,
-        Color foreground)
+        Color foreground,
+        bool bold)
     {
         Brush brush = foreground == Colors.Black ? Brushes.Black : new SolidColorBrush(foreground);
 
@@ -1172,7 +1785,7 @@ public static class ImageTranslateRenderer
             display,
             CultureInfo.CurrentUICulture,
             FlowDirection.LeftToRight,
-            Typeface,
+            bold ? BoldTypeface : SemiBoldTypeface,
             fontSize,
             brush,
             1.0)
@@ -1188,13 +1801,13 @@ public static class ImageTranslateRenderer
     /// overflow from FitFontSize's binary search (it then always "fits" and never
     /// shrinks).
     /// </summary>
-    private static Size MeasureUnclipped(string display, double fontSize, double maxWidth)
+    private static Size MeasureUnclipped(string display, double fontSize, double maxWidth, bool bold)
     {
         var ft = new FormattedText(
             display,
             CultureInfo.CurrentUICulture,
             FlowDirection.LeftToRight,
-            Typeface,
+            bold ? BoldTypeface : SemiBoldTypeface,
             fontSize,
             Brushes.Black,
             1.0)
@@ -1218,6 +1831,13 @@ public static class ImageTranslateRenderer
         private GlyphTypeface _glyphTypeface;
         private bool _glyphResolved;
 
+        public TextMeasureCache(bool bold)
+        {
+            Bold = bold;
+        }
+
+        public bool Bold { get; }
+
         public double MeasureWidth(string text, double fontSize)
         {
             if (string.IsNullOrEmpty(text))
@@ -1236,7 +1856,7 @@ public static class ImageTranslateRenderer
                 text,
                 CultureInfo.CurrentUICulture,
                 FlowDirection.LeftToRight,
-                Typeface,
+                Bold ? BoldTypeface : SemiBoldTypeface,
                 fontSize,
                 Brushes.Black,
                 1.0);
@@ -1278,7 +1898,7 @@ public static class ImageTranslateRenderer
             if (!_glyphResolved)
             {
                 _glyphResolved = true;
-                _ = Typeface.TryGetGlyphTypeface(out _glyphTypeface);
+                _ = (Bold ? BoldTypeface : SemiBoldTypeface).TryGetGlyphTypeface(out _glyphTypeface);
             }
 
             glyph = _glyphTypeface;

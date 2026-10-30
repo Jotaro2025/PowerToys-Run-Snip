@@ -1180,6 +1180,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("opt_ocr_engine_windows", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to PaddleOCR (built-in offline).
+        /// </summary>
+        public static string opt_ocr_engine_paddle {
+            get {
+                return ResourceManager.GetString("opt_ocr_engine_paddle", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to Target language.
         /// </summary>

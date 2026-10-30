@@ -20,6 +20,7 @@ public class OcrServiceTests
     [DataRow(OcrEngineKind.WeChat, false, OcrEngineKind.WeChat)]
     [DataRow(OcrEngineKind.WeChat, true, OcrEngineKind.WeChat)]
     [DataRow(OcrEngineKind.Windows, true, OcrEngineKind.Windows)]
+    [DataRow(OcrEngineKind.SimdPaddle, false, OcrEngineKind.SimdPaddle)]
     public void ResolveEngineOnX64(OcrEngineKind setting, bool weChatAssets, OcrEngineKind expected)
     {
         Assert.AreEqual(expected, OcrService.ResolveEngine(setting, Architecture.X64, weChatAssets));
@@ -33,6 +34,16 @@ public class OcrServiceTests
     {
         Assert.AreEqual(OcrEngineKind.Windows, OcrService.ResolveEngine(setting, Architecture.Arm64, weChatAssets));
         Assert.AreEqual(OcrEngineKind.Windows, OcrService.ResolveEngine(setting, Architecture.X86, weChatAssets));
+    }
+
+    [TestMethod]
+    public void ResolveEngineSimdPaddleOnAnyArchitecture()
+    {
+        // PaddleOCR is pure managed code: the only engine (besides Windows OCR)
+        // that also runs on non-x64.
+        Assert.AreEqual(OcrEngineKind.SimdPaddle, OcrService.ResolveEngine(OcrEngineKind.SimdPaddle, Architecture.Arm64, false));
+        Assert.AreEqual(OcrEngineKind.SimdPaddle, OcrService.ResolveEngine(OcrEngineKind.SimdPaddle, Architecture.X86, true));
+        Assert.AreEqual(OcrEngineKind.SimdPaddle, OcrService.ResolveEngine(OcrEngineKind.SimdPaddle, Architecture.X64, false));
     }
 
     [TestMethod]
