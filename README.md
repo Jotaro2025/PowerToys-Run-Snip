@@ -200,6 +200,18 @@ ARM64 版 PowerToys 中始终使用 Windows OCR 或 PaddleOCR（微信 OCR 只�
 
 **预加载翻译模型**（默认开启）：图片翻译窗一打开就开始加载进程内 HyMT GGUF，与 OCR 并行，而不是等 OCR 完成后再加载。实测 Q2 模型加载 1.9–2.3 s，期间 CPU OCR 仅从 422 ms 变为 449 ms（+6%）；OCR 结束后只剩约 1.4 s 加载，首次翻译 130 ms。HTTP / 腾讯引擎无需预加载。
 
+### 本地翻译 API（浏览器扩展）
+
+设置 → 图片翻译 → **本地翻译 API**：勾选启用、确认端口（默认 `17853`）、复制 **Bearer Token**。服务只监听 `127.0.0.1`，把进程内 HyMT2Sharp 模型提供给浏览器扩展；PowerToys Run 常驻时插件和浏览器共用同一份模型与翻译缓存。
+
+```bash
+curl -X POST http://127.0.0.1:17853/v1/translate \
+  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+  -d '{"texts":["Hello world"],"target":"简体中文"}'
+```
+
+安全：Bearer Token、Host 校验（防 DNS rebinding）、可选 Origin 白名单、120 次/分钟限流、请求大小上限；只暴露本地 HyMT 引擎，不转发 HTTP/腾讯的 Key。完整协议见 [`docs/local-translation-api.md`](docs/local-translation-api.md)，最小浏览器扩展示例见 [`samples/browser-extension`](samples/browser-extension)。
+
 翻译引擎默认**关闭**，需在设置中任选其一：
 
 1. **HTTP（OpenAI 兼容）**  

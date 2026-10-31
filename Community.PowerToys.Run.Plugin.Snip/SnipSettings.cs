@@ -88,6 +88,25 @@ public sealed class SnipSettings
     public bool PrewarmTranslatorOnTranslate { get; set; } = true;
 
     /// <summary>
+    /// Expose the in-process HyMT2Sharp translator on a loopback HTTP endpoint
+    /// for browser extensions. Off by default (network surface).
+    /// </summary>
+    public bool LocalApiEnabled { get; set; }
+
+    /// <summary>Loopback port for the local translation API (1024–65535).</summary>
+    public int LocalApiPort { get; set; } = 17853;
+
+    /// <summary>Bearer token required by the local translation API.</summary>
+    public string LocalApiToken { get; set; } = string.Empty;
+
+    /// <summary>
+    /// Comma/semicolon-separated browser origins allowed by CORS (e.g.
+    /// <c>chrome-extension://&lt;id&gt;</c>). Empty = any origin; the bearer
+    /// token is still required.
+    /// </summary>
+    public string LocalApiAllowedOrigins { get; set; } = string.Empty;
+
+    /// <summary>
     /// Plugin UI language override.
     /// Empty or <c>system</c> = follow PowerToys / OS UI culture;
     /// <c>en</c> = English; <c>zh-CN</c> = 简体中文.
@@ -200,6 +219,10 @@ public sealed class SnipSettings
             TargetLanguage = TargetLanguage,
             TranslationCacheEnabled = TranslationCacheEnabled,
             PrewarmTranslatorOnTranslate = PrewarmTranslatorOnTranslate,
+            LocalApiEnabled = LocalApiEnabled,
+            LocalApiPort = LocalApiPort,
+            LocalApiToken = LocalApiToken,
+            LocalApiAllowedOrigins = LocalApiAllowedOrigins,
             UiLanguage = UiLanguage,
             HttpBaseUrl = HttpBaseUrl,
             HttpApiKey = HttpApiKey,
@@ -238,6 +261,10 @@ public sealed class SnipSettings
         TargetLanguage = other.TargetLanguage;
         TranslationCacheEnabled = other.TranslationCacheEnabled;
         PrewarmTranslatorOnTranslate = other.PrewarmTranslatorOnTranslate;
+        LocalApiEnabled = other.LocalApiEnabled;
+        LocalApiPort = other.LocalApiPort;
+        LocalApiToken = other.LocalApiToken;
+        LocalApiAllowedOrigins = other.LocalApiAllowedOrigins;
         UiLanguage = other.UiLanguage;
         HttpBaseUrl = other.HttpBaseUrl;
         HttpApiKey = other.HttpApiKey;

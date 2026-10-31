@@ -43,6 +43,10 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionTargetLanguage = "TargetLanguage";
     private const string OptionTranslationCacheEnabled = "TranslationCacheEnabled";
     private const string OptionPrewarmTranslatorOnTranslate = "PrewarmTranslatorOnTranslate";
+    private const string OptionLocalApiEnabled = "LocalApiEnabled";
+    private const string OptionLocalApiPort = "LocalApiPort";
+    private const string OptionLocalApiToken = "LocalApiToken";
+    private const string OptionLocalApiAllowedOrigins = "LocalApiAllowedOrigins";
     private const string OptionUiLanguage = "UiLanguage";
     private const string OptionHttpBaseUrl = "HttpBaseUrl";
     private const string OptionHttpApiKey = "HttpApiKey";
@@ -263,6 +267,43 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayDescription = Properties.Resources.opt_prewarm_translator_desc,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
             Value = _settings.PrewarmTranslatorOnTranslate,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionLocalApiEnabled,
+            DisplayLabel = Properties.Resources.opt_local_api_enabled_label,
+            DisplayDescription = Properties.Resources.opt_local_api_enabled_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.LocalApiEnabled,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionLocalApiPort,
+            DisplayLabel = Properties.Resources.opt_local_api_port_label,
+            DisplayDescription = Properties.Resources.opt_local_api_port_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Numberbox,
+            NumberValue = _settings.LocalApiPort,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionLocalApiToken,
+            DisplayLabel = Properties.Resources.opt_local_api_token_label,
+            DisplayDescription = Properties.Resources.opt_local_api_token_desc,
+
+            // Never show the protected token here; the dedicated settings window
+            // shows/copies the plaintext value. Empty = keep the current token.
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = string.Empty,
+            PlaceholderText = Properties.Resources.opt_local_api_token_placeholder,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionLocalApiAllowedOrigins,
+            DisplayLabel = Properties.Resources.opt_local_api_origins_label,
+            DisplayDescription = Properties.Resources.opt_local_api_origins_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
+            TextValue = _settings.LocalApiAllowedOrigins,
+            PlaceholderText = "chrome-extension://…",
         },
         new PluginAdditionalOption()
         {
@@ -495,6 +536,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         SnipVerbose.ScrollLogging = _settings.VerboseScrollLogging;
         ApplyHotkeyRegistration();
         UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
+        LocalTranslationApi.Apply(_settings);
 
         // Bootstrap the snip STA (dispatcher + DPI promotion + WPF Application)
         // and the WinRT capture D3D device after Run has settled, so the first
@@ -651,6 +693,39 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             _settings.PrewarmTranslatorOnTranslate = prewarmTranslatorOpt.Value;
         }
 
+        var localApiEnabledOpt = options.FirstOrDefault(x => x.Key == OptionLocalApiEnabled);
+        if (localApiEnabledOpt != null)
+        {
+            _settings.LocalApiEnabled = localApiEnabledOpt.Value;
+        }
+
+        var localApiPortOpt = options.FirstOrDefault(x => x.Key == OptionLocalApiPort);
+        if (localApiPortOpt != null)
+        {
+            _settings.LocalApiPort = (int)Math.Clamp(localApiPortOpt.NumberValue, 1024, 65535);
+        }
+
+        var storedLocalToken = options.FirstOrDefault(x => x.Key == OptionLocalApiToken)?.TextValue ?? string.Empty;
+        if (string.IsNullOrWhiteSpace(storedLocalToken))
+        {
+            if (!string.IsNullOrEmpty(_settings.LocalApiToken))
+            {
+                EnsureProtectedSecretPersisted(OptionLocalApiToken, _settings.LocalApiToken);
+            }
+        }
+        else
+        {
+            _settings.LocalApiToken = SecretProtector.Unprotect(storedLocalToken);
+            if (SecretProtector.NeedsMigration(storedLocalToken)
+                || !SecretProtector.IsProtected(storedLocalToken))
+            {
+                EnsureProtectedSecretPersisted(OptionLocalApiToken, _settings.LocalApiToken);
+            }
+        }
+
+        _settings.LocalApiAllowedOrigins = options.FirstOrDefault(x => x.Key == OptionLocalApiAllowedOrigins)?.TextValue
+            ?? _settings.LocalApiAllowedOrigins;
+
         _settings.UiLanguage = UiLanguageHelper.Normalize(
             options.FirstOrDefault(x => x.Key == OptionUiLanguage)?.TextValue ?? _settings.UiLanguage);
         if (_settings.UiLanguage == UiLanguageHelper.System)
@@ -716,6 +791,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         UiLanguageHelper.Apply(_settings.UiLanguage);
         ApplyHotkeyRegistration();
         UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
+        LocalTranslationApi.Apply(_settings);
     }
 
     private void OpenSettingsWindow()
@@ -729,6 +805,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             SnipVerbose.ScrollLogging = _settings.VerboseScrollLogging;
             ApplyHotkeyRegistration();
             UpdateChecker.MaybeStart(_settings.CheckForUpdates, UpdateChecker.DefaultReleasesApi, Notify);
+            LocalTranslationApi.Apply(_settings);
         });
     }
 
@@ -839,6 +916,8 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     {
         if (!_disposed && disposing)
         {
+            LocalTranslationApi.Stop();
+
             if (_context != null && _context.API != null)
             {
                 _context.API.ThemeChanged -= OnThemeChanged;

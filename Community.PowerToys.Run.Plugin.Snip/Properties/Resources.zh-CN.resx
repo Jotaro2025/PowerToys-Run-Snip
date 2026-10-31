@@ -449,6 +449,57 @@
   <data name="opt_prewarm_translator_desc" xml:space="preserve">
     <value>图片翻译窗打开时就开始加载进程内 HyMT GGUF，与 OCR 并行，而不是等第一次翻译请求。首次截图可省下约模型加载时间；HTTP/腾讯无需预加载。</value>
   </data>
+  <data name="opt_local_api_enabled_label" xml:space="preserve">
+    <value>本地翻译 API</value>
+  </data>
+  <data name="opt_local_api_enabled_desc" xml:space="preserve">
+    <value>在 127.0.0.1 上把进程内 HyMT2Sharp 模型提供给浏览器扩展。需要选择 HyMT2Sharp 翻译引擎，并携带 Bearer Token。</value>
+  </data>
+  <data name="opt_local_api_port_label" xml:space="preserve">
+    <value>本地 API 端口</value>
+  </data>
+  <data name="opt_local_api_port_desc" xml:space="preserve">
+    <value>仅监听回环地址（1024–65535）；修改后自动重启。</value>
+  </data>
+  <data name="opt_local_api_token_label" xml:space="preserve">
+    <value>本地 API Token</value>
+  </data>
+  <data name="opt_local_api_token_desc" xml:space="preserve">
+    <value>以 Authorization: Bearer &lt;token&gt; 发送。可在 Snip 专用设置窗口中查看、复制或重新生成。</value>
+  </data>
+  <data name="opt_local_api_token_placeholder" xml:space="preserve">
+    <value>在 Snip 设置窗口中生成</value>
+  </data>
+  <data name="opt_local_api_origins_label" xml:space="preserve">
+    <value>允许的来源</value>
+  </data>
+  <data name="opt_local_api_origins_desc" xml:space="preserve">
+    <value>逗号分隔的 CORS 来源，例如 chrome-extension://&lt;id&gt;。留空 = 允许任意来源；仍必须携带 Token。</value>
+  </data>
+  <data name="local_api_err_provider" xml:space="preserve">
+    <value>本地 API 需要 HyMT2Sharp 翻译引擎。</value>
+  </data>
+  <data name="local_api_err_model" xml:space="preserve">
+    <value>未找到 Hy-MT2 GGUF，请在设置中选择或下载模型。</value>
+  </data>
+  <data name="settings_local_api_section" xml:space="preserve">
+    <value>本地翻译 API</value>
+  </data>
+  <data name="settings_local_api_regenerate" xml:space="preserve">
+    <value>重新生成</value>
+  </data>
+  <data name="settings_local_api_copy" xml:space="preserve">
+    <value>复制</value>
+  </data>
+  <data name="settings_local_api_status_running" xml:space="preserve">
+    <value>正在监听 {0}</value>
+  </data>
+  <data name="settings_local_api_status_error" xml:space="preserve">
+    <value>未监听：{0}</value>
+  </data>
+  <data name="settings_local_api_status_disabled" xml:space="preserve">
+    <value>已关闭</value>
+  </data>
   <data name="opt_tr_http_url_label" xml:space="preserve">
     <value>HTTP · Base URL</value>
   </data>

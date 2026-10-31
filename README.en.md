@@ -200,6 +200,18 @@ Reuses OCR line boxes; after translation, erases the original and redraws the tr
 
 **Preload translation model** (on by default): the in-process HyMT GGUF starts loading as soon as the image-translate window opens, in parallel with OCR, instead of after OCR. Measured Q2 load 1.9–2.3 s; CPU OCR only goes from 422 to 449 ms (+6%) while loading, leaving ~1.4 s after OCR and a 130 ms first translation. HTTP / Tencent need no preload.
 
+### Local translation API (browser extensions)
+
+Settings → Image translation → **Local translation API**: enable, keep the port (`17853` by default), copy the **Bearer token**. The server binds `127.0.0.1` only and exposes the in-process HyMT2Sharp model to browser extensions; while PowerToys Run stays resident, the plugin and the browser share one model and one translation cache.
+
+```bash
+curl -X POST http://127.0.0.1:17853/v1/translate \
+  -H "Authorization: Bearer <token>" -H "Content-Type: application/json" \
+  -d '{"texts":["Hello world"],"target":"简体中文"}'
+```
+
+Security: bearer token, Host validation (DNS rebinding), optional origin allowlist, 120 requests/minute, request size caps; only the local HyMT engine is exposed — HTTP/Tencent keys are never forwarded. Full protocol: [`docs/local-translation-api.md`](docs/local-translation-api.md); minimal extension sample: [`samples/browser-extension`](samples/browser-extension).
+
 Translation is **off** by default; pick one engine in settings:
 
 1. **HTTP (OpenAI-compatible)**  

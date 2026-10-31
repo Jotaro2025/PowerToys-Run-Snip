@@ -46,6 +46,11 @@ public sealed class SnipSettingsWindow : Window
     private CheckBox _translationCache;
     private CheckBox _prewarmTranslator;
     private TextBlock _translationCacheStatus;
+    private CheckBox _localApiEnabled;
+    private TextBox _localApiPort;
+    private TextBox _localApiToken;
+    private TextBox _localApiOrigins;
+    private TextBlock _localApiStatus;
     private Border _httpPanel;
     private Border _hymtPanel;
     private TextBox _httpUrl;
@@ -479,6 +484,14 @@ public sealed class SnipSettingsWindow : Window
             Content = Properties.Resources.opt_prewarm_translator_label,
         };
         _translationCacheStatus = Hint(string.Empty);
+        _localApiEnabled = new CheckBox
+        {
+            Content = Properties.Resources.opt_local_api_enabled_label,
+        };
+        _localApiPort = NumberBox();
+        _localApiToken = CreateTextBox(readOnly: true);
+        _localApiOrigins = CreateTextBox();
+        _localApiStatus = Hint(string.Empty);
 
         return TabPage(
             Card(
@@ -490,7 +503,74 @@ public sealed class SnipSettingsWindow : Window
                 Field(null, BuildTranslationCacheRow(), Properties.Resources.opt_tr_cache_desc),
                 _translationCacheStatus),
             _httpPanel,
-            _hymtPanel);
+            _hymtPanel,
+            Card(
+                SectionHeader(Properties.Resources.settings_local_api_section),
+                Field(null, _localApiEnabled, Properties.Resources.opt_local_api_enabled_desc),
+                Field(Properties.Resources.opt_local_api_port_label, _localApiPort, Properties.Resources.opt_local_api_port_desc),
+                Field(Properties.Resources.opt_local_api_token_label, BuildLocalApiTokenRow(), Properties.Resources.opt_local_api_token_desc),
+                Field(Properties.Resources.opt_local_api_origins_label, _localApiOrigins, Properties.Resources.opt_local_api_origins_desc),
+                _localApiStatus));
+    }
+
+    private UIElement BuildLocalApiTokenRow()
+    {
+        var copy = SecondaryButton(Properties.Resources.settings_local_api_copy);
+        copy.Margin = new Thickness(8, 0, 0, 0);
+        copy.Click += (_, _) =>
+        {
+            try
+            {
+                Clipboard.SetText(_localApiToken.Text ?? string.Empty);
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Snip local API token copy failed: {ex.Message}", typeof(SnipSettingsWindow));
+            }
+        };
+        DockPanel.SetDock(copy, Dock.Right);
+
+        var regenerate = SecondaryButton(Properties.Resources.settings_local_api_regenerate);
+        regenerate.Margin = new Thickness(8, 0, 0, 0);
+        regenerate.Click += (_, _) => _localApiToken.Text = LocalTranslationApi.GenerateToken();
+        DockPanel.SetDock(regenerate, Dock.Right);
+
+        var row = new DockPanel();
+        row.Children.Add(copy);
+        row.Children.Add(regenerate);
+        row.Children.Add(_localApiToken);
+        return row;
+    }
+
+    private void UpdateLocalApiStatus()
+    {
+        if (_localApiStatus == null)
+        {
+            return;
+        }
+
+        var status = LocalTranslationApi.GetStatus();
+        if (_localApiEnabled.IsChecked != true)
+        {
+            _localApiStatus.Text = Properties.Resources.settings_local_api_status_disabled;
+            _localApiStatus.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108));
+        }
+        else if (status.Running)
+        {
+            _localApiStatus.Text = Properties.Resources.settings_local_api_status_running.Replace(
+                "{0}",
+                status.Address ?? string.Empty,
+                StringComparison.Ordinal);
+            _localApiStatus.Foreground = new SolidColorBrush(Color.FromRgb(100, 100, 108));
+        }
+        else
+        {
+            _localApiStatus.Text = Properties.Resources.settings_local_api_status_error.Replace(
+                "{0}",
+                status.Error ?? string.Empty,
+                StringComparison.Ordinal);
+            _localApiStatus.Foreground = new SolidColorBrush(Color.FromRgb(180, 80, 40));
+        }
     }
 
     private UIElement BuildTranslationCacheRow()
@@ -712,6 +792,11 @@ public sealed class SnipSettingsWindow : Window
         _targetLang.Text = _draft.TargetLanguage ?? string.Empty;
         _translationCache.IsChecked = _draft.TranslationCacheEnabled;
         _prewarmTranslator.IsChecked = _draft.PrewarmTranslatorOnTranslate;
+        _localApiEnabled.IsChecked = _draft.LocalApiEnabled;
+        _localApiPort.Text = _draft.LocalApiPort.ToString(System.Globalization.CultureInfo.InvariantCulture);
+        _localApiToken.Text = _draft.LocalApiToken ?? string.Empty;
+        _localApiOrigins.Text = _draft.LocalApiAllowedOrigins ?? string.Empty;
+        UpdateLocalApiStatus();
         UpdateTranslationCacheStatus(cleared: false);
         _httpUrl.Text = _draft.HttpBaseUrl ?? string.Empty;
         var key = _draft.HttpApiKey ?? string.Empty;
@@ -752,6 +837,8 @@ public sealed class SnipSettingsWindow : Window
         _target.CopyFrom(_draft);
         UiLanguageHelper.Apply(_target.UiLanguage);
         SnipSettingsPersister.Persist(SnipSettingsPersister.BuildPatchesFromSettings(_target));
+        LocalTranslationApi.Apply(_target);
+        UpdateLocalApiStatus();
 
         DialogResult = true;
         Close();
@@ -790,6 +877,22 @@ public sealed class SnipSettingsWindow : Window
         _draft.TargetLanguage = string.IsNullOrWhiteSpace(_targetLang.Text) ? "简体中文" : _targetLang.Text.Trim();
         _draft.TranslationCacheEnabled = _translationCache.IsChecked == true;
         _draft.PrewarmTranslatorOnTranslate = _prewarmTranslator.IsChecked == true;
+        _draft.LocalApiEnabled = _localApiEnabled.IsChecked == true;
+        _draft.LocalApiPort = int.TryParse(
+            _localApiPort.Text?.Trim(),
+            System.Globalization.NumberStyles.Integer,
+            System.Globalization.CultureInfo.InvariantCulture,
+            out int localApiPort)
+            ? Math.Clamp(localApiPort, 1024, 65535)
+            : _draft.LocalApiPort;
+        _draft.LocalApiToken = _localApiToken.Text?.Trim() ?? string.Empty;
+        if (_draft.LocalApiEnabled && string.IsNullOrEmpty(_draft.LocalApiToken))
+        {
+            _draft.LocalApiToken = LocalTranslationApi.GenerateToken();
+            _localApiToken.Text = _draft.LocalApiToken;
+        }
+
+        _draft.LocalApiAllowedOrigins = _localApiOrigins.Text?.Trim() ?? string.Empty;
         var uiLang = SelectedUiLanguage();
         _draft.UiLanguage = uiLang == UiLanguageHelper.System ? string.Empty : uiLang;
         _draft.HttpBaseUrl = _httpUrl.Text?.Trim() ?? string.Empty;

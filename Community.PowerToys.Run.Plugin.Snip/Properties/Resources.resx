@@ -449,6 +449,57 @@
   <data name="opt_prewarm_translator_desc" xml:space="preserve">
     <value>Starts loading the in-process HyMT GGUF as soon as the Image translate window opens, in parallel with OCR, instead of waiting for the first translation request. Saves roughly the model load time on the first capture; HTTP/Tencent providers need no preload.</value>
   </data>
+  <data name="opt_local_api_enabled_label" xml:space="preserve">
+    <value>Local translation API</value>
+  </data>
+  <data name="opt_local_api_enabled_desc" xml:space="preserve">
+    <value>Expose the in-process HyMT2Sharp model on 127.0.0.1 for browser extensions. Requires the HyMT2Sharp translator provider and a bearer token.</value>
+  </data>
+  <data name="opt_local_api_port_label" xml:space="preserve">
+    <value>Local API port</value>
+  </data>
+  <data name="opt_local_api_port_desc" xml:space="preserve">
+    <value>Loopback port (1024–65535). The server restarts automatically when it changes.</value>
+  </data>
+  <data name="opt_local_api_token_label" xml:space="preserve">
+    <value>Local API token</value>
+  </data>
+  <data name="opt_local_api_token_desc" xml:space="preserve">
+    <value>Send as Authorization: Bearer &lt;token&gt;. View, copy or regenerate it in the dedicated Snip settings window.</value>
+  </data>
+  <data name="opt_local_api_token_placeholder" xml:space="preserve">
+    <value>Generated in the Snip settings window</value>
+  </data>
+  <data name="opt_local_api_origins_label" xml:space="preserve">
+    <value>Allowed origins</value>
+  </data>
+  <data name="opt_local_api_origins_desc" xml:space="preserve">
+    <value>Comma-separated CORS origins, e.g. chrome-extension://&lt;id&gt;. Empty = any origin; the token is still required.</value>
+  </data>
+  <data name="local_api_err_provider" xml:space="preserve">
+    <value>The local API requires the HyMT2Sharp translator provider.</value>
+  </data>
+  <data name="local_api_err_model" xml:space="preserve">
+    <value>Hy-MT2 GGUF not found; select or download a model in settings.</value>
+  </data>
+  <data name="settings_local_api_section" xml:space="preserve">
+    <value>Local translation API</value>
+  </data>
+  <data name="settings_local_api_regenerate" xml:space="preserve">
+    <value>Regenerate</value>
+  </data>
+  <data name="settings_local_api_copy" xml:space="preserve">
+    <value>Copy</value>
+  </data>
+  <data name="settings_local_api_status_running" xml:space="preserve">
+    <value>Listening on {0}</value>
+  </data>
+  <data name="settings_local_api_status_error" xml:space="preserve">
+    <value>Not listening: {0}</value>
+  </data>
+  <data name="settings_local_api_status_disabled" xml:space="preserve">
+    <value>Disabled</value>
+  </data>
   <data name="opt_tr_http_url_label" xml:space="preserve">
     <value>HTTP · Base URL</value>
   </data>

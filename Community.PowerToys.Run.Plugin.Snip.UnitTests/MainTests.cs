@@ -147,8 +147,8 @@ public class MainTests
         // Keep in sync with the option list in Main.AdditionalOptions
         // (+1 CheckForUpdates #79, +1 VerboseScrollLogging #82 since the original 21,
         //  +OcrBackend, +TranslationCacheEnabled, +PrewarmOcrOnCapture,
-        //  +PrewarmTranslatorOnTranslate for the performance work).
-        Assert.HasCount(28, main.AdditionalOptions.ToList());
+        //  +PrewarmTranslatorOnTranslate, +LocalApiEnabled/Port/Token/Origins).
+        Assert.HasCount(32, main.AdditionalOptions.ToList());
     }
 
     [TestMethod]

@@ -1,0 +1,11 @@
+{
+  "manifest_version": 3,
+  "name": "Snip Local Translate",
+  "version": "1.0.0",
+  "description": "Translate selected text with the Snip local HyMT API.",
+  "permissions": ["contextMenus", "storage", "notifications"],
+  "host_permissions": ["http://127.0.0.1/*"],
+  "background": { "service_worker": "background.js" },
+  "options_page": "options.html",
+  "icons": { "128": "icon128.png" }
+}

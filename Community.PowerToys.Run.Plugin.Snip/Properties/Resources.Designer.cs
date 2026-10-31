@@ -1331,6 +1331,159 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("opt_prewarm_translator_desc", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Local translation API.
+        /// </summary>
+        public static string opt_local_api_enabled_label {
+            get {
+                return ResourceManager.GetString("opt_local_api_enabled_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Expose the in-process HyMT2Sharp model on 127.0.0.1.
+        /// </summary>
+        public static string opt_local_api_enabled_desc {
+            get {
+                return ResourceManager.GetString("opt_local_api_enabled_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Local API port.
+        /// </summary>
+        public static string opt_local_api_port_label {
+            get {
+                return ResourceManager.GetString("opt_local_api_port_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Loopback port (1024-65535)..
+        /// </summary>
+        public static string opt_local_api_port_desc {
+            get {
+                return ResourceManager.GetString("opt_local_api_port_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Local API token.
+        /// </summary>
+        public static string opt_local_api_token_label {
+            get {
+                return ResourceManager.GetString("opt_local_api_token_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Send as Authorization: Bearer token..
+        /// </summary>
+        public static string opt_local_api_token_desc {
+            get {
+                return ResourceManager.GetString("opt_local_api_token_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Generated in the Snip settings window.
+        /// </summary>
+        public static string opt_local_api_token_placeholder {
+            get {
+                return ResourceManager.GetString("opt_local_api_token_placeholder", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Allowed origins.
+        /// </summary>
+        public static string opt_local_api_origins_label {
+            get {
+                return ResourceManager.GetString("opt_local_api_origins_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Comma-separated CORS origins..
+        /// </summary>
+        public static string opt_local_api_origins_desc {
+            get {
+                return ResourceManager.GetString("opt_local_api_origins_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to The local API requires the HyMT2Sharp translator provider..
+        /// </summary>
+        public static string local_api_err_provider {
+            get {
+                return ResourceManager.GetString("local_api_err_provider", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Hy-MT2 GGUF not found..
+        /// </summary>
+        public static string local_api_err_model {
+            get {
+                return ResourceManager.GetString("local_api_err_model", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Local translation API.
+        /// </summary>
+        public static string settings_local_api_section {
+            get {
+                return ResourceManager.GetString("settings_local_api_section", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Regenerate.
+        /// </summary>
+        public static string settings_local_api_regenerate {
+            get {
+                return ResourceManager.GetString("settings_local_api_regenerate", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Copy.
+        /// </summary>
+        public static string settings_local_api_copy {
+            get {
+                return ResourceManager.GetString("settings_local_api_copy", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Listening on.
+        /// </summary>
+        public static string settings_local_api_status_running {
+            get {
+                return ResourceManager.GetString("settings_local_api_status_running", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Not listening.
+        /// </summary>
+        public static string settings_local_api_status_error {
+            get {
+                return ResourceManager.GetString("settings_local_api_status_error", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Disabled.
+        /// </summary>
+        public static string settings_local_api_status_disabled {
+            get {
+                return ResourceManager.GetString("settings_local_api_status_disabled", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to HTTP Base URL.
         /// </summary>

@@ -1,0 +1,31 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8" />
+  <title>Snip Local Translate</title>
+  <style>
+    body { font: 13px/1.5 "Segoe UI", "Microsoft YaHei UI", sans-serif; margin: 24px; width: 420px; }
+    label { display: block; margin-top: 14px; font-weight: 600; }
+    input { width: 100%; box-sizing: border-box; padding: 6px 8px; margin-top: 4px; }
+    p.hint { color: #666; margin: 4px 0 0; }
+    button { margin-top: 18px; padding: 6px 16px; }
+  </style>
+</head>
+<body>
+  <h2>Snip Local Translate</h2>
+  <p class="hint">先在 PowerToys Run → Snip 设置 → 图片翻译 → 本地翻译 API 中启用并复制 Token。</p>
+
+  <label for="endpoint">API 地址</label>
+  <input id="endpoint" placeholder="http://127.0.0.1:17853/v1/translate" />
+
+  <label for="token">Bearer Token</label>
+  <input id="token" autocomplete="off" />
+
+  <label for="target">目标语言</label>
+  <input id="target" placeholder="简体中文" />
+
+  <button id="save">保存</button>
+  <p class="hint" id="status"></p>
+  <script src="options.js"></script>
+</body>
+</html>

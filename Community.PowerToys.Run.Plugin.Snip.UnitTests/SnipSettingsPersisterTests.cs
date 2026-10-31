@@ -83,6 +83,10 @@ public class SnipSettingsPersisterTests
             TranslationCacheEnabled = false,
             PrewarmOcrOnCapture = false,
             PrewarmTranslatorOnTranslate = false,
+            LocalApiEnabled = true,
+            LocalApiPort = 19999,
+            LocalApiToken = "test-token",
+            LocalApiAllowedOrigins = "chrome-extension://abc",
         };
 
         var patches = SnipSettingsPersister.BuildPatchesFromSettings(settings);
@@ -94,6 +98,10 @@ public class SnipSettingsPersisterTests
         Assert.IsTrue(patches.Any(p => p.Key == "TranslationCacheEnabled" && p.BoolValue == false));
         Assert.IsTrue(patches.Any(p => p.Key == "PrewarmOcrOnCapture" && p.BoolValue == false));
         Assert.IsTrue(patches.Any(p => p.Key == "PrewarmTranslatorOnTranslate" && p.BoolValue == false));
+        Assert.IsTrue(patches.Any(p => p.Key == "LocalApiEnabled" && p.BoolValue == true));
+        Assert.IsTrue(patches.Any(p => p.Key == "LocalApiPort" && p.NumberValue == 19999));
+        Assert.IsTrue(patches.Any(p => p.Key == "LocalApiToken" && !string.IsNullOrEmpty(p.TextValue)));
+        Assert.IsTrue(patches.Any(p => p.Key == "LocalApiAllowedOrigins" && p.TextValue == "chrome-extension://abc"));
         Assert.IsTrue(patches.Any(p => p.Key == "UiLanguage" && p.TextValue == string.Empty));
     }
 
