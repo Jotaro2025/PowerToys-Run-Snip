@@ -56,7 +56,6 @@ public sealed class OcrResultWindow : Window, IDisposable
     public OcrResultWindow(BitmapSource image, byte[] png, SnipSettings settings)
     {
         ArgumentNullException.ThrowIfNull(image);
-        ArgumentNullException.ThrowIfNull(png);
 
         // Store an independent frozen copy: Freezable.Freeze() cascades through
         // CroppedBitmap chains, so freezing the passed bitmap directly would also
@@ -262,13 +261,21 @@ public sealed class OcrResultWindow : Window, IDisposable
 
         // _image is an independent frozen copy from the constructor, so the
         // full-frame copy below is safe off the STA.
+        // QR scanning and OCR are independent: run them concurrently instead of
+        // making the OCR wait for a full-image barcode scan.
         var image = _image;
-        var scannedCodes = await Task.Run(() => QrAndBarcodeScanner.Scan(image)).ConfigureAwait(true);
-        ApplyDetectedCodes(scannedCodes);
+        var scanTask = Task.Run(() => QrAndBarcodeScanner.Scan(image));
 
         try
         {
-            var lines = await OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token);
+            var linesTask = _png != null
+                ? OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token)
+                : OcrService.RecognizeLinesAsync(image, _settings, _cts.Token);
+            await Task.WhenAll(scanTask, linesTask).ConfigureAwait(true);
+
+            var scannedCodes = await scanTask.ConfigureAwait(true);
+            ApplyDetectedCodes(scannedCodes);
+            var lines = await linesTask.ConfigureAwait(true);
             var text = string.Join(Environment.NewLine, lines.Select(l => l.Text));
             if (_closed)
             {

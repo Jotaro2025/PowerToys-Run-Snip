@@ -11,6 +11,7 @@ using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
 
+using Community.PowerToys.Run.Plugin.Snip.Models;
 using Community.PowerToys.Run.Plugin.Snip.Services;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
 using Sdcb.SimdPaddleOCR;
@@ -104,6 +105,26 @@ public class SimdPaddleOcrServiceTests
     }
 
     [TestMethod]
+    public void BuildOptions_MapsBackendToEveryStage()
+    {
+        var cpu = SimdPaddleOcrService.BuildOptions(OcrBackendKind.Cpu);
+        Assert.AreEqual(OcrBackend.Cpu, cpu.Detector.Backend);
+        Assert.AreEqual(OcrBackend.Cpu, cpu.Classifier.Backend);
+        Assert.AreEqual(OcrBackend.Cpu, cpu.Recognizer.Backend);
+        Assert.AreEqual(4096, cpu.Detector.LimitSideLength);
+
+        var vulkan = SimdPaddleOcrService.BuildOptions(OcrBackendKind.Vulkan);
+        Assert.AreEqual(OcrBackend.Vulkan, vulkan.Detector.Backend);
+        Assert.AreEqual(OcrBackend.Vulkan, vulkan.Classifier.Backend);
+        Assert.AreEqual(OcrBackend.Vulkan, vulkan.Recognizer.Backend);
+
+        var auto = SimdPaddleOcrService.BuildOptions(OcrBackendKind.Auto);
+        Assert.AreEqual(OcrBackend.Auto, auto.Detector.Backend);
+        Assert.AreEqual(OcrBackend.Auto, auto.Classifier.Backend);
+        Assert.AreEqual(OcrBackend.Auto, auto.Recognizer.Backend);
+    }
+
+    [TestMethod]
     public async Task RecognizeLines_ReadsRenderedDigits()
     {
         // Real PP-OCRv6 inference on a rendered digit run (tiny models are
@@ -134,6 +155,50 @@ public class SimdPaddleOcrServiceTests
         Assert.IsTrue(
             lines.Count(l => l.Text.Contains("1234")) >= 11,
             $"rows misread: {string.Join(" | ", lines.Select(l => l.Text))}");
+    }
+
+    [TestMethod]
+    public async Task RecognizeLines_FromBitmapSkipsPngRoundTrip()
+    {
+        // The image-translate / text-extraction windows hand the bitmap straight
+        // to PaddleOCR; this path must not depend on an encoded PNG.
+        BitmapSource bitmap = RenderBitmapOnStaThread();
+
+        var lines = await SimdPaddleOcrService.RecognizeLinesAsync(bitmap, OcrBackendKind.Cpu);
+
+        Assert.IsNotEmpty(lines);
+        StringAssert.Contains(string.Join(" ", lines.Select(l => l.Text)), "1234");
+    }
+
+    private static BitmapSource RenderBitmapOnStaThread()
+    {
+        BitmapSource result = null;
+        var thread = new Thread(() =>
+        {
+            var visual = new DrawingVisual();
+            using (var dc = visual.RenderOpen())
+            {
+                dc.DrawRectangle(Brushes.White, null, new Rect(0, 0, 320, 80));
+                var text = new FormattedText(
+                    "Snip 1234",
+                    CultureInfo.InvariantCulture,
+                    FlowDirection.LeftToRight,
+                    new Typeface(new FontFamily("Arial"), FontStyles.Normal, FontWeights.Normal, FontStretches.Normal),
+                    40,
+                    Brushes.Black,
+                    1.0);
+                dc.DrawText(text, new Point(12, 18));
+            }
+
+            var bitmap = new RenderTargetBitmap(320, 80, 96, 96, PixelFormats.Pbgra32);
+            bitmap.Render(visual);
+            bitmap.Freeze();
+            result = bitmap;
+        });
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        thread.Join();
+        return result;
     }
 
     private static byte[] RenderOnStaThreadTall(int width, int height, int rows, int fontSize = 28)

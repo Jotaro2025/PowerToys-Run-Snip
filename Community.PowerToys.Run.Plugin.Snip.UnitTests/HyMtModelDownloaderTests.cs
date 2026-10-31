@@ -62,19 +62,38 @@ public class HyMtModelDownloaderTests
             HyMtGgufPath = Path.Combine(Path.GetTempPath(), "snip-explicit-missing-" + Path.GetRandomFileName() + ".gguf"),
         };
 
-        Assert.IsNull(HyMtModelDownloader.ResolveGgufPath(settings));
+        // Isolate from whatever model the developer machine has downloaded.
+        try
+        {
+            HyMtModelDownloader.SetCachePathForTests(
+                Path.Combine(Path.GetTempPath(), "snip-cache-" + Path.GetRandomFileName(), HyMtModelDownloader.FileName));
+            Assert.IsNull(HyMtModelDownloader.ResolveGgufPath(settings));
+        }
+        finally
+        {
+            HyMtModelDownloader.SetCachePathForTests(null);
+        }
     }
 
     [TestMethod]
     public void ValidateHyMtAcceptsResolvedCachePath()
     {
-        var error = TranslatorFactory.Validate(new SnipSettings
+        try
         {
-            TranslatorProvider = TranslatorProvider.HyMT2Sharp,
-            HyMtGgufPath = string.Empty,
-            TargetLanguage = "简体中文",
-        });
-        Assert.IsFalse(string.IsNullOrWhiteSpace(error));
+            HyMtModelDownloader.SetCachePathForTests(
+                Path.Combine(Path.GetTempPath(), "snip-cache-" + Path.GetRandomFileName(), HyMtModelDownloader.FileName));
+            var error = TranslatorFactory.Validate(new SnipSettings
+            {
+                TranslatorProvider = TranslatorProvider.HyMT2Sharp,
+                HyMtGgufPath = string.Empty,
+                TargetLanguage = "简体中文",
+            });
+            Assert.IsFalse(string.IsNullOrWhiteSpace(error));
+        }
+        finally
+        {
+            HyMtModelDownloader.SetCachePathForTests(null);
+        }
     }
 
     [TestMethod]

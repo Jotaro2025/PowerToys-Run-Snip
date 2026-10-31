@@ -401,11 +401,41 @@
   <data name="opt_ocr_engine_paddle" xml:space="preserve">
     <value>PaddleOCR (built-in offline)</value>
   </data>
+  <data name="opt_ocr_backend_label" xml:space="preserve">
+    <value>PaddleOCR compute backend</value>
+  </data>
+  <data name="opt_ocr_backend_desc" xml:space="preserve">
+    <value>Only used when the OCR engine is PaddleOCR. Auto uses the GPU only when it benchmarks faster than the CPU. Vulkan forces the system Vulkan driver (AMD/NVIDIA/Intel) and is several times faster on a discrete GPU, but a graphics-driver fault would also affect PowerToys Run. CPU is the most stable choice.</value>
+  </data>
+  <data name="opt_ocr_backend_auto" xml:space="preserve">
+    <value>Auto (GPU when faster)</value>
+  </data>
+  <data name="opt_ocr_backend_cpu" xml:space="preserve">
+    <value>CPU (most stable)</value>
+  </data>
+  <data name="opt_ocr_backend_vulkan" xml:space="preserve">
+    <value>Vulkan GPU (fastest)</value>
+  </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>Translate · Target language</value>
   </data>
   <data name="opt_tr_lang_desc" xml:space="preserve">
     <value>Free text passed to the translator prompt, e.g. 简体中文 / English / 日本語.</value>
+  </data>
+  <data name="opt_tr_cache_label" xml:space="preserve">
+    <value>Cache repeated translations</value>
+  </data>
+  <data name="opt_tr_cache_desc" xml:space="preserve">
+    <value>Exact source→translation pairs are remembered per provider, model and target language, so capturing the same screen again is instant. Disable to always translate from scratch.</value>
+  </data>
+  <data name="settings_tr_cache_clear" xml:space="preserve">
+    <value>Clear translation cache</value>
+  </data>
+  <data name="settings_tr_cache_cleared" xml:space="preserve">
+    <value>Translation cache cleared ({0} entries).</value>
+  </data>
+  <data name="settings_tr_cache_count" xml:space="preserve">
+    <value>{0} cached translations.</value>
   </data>
   <data name="opt_tr_http_url_label" xml:space="preserve">
     <value>HTTP · Base URL</value>
@@ -444,7 +474,7 @@
     <value>HyMT · Backend</value>
   </data>
   <data name="opt_tr_hymt_backend_desc" xml:space="preserve">
-    <value>Auto picks Metal → Vulkan → CPU. Vulkan needs ~4 GB VRAM.</value>
+    <value>Auto picks Metal → Vulkan → CPU. Vulkan needs ~4 GB VRAM. It accelerates prompt processing (prefill); per-token decode is memory-bound and may not be faster than CPU, so screenshot translation (decode-dominated) often sees only a small gain.</value>
   </data>
   <data name="opt_tr_hymt_backend_auto" xml:space="preserve">
     <value>Auto</value>

@@ -401,11 +401,41 @@
   <data name="opt_ocr_engine_paddle" xml:space="preserve">
     <value>PaddleOCR（内置离线）</value>
   </data>
+  <data name="opt_ocr_backend_label" xml:space="preserve">
+    <value>PaddleOCR 计算后端</value>
+  </data>
+  <data name="opt_ocr_backend_desc" xml:space="preserve">
+    <value>仅在选择 PaddleOCR 引擎时生效。自动：仅当 GPU 实测快于 CPU 时使用 GPU。Vulkan：强制使用系统 Vulkan 驱动（AMD/NVIDIA/Intel），独显上通常快数倍，但显卡驱动故障也会波及 PowerToys Run。CPU：最稳定。</value>
+  </data>
+  <data name="opt_ocr_backend_auto" xml:space="preserve">
+    <value>自动（GPU 更快时使用）</value>
+  </data>
+  <data name="opt_ocr_backend_cpu" xml:space="preserve">
+    <value>CPU（最稳定）</value>
+  </data>
+  <data name="opt_ocr_backend_vulkan" xml:space="preserve">
+    <value>Vulkan GPU（最快）</value>
+  </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>翻译 · 目标语言</value>
   </data>
   <data name="opt_tr_lang_desc" xml:space="preserve">
     <value>写入翻译提示词的自由文本，例如 简体中文 / English / 日本語。</value>
+  </data>
+  <data name="opt_tr_cache_label" xml:space="preserve">
+    <value>缓存重复翻译</value>
+  </data>
+  <data name="opt_tr_cache_desc" xml:space="preserve">
+    <value>按引擎、模型和目标语言记住完全一致的原文→译文，再次截取同一界面时瞬时完成。关闭后每次都会重新翻译。</value>
+  </data>
+  <data name="settings_tr_cache_clear" xml:space="preserve">
+    <value>清空翻译缓存</value>
+  </data>
+  <data name="settings_tr_cache_cleared" xml:space="preserve">
+    <value>翻译缓存已清空（{0} 条）。</value>
+  </data>
+  <data name="settings_tr_cache_count" xml:space="preserve">
+    <value>当前缓存 {0} 条翻译。</value>
   </data>
   <data name="opt_tr_http_url_label" xml:space="preserve">
     <value>HTTP · Base URL</value>
@@ -444,7 +474,7 @@
     <value>HyMT · 后端</value>
   </data>
   <data name="opt_tr_hymt_backend_desc" xml:space="preserve">
-    <value>自动按 Metal → Vulkan → CPU 选择。Vulkan 约需 4GB 显存。</value>
+    <value>自动按 Metal → Vulkan → CPU 选择。Vulkan 约需 4GB 显存。它能加速提示词处理（prefill）；逐 token 生成（decode）受显存带宽限制，未必快于 CPU，因此以 decode 为主的截图翻译通常只有小幅提升。</value>
   </data>
   <data name="opt_tr_hymt_backend_auto" xml:space="preserve">
     <value>自动</value>

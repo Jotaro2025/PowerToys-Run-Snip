@@ -21,10 +21,20 @@ internal static partial class TranslatorBatch
 
     public const int HttpMaxChars = 3500;
 
-    /// <summary>HyMT2Sharp in-process: smaller chunks (context / generation cost).</summary>
-    public const int HyMtMaxLines = 8;
+    /// <summary>
+    /// Requests in flight for remote translators. Three keeps a long page's
+    /// wall-clock time close to one third without tripping common QPS limits
+    /// (Tencent's default is 5 QPS).
+    /// </summary>
+    public const int MaxConcurrentHttpChunks = 3;
 
-    public const int HyMtMaxChars = 1500;
+    /// <summary>
+    /// HyMT2Sharp in-process: larger chunks amortize the repeated instruction
+    /// prefill (decode dominates; a failed alignment still falls back per line).
+    /// </summary>
+    public const int HyMtMaxLines = 12;
+
+    public const int HyMtMaxChars = 2000;
 
     private static string _pendingPartialWarning;
 

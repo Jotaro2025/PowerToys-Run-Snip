@@ -50,12 +50,23 @@ public class TranslatorFactoryTests
     [TestMethod]
     public void ValidateRejectsHyMtWithoutExistingFile()
     {
-        var error = TranslatorFactory.Validate(new SnipSettings
+        try
         {
-            TranslatorProvider = TranslatorProvider.HyMT2Sharp,
-            HyMtGgufPath = Path.Combine(Path.GetTempPath(), "snip-missing-" + Path.GetRandomFileName() + ".gguf"),
-            TargetLanguage = "简体中文",
-        });
-        Assert.IsFalse(string.IsNullOrWhiteSpace(error));
+            // Isolate from whatever model the developer machine has downloaded.
+            HyMtModelDownloader.SetCachePathForTests(
+                Path.Combine(Path.GetTempPath(), "snip-cache-" + Path.GetRandomFileName(), HyMtModelDownloader.FileName));
+
+            var error = TranslatorFactory.Validate(new SnipSettings
+            {
+                TranslatorProvider = TranslatorProvider.HyMT2Sharp,
+                HyMtGgufPath = Path.Combine(Path.GetTempPath(), "snip-missing-" + Path.GetRandomFileName() + ".gguf"),
+                TargetLanguage = "简体中文",
+            });
+            Assert.IsFalse(string.IsNullOrWhiteSpace(error));
+        }
+        finally
+        {
+            HyMtModelDownloader.SetCachePathForTests(null);
+        }
     }
 }

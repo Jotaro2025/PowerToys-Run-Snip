@@ -37,8 +37,10 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionGlobalHotkey = "GlobalHotkey";
     private const string OptionTranslatorProvider = "TranslatorProvider";
     private const string OptionOcrEngine = "OcrEngine";
+    private const string OptionOcrBackend = "OcrBackend";
     private const string OptionWindowsOcrLanguage = "WindowsOcrLanguage";
     private const string OptionTargetLanguage = "TargetLanguage";
+    private const string OptionTranslationCacheEnabled = "TranslationCacheEnabled";
     private const string OptionUiLanguage = "UiLanguage";
     private const string OptionHttpBaseUrl = "HttpBaseUrl";
     private const string OptionHttpApiKey = "HttpApiKey";
@@ -182,6 +184,21 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
                 new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_auto, "0"),
                 new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_wechat, "1"),
                 new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_windows, "2"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_ocr_engine_paddle, "3"),
+            ],
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionOcrBackend,
+            DisplayLabel = Properties.Resources.opt_ocr_backend_label,
+            DisplayDescription = Properties.Resources.opt_ocr_backend_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Combobox,
+            ComboBoxValue = (int)_settings.OcrBackend,
+            ComboBoxItems =
+            [
+                new KeyValuePair<string, string>(Properties.Resources.opt_ocr_backend_auto, "0"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_ocr_backend_cpu, "1"),
+                new KeyValuePair<string, string>(Properties.Resources.opt_ocr_backend_vulkan, "2"),
             ],
         },
         new PluginAdditionalOption()
@@ -220,6 +237,14 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Textbox,
             TextValue = _settings.TargetLanguage,
             PlaceholderText = "简体中文",
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionTranslationCacheEnabled,
+            DisplayLabel = Properties.Resources.opt_tr_cache_label,
+            DisplayDescription = Properties.Resources.opt_tr_cache_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.TranslationCacheEnabled,
         },
         new PluginAdditionalOption()
         {
@@ -556,6 +581,13 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             _settings.OcrEngine = (OcrEngineKind)ocrOpt.ComboBoxValue;
         }
 
+        var ocrBackendOpt = options.FirstOrDefault(x => x.Key == OptionOcrBackend);
+        if (ocrBackendOpt != null
+            && Enum.IsDefined(typeof(OcrBackendKind), ocrBackendOpt.ComboBoxValue))
+        {
+            _settings.OcrBackend = (OcrBackendKind)ocrBackendOpt.ComboBoxValue;
+        }
+
         var ocrLang = options.FirstOrDefault(x => x.Key == OptionWindowsOcrLanguage)?.TextValue?.Trim();
         if (!string.IsNullOrEmpty(ocrLang))
         {
@@ -581,6 +613,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         if (string.IsNullOrWhiteSpace(_settings.TargetLanguage))
         {
             _settings.TargetLanguage = "简体中文";
+        }
+
+        var cacheOpt = options.FirstOrDefault(x => x.Key == OptionTranslationCacheEnabled);
+        if (cacheOpt != null)
+        {
+            _settings.TranslationCacheEnabled = cacheOpt.Value;
         }
 
         _settings.UiLanguage = UiLanguageHelper.Normalize(

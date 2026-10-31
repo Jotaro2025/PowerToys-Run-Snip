@@ -48,6 +48,14 @@ public sealed class SnipSettings
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.Auto;
 
     /// <summary>
+    /// Compute backend for the PaddleOCR engine (see <see cref="OcrBackendKind"/>).
+    /// Only used when <see cref="OcrEngine"/> resolves to PaddleOCR. Defaults to
+    /// CPU so an upgrade never starts loading a graphics driver in the host
+    /// process until the user explicitly opts in.
+    /// </summary>
+    public OcrBackendKind OcrBackend { get; set; } = OcrBackendKind.Cpu;
+
+    /// <summary>
     /// Windows OCR recognizer language: <c>auto</c> (default) or a BCP-47 tag from installed
     /// OCR languages (e.g. <c>zh-Hans-CN</c>, <c>en-US</c>).
     /// </summary>
@@ -58,6 +66,12 @@ public sealed class SnipSettings
 
     /// <summary>Target language name passed to the translator prompt (free text).</summary>
     public string TargetLanguage { get; set; } = "简体中文";
+
+    /// <summary>
+    /// Reuse exact source→translation pairs across captures (disk translation
+    /// memory). Same-provider/model/target only; default on.
+    /// </summary>
+    public bool TranslationCacheEnabled { get; set; } = true;
 
     /// <summary>
     /// Plugin UI language override.
@@ -165,9 +179,11 @@ public sealed class SnipSettings
             ScrollMaxTiles = ScrollMaxTiles,
             GlobalHotkey = GlobalHotkey,
             OcrEngine = OcrEngine,
+            OcrBackend = OcrBackend,
             WindowsOcrLanguage = WindowsOcrLanguage,
             TranslatorProvider = TranslatorProvider,
             TargetLanguage = TargetLanguage,
+            TranslationCacheEnabled = TranslationCacheEnabled,
             UiLanguage = UiLanguage,
             HttpBaseUrl = HttpBaseUrl,
             HttpApiKey = HttpApiKey,
@@ -199,9 +215,11 @@ public sealed class SnipSettings
         ScrollMaxTiles = other.ScrollMaxTiles;
         GlobalHotkey = other.GlobalHotkey;
         OcrEngine = other.OcrEngine;
+        OcrBackend = other.OcrBackend;
         WindowsOcrLanguage = other.WindowsOcrLanguage;
         TranslatorProvider = other.TranslatorProvider;
         TargetLanguage = other.TargetLanguage;
+        TranslationCacheEnabled = other.TranslationCacheEnabled;
         UiLanguage = other.UiLanguage;
         HttpBaseUrl = other.HttpBaseUrl;
         HttpApiKey = other.HttpApiKey;

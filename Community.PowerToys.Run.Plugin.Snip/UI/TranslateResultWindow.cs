@@ -74,7 +74,6 @@ public sealed class TranslateResultWindow : Window, IDisposable
     public TranslateResultWindow(BitmapSource image, byte[] png, SnipSettings settings)
     {
         ArgumentNullException.ThrowIfNull(image);
-        ArgumentNullException.ThrowIfNull(png);
         ArgumentNullException.ThrowIfNull(settings);
 
         // Freeze so ImageTranslateRenderer.Render can safely run via Task.Run.
@@ -363,7 +362,12 @@ public sealed class TranslateResultWindow : Window, IDisposable
             // OCR returns fragments for inline code / punctuation runs; translating each
             // in place paints stray 1–2 character glyphs ("black dots"). Merge to one box
             // per visual line before translating and erasing.
-            _lines = TranslateLineMerger.Merge(await OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token));
+            // PaddleOCR consumes the bitmap directly: png is null on that path so the
+            // full-frame PNG encode/decode round trip is skipped entirely.
+            var recognized = _png != null
+                ? await OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token)
+                : await OcrService.RecognizeLinesAsync(_originalImage, _settings, _cts.Token);
+            _lines = TranslateLineMerger.Merge(recognized);
             if (_closed)
             {
                 return;
@@ -396,7 +400,12 @@ public sealed class TranslateResultWindow : Window, IDisposable
             // thread; on the UI dispatcher that froze the busy animation and the progress
             // bar for the whole model load / generation. Progress<T> still marshals back.
             var translations = await Task.Run(
-                () => translator.TranslateAsync(sources, _settings.TargetLanguage, translateProgress, _cts.Token),
+                () => TranslationPipeline.TranslateAsync(
+                    translator,
+                    _settings,
+                    sources,
+                    translateProgress,
+                    _cts.Token),
                 _cts.Token);
             if (_closed)
             {

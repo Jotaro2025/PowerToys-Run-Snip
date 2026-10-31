@@ -143,15 +143,28 @@ PowerToys Settings → PowerToys Run → Snip **AdditionalOptions** still work. 
 
 ## Text extraction (OCR)
 
-Two engines, both local; their results feed both Text extract and Image translate. Setting **OCR engine** (dedicated settings window → General / PowerToys settings page):
+Three engines, all local; their results feed both Text extract and Image translate. Setting **OCR engine** (dedicated settings window → General / PowerToys settings page):
 
 | Option | Behavior |
 |---|---|
 | **Auto** (default) | x64 with the WeChat OCR component present (full pack or downloaded) → WeChat OCR; otherwise → Windows OCR (no download prompt) |
 | **WeChat OCR** | Always WeChat OCR; the slim pack prompts to download the component on first use |
 | **Windows OCR** | Always the built-in `Windows.Media.Ocr` |
+| **PaddleOCR (built-in offline)** | Pure C# PP-OCRv6 with embedded models, no download, x64 and ARM64 |
 
-An ARM64 PowerToys always uses Windows OCR (WeChat OCR ships only x64 native code).
+An ARM64 PowerToys always uses Windows OCR or PaddleOCR (WeChat OCR ships only x64 native code).
+
+### PaddleOCR compute backend (AMD / NVIDIA / Intel GPU acceleration)
+
+When the PaddleOCR engine is selected, **PaddleOCR compute backend** is available:
+
+| Option | Behavior |
+|---|---|
+| **CPU** (default) | Managed SIMD kernels, most stable, loads no graphics driver |
+| **Auto** | Library heuristic: uses a GPU only when it benchmarks faster than the CPU |
+| **Vulkan GPU** | Forces the system `vulkan-1.dll` (AMD / NVIDIA / Intel) |
+
+Measured on a Ryzen 9 9900X + Radeon RX 9070, 3440×1440 screen with 60 text lines: CPU ~550 ms, Vulkan / Auto ~60 ms — about **8–9×**, identical output. Note that Vulkan loads the graphics driver and third-party Vulkan layers (Steam / Epic, etc.) inside the PowerToys Run host process, so a driver fault would take the host down with it; CPU stays the default and Vulkan is opt-in. Changing the backend rebuilds the pipeline on the next recognition, and the pipeline is prewarmed while the snip overlay opens.
 
 ### WeChat OCR
 
@@ -176,7 +189,11 @@ Uses the [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/) NuGet package (s
 
 ## Image translation
 
-Reuses WeChat OCR line boxes; after translation, erases the original and redraws the translated text. Multi-line results are batched to the engine. The result window is **image-first** (processing animation; translation list collapsed under “Edit translations”), with Re-render / Save image; Cancel or Esc aborts while busy.
+Reuses OCR line boxes; after translation, erases the original and redraws the translated text. Multi-line results are batched to the engine (HyMT 12 lines per batch; HTTP/Tencent 20 lines with up to 3 requests in flight). The result window is **image-first** (processing animation; translation list collapsed under “Edit translations”), with Re-render / Save image; Cancel or Esc aborts while busy.
+
+**Translation memory**: exact source→translation pairs are cached per engine + model + target language in
+`%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\translation-memory.json`
+(LRU, up to 5000 entries). Re-capturing the same screen hits the cache and skips the model; repeated strings within one capture are translated once. Disable or clear it on the Image translation page of the settings window.
 
 Translation is **off** by default; pick one engine in settings:
 

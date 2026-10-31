@@ -28,6 +28,15 @@ internal sealed class GifRecordingSession : IDisposable
     /// <summary>Hard frame cap so a forgotten session cannot exhaust memory.</summary>
     private const int MaxFrames = 300;
 
+    /// <summary>Minimum retained-frame budget (small regions keep the old behavior).</summary>
+    private const long MinBudgetBytes = 24L * 1024 * 1024;
+
+    /// <summary>Upper bound for the retained-frame budget (PowerLauncher is long-lived).</summary>
+    private const long MaxBudgetBytes = 256L * 1024 * 1024;
+
+    /// <summary>Frames to target before the byte cap bites (~6.4 s at 80 ms).</summary>
+    private const int TargetFrames = 80;
+
     /// <summary>Target start fps via frame delay (GIF centiseconds resolve to 10 fps at 100 ms).</summary>
     public static TimeSpan Interval => TimeSpan.FromMilliseconds(IntervalMs);
 
@@ -49,14 +58,19 @@ internal sealed class GifRecordingSession : IDisposable
         _capture = capture;
         _token = _cts.Token;
 
-        // ~24 MB budget: roughly 40 seconds of 400×300 at ~80 ms, enough for a
-        // demo clip without ballooning PowerLauncher memory.
-        _budgetBytes = 24 * 1024 * 1024;
+        // Budget targets ~80 frames (~6.4 s at 80 ms) scaled by the frame size.
+        // 24 MB floor: a fixed 24 MB only ever held TWO 3440×1440 frames
+        // (~19.8 MB each), so a full-screen GIF silently stopped after 0.2 s.
+        long frameBytes = Math.Max(1L, (long)physicalRect.Width * physicalRect.Height * 4);
+        _budgetBytes = Math.Clamp(frameBytes * TargetFrames, MinBudgetBytes, MaxBudgetBytes);
     }
 
     public bool IsRunning => _loop is { IsCompleted: false };
 
     public int FrameCount => _frames.Count;
+
+    /// <summary>Retained-frame byte budget (test hook).</summary>
+    internal long BudgetBytes => _budgetBytes;
 
     public void Start()
     {

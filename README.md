@@ -143,15 +143,28 @@ PowerToys 设置 → PowerToys Run → Snip 的 **AdditionalOptions** 仍可用�
 
 ## 文字提取（OCR）
 
-两种引擎，均在本地识别，结果统一供「文字提取」与「图片翻译」使用。设置项 **OCR 引擎**（专用设置窗口「常规」页 / PowerToys 设置页）：
+三种引擎，均在本地识别，结果统一供「文字提取」与「图片翻译」使用。设置项 **OCR 引擎**（专用设置窗口「常规」页 / PowerToys 设置页）：
 
 | 选项 | 行为 |
 |---|---|
 | **自动**（默认） | x64 上已有微信 OCR 组件（full 包或已下载）→ 微信 OCR；否则 → Windows OCR（不再弹下载提示） |
 | **微信 OCR** | 始终用微信 OCR；slim 包首次使用提示下载组件 |
 | **Windows OCR** | 始终用系统自带 `Windows.Media.Ocr` |
+| **PaddleOCR（内置离线）** | 纯 C# PP-OCRv6，模型内嵌、无需下载，x64 / ARM64 均可用 |
 
-ARM64 版 PowerToys 中始终使用 Windows OCR（微信 OCR 只有 x64 原生组件）。
+ARM64 版 PowerToys 中始终使用 Windows OCR 或 PaddleOCR（微信 OCR 只有 x64 原生组件）。
+
+### PaddleOCR 计算后端（AMD / NVIDIA / Intel GPU 加速）
+
+选择 PaddleOCR 引擎后，还可选 **PaddleOCR 计算后端**：
+
+| 选项 | 行为 |
+|---|---|
+| **CPU**（默认） | 托管 SIMD 内核，最稳定，不加载任何显卡驱动 |
+| **自动** | 由库探测：仅当 GPU 实测快于 CPU 时才用 GPU |
+| **Vulkan GPU** | 强制走系统 `vulkan-1.dll`（AMD / NVIDIA / Intel） |
+
+实测（Ryzen 9 9900X + Radeon RX 9070，3440×1440 全屏 60 行文字）：CPU ~550 ms，Vulkan / 自动 ~60 ms，约 **8–9×**，识别结果一致。注意：Vulkan 会在 PowerToys Run 宿主进程内加载显卡驱动与第三方 Vulkan layer（Steam / Epic 等），驱动故障会一并带走宿主；因此默认保持 CPU，只在确认稳定后切换到 Vulkan。后端切换会在下次识别时重建推理管线；截图覆盖层打开时会预加载，首次识别不再等待。
 
 ### 微信 OCR
 
@@ -176,7 +189,11 @@ ARM64 版 PowerToys 中始终使用 Windows OCR（微信 OCR 只有 x64 原生�
 
 ## 图片翻译
 
-复用 WeChat OCR 的逐行框，翻译后擦除原文并重绘译文。多行结果会批量发给引擎。结果窗以**成品图为主**（处理中有动画；译文列表默认折叠在「调整译文」），可「重新贴图」/「保存图片」；忙态可点「取消」或 Esc 中止。
+复用 OCR 的逐行框，翻译后擦除原文并重绘译文。多行结果会批量发给引擎（HyMT 每批 12 行、HTTP/腾讯每批 20 行且最多 3 路并发）。结果窗以**成品图为主**（处理中有动画；译文列表默认折叠在「调整译文」），可「重新贴图」/「保存图片」；忙态可点「取消」或 Esc 中止。
+
+**翻译记忆**：完全一致的原文→译文按「引擎 + 模型 + 目标语言」缓存在
+`%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\translation-memory.json`
+（LRU，最多 5000 条）。同一界面再次截图时直接命中、不再跑模型；同一张图里重复的文本只翻译一次。设置窗口「图片翻译」页可关闭或一键清空。
 
 翻译引擎默认**关闭**，需在设置中任选其一：
 

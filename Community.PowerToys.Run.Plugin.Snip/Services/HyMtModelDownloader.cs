@@ -62,16 +62,37 @@ public static class HyMtModelDownloader
         ("Hugging Face", HuggingFaceUrl),
     ];
 
+    private static string _cachePathOverride;
+
     /// <summary>
     /// <c>%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\models\Hy-MT2-1.8B-2Bit.gguf</c>
     /// </summary>
-    public static string DefaultCachePath => Path.Combine(
-        Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
-        "PowerToys",
-        "RunPlugins",
-        "Community.PowerToys.Run.Plugin.Snip",
-        "models",
-        FileName);
+    public static string DefaultCachePath
+    {
+        get
+        {
+            string overridden = Volatile.Read(ref _cachePathOverride);
+            if (!string.IsNullOrEmpty(overridden))
+            {
+                return overridden;
+            }
+
+            return Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "PowerToys",
+                "RunPlugins",
+                "Community.PowerToys.Run.Plugin.Snip",
+                "models",
+                FileName);
+        }
+    }
+
+    /// <summary>
+    /// Test hook: points the cache (and its sidecar) at a temp path so tests do
+    /// not depend on whatever model the developer machine has downloaded.
+    /// </summary>
+    internal static void SetCachePathForTests(string path)
+        => Volatile.Write(ref _cachePathOverride, path);
 
     /// <summary>Path of the resumable partial file for <see cref="DefaultCachePath"/>.</summary>
     public static string DefaultPartialPath => DefaultCachePath + PartialFileSuffix;

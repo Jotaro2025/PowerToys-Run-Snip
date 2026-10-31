@@ -98,4 +98,26 @@ public class GifRecordingSessionTests
         byte[] gif = await session.StopAndEncodeAsync();
         Assert.IsNull(gif);
     }
+
+    [TestMethod]
+    public void FrameBudgetScalesWithResolution()
+    {
+        var capture = new FakeCapture();
+
+        // Tiny regions keep the 24 MB floor.
+        using var small = new GifRecordingSession(new Int32Rect(0, 0, 8, 8), capture);
+        Assert.AreEqual(24L * 1024 * 1024, small.BudgetBytes);
+
+        // 400×300 (~480 KB per frame) scales to ~80 frames rather than the floor.
+        using var medium = new GifRecordingSession(new Int32Rect(0, 0, 400, 300), capture);
+        Assert.IsTrue(medium.BudgetBytes >= 50L * 400 * 300 * 4, $"medium budget holds {medium.BudgetBytes / (400L * 300 * 4)} frames");
+
+        // Full screen must not stop after two frames: 3440×1440 is ~19.8 MB per
+        // frame, so the budget has to grow (capped at 256 MB).
+        using var full = new GifRecordingSession(new Int32Rect(0, 0, 3440, 1440), capture);
+        Assert.IsTrue(
+            full.BudgetBytes >= 10L * 3440 * 1440 * 4,
+            $"full-screen budget only holds {full.BudgetBytes / (3440L * 1440 * 4)} frames");
+        Assert.IsTrue(full.BudgetBytes <= 256L * 1024 * 1024);
+    }
 }

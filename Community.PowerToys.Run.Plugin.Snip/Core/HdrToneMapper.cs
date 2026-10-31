@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Runtime.CompilerServices;
 using System.Runtime.InteropServices;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Core;
@@ -25,6 +26,12 @@ internal static class HdrToneMapper
     private const double SrgbOffset = 0.055;
     private const double SrgbScale = 1.055;
     private const double SrgbGamma = 2.4;
+
+    /// <summary>LUT cache: white level changes only when the HDR display state does.</summary>
+    private static readonly object LutLock = new();
+    private static byte[] _cachedLut;
+    private static double _cachedScale;
+    private static double _cachedMaxInput;
 
     /// <summary>
     /// Converts one FP16 RGBA frame (row-major, 8 bytes per pixel) into BGRA32.
@@ -65,7 +72,7 @@ internal static class HdrToneMapper
         // (SDR white and above). Values beyond it are HDR highlights → 255.
         double maxInput = Math.Max(1.0, 1.0 / scale);
         float indexScale = (float)((LutSize - 1) / maxInput);
-        byte[] lut = BuildLut(scale, maxInput);
+        byte[] lut = GetLut(scale, maxInput);
 
         var halves = MemoryMarshal.Cast<byte, ushort>(source);
         int sourceStrideShorts = sourceStride / 2;
@@ -80,12 +87,37 @@ internal static class HdrToneMapper
                 float g = (float)BitConverter.UInt16BitsToHalf(halves[pixel + 1]);
                 float b = (float)BitConverter.UInt16BitsToHalf(halves[pixel + 2]);
 
-                destination[destinationOffset] = Lookup(lut, b * indexScale);
-                destination[destinationOffset + 1] = Lookup(lut, g * indexScale);
-                destination[destinationOffset + 2] = Lookup(lut, r * indexScale);
-                destination[destinationOffset + 3] = 255;
+                WritePixel(lut, b * indexScale, g * indexScale, r * indexScale, destination, destinationOffset);
                 destinationOffset += 4;
             }
+        }
+    }
+
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static void WritePixel(byte[] lut, float b, float g, float r, Span<byte> destination, int offset)
+    {
+        destination[offset] = Lookup(lut, b);
+        destination[offset + 1] = Lookup(lut, g);
+        destination[offset + 2] = Lookup(lut, r);
+        destination[offset + 3] = 255;
+    }
+
+    /// <summary>Returns the LUT for one white level, rebuilding only when it changes.</summary>
+    private static byte[] GetLut(double scale, double maxInput)
+    {
+        lock (LutLock)
+        {
+            if (_cachedLut != null
+                && _cachedScale.Equals(scale)
+                && _cachedMaxInput.Equals(maxInput))
+            {
+                return _cachedLut;
+            }
+
+            _cachedLut = BuildLut(scale, maxInput);
+            _cachedScale = scale;
+            _cachedMaxInput = maxInput;
+            return _cachedLut;
         }
     }
 

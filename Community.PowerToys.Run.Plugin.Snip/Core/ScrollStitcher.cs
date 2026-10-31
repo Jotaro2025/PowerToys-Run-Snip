@@ -180,6 +180,17 @@ public static class ScrollStitcher
     private const double ScrollHintPenaltyPerPx = 2.5;
     private const double ScrollHintSlackRatio = 0.35;
 
+    /// <summary>
+    /// Per-thread luma scratch reused across tile pairs. The planes are large
+    /// (width × height, ~5 MB at 1440p) and rebuilt for every pair; caching them
+    /// keeps stitching off the LOH after the first pair.
+    /// </summary>
+    [ThreadStatic]
+    private static byte[] _lumaPrevCache;
+
+    [ThreadStatic]
+    private static byte[] _lumaNextCache;
+
     private readonly struct DhMetrics
     {
         public int Dh { get; init; }
@@ -1028,8 +1039,10 @@ public static class ScrollStitcher
         // Materialize luma planes once per tile pair: every SAD/TextEdge metric
         // for every candidate then reads one byte per pixel instead of
         // recomputing the 3-channel luminance (6+ multiplies) on every pass.
-        byte[] lumaPrev = BuildLumaPlane(prevBase, prevStride, prevH, width);
-        byte[] lumaNext = BuildLumaPlane(nextBase, nextStride, nextH, width);
+        // The planes are large (width × height, ~5 MB per 1440p tile), so reuse
+        // a per-thread buffer instead of allocating two LOH arrays per tile.
+        byte[] lumaPrev = BuildLumaPlane(prevBase, prevStride, prevH, width, ref _lumaPrevCache);
+        byte[] lumaNext = BuildLumaPlane(nextBase, nextStride, nextH, width, ref _lumaNextCache);
 
         var metrics = new DhMetrics[candidates.Count];
         Parallel.For(0, candidates.Count, i =>
@@ -1081,9 +1094,15 @@ public static class ScrollStitcher
     /// One luma byte per pixel, row-major with a compact width stride (no stride
     /// gaps). Same 299/587/114 weights as the old RowLum, exact integer match.
     /// </summary>
-    private static unsafe byte[] BuildLumaPlane(byte* basePtr, int stride, int height, int width)
+    private static unsafe byte[] BuildLumaPlane(byte* basePtr, int stride, int height, int width, ref byte[] cache)
     {
-        var plane = new byte[width * height];
+        int length = checked(width * height);
+        if (cache == null || cache.Length < length)
+        {
+            cache = new byte[length];
+        }
+
+        var plane = cache;
         fixed (byte* dst = plane)
         {
             for (int y = 0; y < height; y++)

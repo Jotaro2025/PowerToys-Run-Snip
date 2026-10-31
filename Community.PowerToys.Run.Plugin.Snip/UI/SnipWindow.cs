@@ -111,6 +111,14 @@ public sealed class SnipWindow : Window
 
         _settings = settings ?? new SnipSettings();
 
+        // Warm PaddleOCR (models / GPU pipeline compile) while the user is still
+        // dragging the selection, so the first OCR does not pay the load cost.
+        if (OcrService.ResolveEngine(_settings) == OcrEngineKind.SimdPaddle)
+        {
+            var backend = _settings.OcrBackend;
+            _ = Task.Run(() => SimdPaddleOcrService.Prewarm(backend));
+        }
+
         _source = source;
         _physicalBounds = new Int32Rect(
             (int)screen.Bounds.X,
@@ -1545,7 +1553,9 @@ public sealed class SnipWindow : Window
 
         try
         {
-            var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+            // PaddleOCR consumes the bitmap, so skip the PNG encode for it.
+            var built = await BuildAndEncodeAsync(includePng: OcrService.ResolveEngine(_settings) != OcrEngineKind.SimdPaddle)
+                .ConfigureAwait(true);
             if (built == null)
             {
                 return;
@@ -1596,7 +1606,9 @@ public sealed class SnipWindow : Window
 
         try
         {
-            var built = await BuildAndEncodeAsync().ConfigureAwait(true);
+            // PaddleOCR consumes the bitmap, so skip the PNG encode for it.
+            var built = await BuildAndEncodeAsync(includePng: OcrService.ResolveEngine(_settings) != OcrEngineKind.SimdPaddle)
+                .ConfigureAwait(true);
             if (built == null)
             {
                 return;
@@ -2046,7 +2058,7 @@ public sealed class SnipWindow : Window
     /// thread pool. Full-res source is always used — OCR / translate / save must
     /// not see the overlay preview downsample.
     /// </summary>
-    private async Task<(BitmapSource Bitmap, byte[] Png)?> BuildAndEncodeAsync()
+    private async Task<(BitmapSource Bitmap, byte[] Png)?> BuildAndEncodeAsync(bool includePng = true)
     {
         if (!_hasSelection || _exportBusy)
         {
@@ -2067,7 +2079,13 @@ public sealed class SnipWindow : Window
             }
 
             var bmp = BuildResultBitmap(_selection);
-            var png = await PngEncoder.EncodeAsync(bmp).ConfigureAwait(true);
+
+            // PaddleOCR reads the bitmap directly; only the WeChat engine needs the
+            // encoded PNG (it writes a temp file). Skipping the encode here saves
+            // ~50–200 ms and one full-frame copy per capture.
+            var png = includePng
+                ? await PngEncoder.EncodeAsync(bmp).ConfigureAwait(true)
+                : null;
             return (bmp, png);
         }
         catch (Exception ex)

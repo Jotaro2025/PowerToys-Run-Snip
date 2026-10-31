@@ -8,6 +8,8 @@ using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 using Community.PowerToys.Run.Plugin.Snip.Models;
 using Sdcb.SimdPaddleOCR;
@@ -38,28 +40,49 @@ public static class SimdPaddleOcrService
     /// </summary>
     private static PaddleOcrAll _sharedOcr;
 
+    /// <summary>Backend the current <see cref="_sharedOcr"/> was built for.</summary>
+    private static OcrBackendKind _activeBackend = OcrBackendKind.Cpu;
+
     /// <summary>True when another recognition currently holds the process-wide gate.</summary>
     public static bool IsBusy => Gate.CurrentCount == 0;
+
+    /// <summary>Backend of the currently loaded pipeline (CPU until first use).</summary>
+    public static OcrBackendKind ActiveBackend => _activeBackend;
 
     /// <summary>
     /// Recognizes text lines with their axis-aligned boxes (for erase+repaint).
     /// Lines are returned in reading order (top-to-bottom, then left-to-right).
     /// </summary>
+    /// <remarks>
+    /// The parameterless overload keeps the historical CPU-only behavior so unit
+    /// tests and callers without settings never touch a graphics driver.
+    /// </remarks>
+    /// <exception cref="OcrException">Model load or recognition failed.</exception>
+    public static Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(
+        byte[] png,
+        CancellationToken cancellationToken = default)
+        => RecognizeLinesAsync(png, OcrBackendKind.Cpu, cancellationToken);
+
+    /// <summary>
+    /// Recognizes text lines on the requested compute backend. Changing the
+    /// backend reloads the shared pipeline under the gate.
+    /// </summary>
     /// <exception cref="OcrException">Model load or recognition failed.</exception>
     public static async Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(
         byte[] png,
+        OcrBackendKind backend,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(png);
 
-        // Decode + inference are CPU-bound: keep them off the UI thread.
+        // Decode + inference are CPU/GPU-bound: keep them off the UI thread.
         return await Task.Run(
             async () =>
             {
                 await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
                 {
-                    return RunOcrLines(png, cancellationToken);
+                    return RunOcrLines(png, backend, cancellationToken);
                 }
                 finally
                 {
@@ -69,7 +92,35 @@ public static class SimdPaddleOcrService
             cancellationToken).ConfigureAwait(false);
     }
 
-    private static IReadOnlyList<OcrTextLine> RunOcrLines(byte[] png, CancellationToken cancellationToken)
+    /// <summary>
+    /// Loads the shared pipeline ahead of the first recognition (e.g. while the
+    /// user is still dragging the snip selection). Never throws.
+    /// </summary>
+    public static void Prewarm(OcrBackendKind backend)
+    {
+        if (!Gate.Wait(0))
+        {
+            return;
+        }
+
+        try
+        {
+            GetOrCreateOcr(backend);
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip Paddle OCR prewarm failed: {ex.Message}", typeof(SimdPaddleOcrService));
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
+    private static IReadOnlyList<OcrTextLine> RunOcrLines(
+        byte[] png,
+        OcrBackendKind backend,
+        CancellationToken cancellationToken)
     {
         try
         {
@@ -80,16 +131,80 @@ public static class SimdPaddleOcrService
             // unfrozen bitmap back buffers).
             var source = PngReader.DecodeFrozen(png)
                 ?? throw new OcrException(Properties.Resources.ocr_err_failed);
-            int stride = source.PixelWidth * 4;
-            var pixels = new byte[stride * source.PixelHeight];
-            source.CopyPixels(pixels, stride, 0);
+            return RunOcrLines(source, backend, cancellationToken);
+        }
+        catch (Exception ex) when (ex is not OcrException && ex is not OperationCanceledException)
+        {
+            Log.Exception($"Snip Paddle OCR failed: {ex.Message}", ex, typeof(SimdPaddleOcrService));
+            throw new OcrException(FailedMessage(ex.Message), ex);
+        }
+    }
 
-            var ocr = GetOrCreateOcr();
+    /// <summary>
+    /// Recognizes an already-decoded bitmap without a PNG encode/decode round
+    /// trip. Must be called on the thread that owns <paramref name="source"/>
+    /// (it is copied to a plain byte buffer before inference).
+    /// </summary>
+    /// <exception cref="OcrException">Model load or recognition failed.</exception>
+    public static async Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(
+        BitmapSource source,
+        OcrBackendKind backend,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(source);
+
+        BitmapSource frozen = source;
+        if (!frozen.IsFrozen)
+        {
+            var clone = frozen.Clone();
+            clone.Freeze();
+            frozen = clone;
+        }
+
+        return await Task.Run(
+            async () =>
+            {
+                await Gate.WaitAsync(cancellationToken).ConfigureAwait(false);
+                try
+                {
+                    return RunOcrLines(frozen, backend, cancellationToken);
+                }
+                finally
+                {
+                    Gate.Release();
+                }
+            },
+            cancellationToken).ConfigureAwait(false);
+    }
+
+    private static IReadOnlyList<OcrTextLine> RunOcrLines(
+        BitmapSource source,
+        OcrBackendKind backend,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Bgra32 gives cheap sampling downstream; other formats convert once here.
+            var bgra = source.Format == PixelFormats.Bgra32
+                ? source
+                : new FormatConvertedBitmap(source, PixelFormats.Bgra32, null, 0);
+            if (!bgra.IsFrozen)
+            {
+                bgra.Freeze();
+            }
+
+            int stride = bgra.PixelWidth * 4;
+            var pixels = new byte[stride * bgra.PixelHeight];
+            bgra.CopyPixels(pixels, stride, 0);
+
+            var ocr = GetOrCreateOcr(backend);
             cancellationToken.ThrowIfCancellationRequested();
             PaddleOcrResult result = ocr.Run(
                 pixels,
-                source.PixelWidth,
-                source.PixelHeight,
+                bgra.PixelWidth,
+                bgra.PixelHeight,
                 stride,
                 ImagePixelFormat.Bgra32);
             return ExtractLines(result);
@@ -101,31 +216,67 @@ public static class SimdPaddleOcrService
         }
     }
 
-    private static PaddleOcrAll GetOrCreateOcr()
+    private static PaddleOcrAll GetOrCreateOcr(OcrBackendKind backend)
     {
-        if (_sharedOcr != null)
+        if (_sharedOcr != null && _activeBackend == backend)
         {
             return _sharedOcr;
         }
 
-        // CPU backend on every stage: the GPU paths (Vulkan/Metal) load system
-        // graphics drivers in-process, and a driver fault here would take down
-        // the PowerToys Run host. Deterministic CPU keeps OCR self-contained.
+        if (_sharedOcr != null)
+        {
+            var stale = Interlocked.Exchange(ref _sharedOcr, null);
+            try
+            {
+                stale?.Dispose();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Snip Paddle OCR backend switch dispose: {ex.Message}", typeof(SimdPaddleOcrService));
+            }
+        }
+
+        var options = BuildOptions(backend);
+        _sharedOcr = PaddleOcrAll.Load(ChineseV6TinyModels.Default, options);
+        _activeBackend = backend;
+        Log.Info(
+            $"Snip Paddle OCR: PP-OCRv6 tiny models loaded (backend {backend}).",
+            typeof(SimdPaddleOcrService));
+        return _sharedOcr;
+    }
+
+    /// <summary>
+    /// Builds the three-stage options for one backend. Kept separate so the
+    /// mapping can be unit-tested without loading any model.
+    /// </summary>
+    internal static PaddleOcrOptions BuildOptions(OcrBackendKind backend)
+    {
+        OcrBackend stageBackend = MapBackend(backend);
+
+        // CPU backend on every stage of the default path: the GPU paths load
+        // system graphics drivers in-process, and a driver fault would take
+        // down the PowerToys Run host. GPU is opt-in via settings.
         //
         // Detector side limit raised to the library maximum (default 960): at
         // 960 a full-screen snip (3440x1440) is downscaled ~3.6x and 14px UI
         // text misreads and splits. At 4096 the same capture reads cleanly
-        // (~750 ms); small selections are unaffected either way.
-        var options = new PaddleOcrOptions
+        // (~500 ms CPU, ~60 ms Vulkan); small selections are unaffected.
+        return new PaddleOcrOptions
         {
-            Detector = new PaddleOcrDetectorOptions { Backend = OcrBackend.Cpu, LimitSideLength = 4096 },
-            Classifier = new PaddleOcrClassifierOptions { Backend = OcrBackend.Cpu },
-            Recognizer = new PaddleOcrRecognizerOptions { Backend = OcrBackend.Cpu },
+            Detector = new PaddleOcrDetectorOptions { Backend = stageBackend, LimitSideLength = 4096 },
+            Classifier = new PaddleOcrClassifierOptions { Backend = stageBackend },
+            Recognizer = new PaddleOcrRecognizerOptions { Backend = stageBackend },
         };
-        _sharedOcr = PaddleOcrAll.Load(ChineseV6TinyModels.Default, options);
-        Log.Info("Snip Paddle OCR: PP-OCRv6 tiny models loaded.", typeof(SimdPaddleOcrService));
-        return _sharedOcr;
     }
+
+    /// <summary>Maps the plugin enum onto the library's backend enum.</summary>
+    internal static OcrBackend MapBackend(OcrBackendKind backend)
+        => backend switch
+        {
+            OcrBackendKind.Vulkan => OcrBackend.Vulkan,
+            OcrBackendKind.Auto => OcrBackend.Auto,
+            _ => OcrBackend.Cpu,
+        };
 
     /// <summary>Maps a PaddleOcr result to ordered <see cref="OcrTextLine"/> boxes.</summary>
     public static IReadOnlyList<OcrTextLine> ExtractLines(PaddleOcrResult result)

@@ -1189,6 +1189,51 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("opt_ocr_engine_paddle", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to PaddleOCR compute backend.
+        /// </summary>
+        public static string opt_ocr_backend_label {
+            get {
+                return ResourceManager.GetString("opt_ocr_backend_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Only used when the OCR engine is PaddleOCR..
+        /// </summary>
+        public static string opt_ocr_backend_desc {
+            get {
+                return ResourceManager.GetString("opt_ocr_backend_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Auto (GPU when faster).
+        /// </summary>
+        public static string opt_ocr_backend_auto {
+            get {
+                return ResourceManager.GetString("opt_ocr_backend_auto", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to CPU (most stable).
+        /// </summary>
+        public static string opt_ocr_backend_cpu {
+            get {
+                return ResourceManager.GetString("opt_ocr_backend_cpu", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Vulkan GPU (fastest).
+        /// </summary>
+        public static string opt_ocr_backend_vulkan {
+            get {
+                return ResourceManager.GetString("opt_ocr_backend_vulkan", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to Target language.
         /// </summary>
@@ -1203,6 +1248,51 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string opt_tr_lang_desc {
             get {
                 return ResourceManager.GetString("opt_tr_lang_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Cache repeated translations.
+        /// </summary>
+        public static string opt_tr_cache_label {
+            get {
+                return ResourceManager.GetString("opt_tr_cache_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Reuse exact source/translation pairs across captures..
+        /// </summary>
+        public static string opt_tr_cache_desc {
+            get {
+                return ResourceManager.GetString("opt_tr_cache_desc", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Clear translation cache.
+        /// </summary>
+        public static string settings_tr_cache_clear {
+            get {
+                return ResourceManager.GetString("settings_tr_cache_clear", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Translation cache cleared.
+        /// </summary>
+        public static string settings_tr_cache_cleared {
+            get {
+                return ResourceManager.GetString("settings_tr_cache_cleared", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Cached translations.
+        /// </summary>
+        public static string settings_tr_cache_count {
+            get {
+                return ResourceManager.GetString("settings_tr_cache_count", resourceCulture);
             }
         }
         /// <summary>

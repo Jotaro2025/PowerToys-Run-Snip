@@ -81,7 +81,10 @@ public static class OcrService
         var engine = ResolveEngine(settings);
         if (engine == OcrEngineKind.SimdPaddle)
         {
-            return await RecognizeWithSimdPaddleAsync(png, cancellationToken).ConfigureAwait(false);
+            return await RecognizeWithSimdPaddleAsync(
+                png,
+                settings?.OcrBackend ?? OcrBackendKind.Cpu,
+                cancellationToken).ConfigureAwait(false);
         }
 
         if (engine == OcrEngineKind.WeChat)
@@ -102,12 +105,40 @@ public static class OcrService
     }
 
     /// <summary>
+    /// Recognizes lines from an already-decoded bitmap. PaddleOCR consumes the
+    /// pixels directly, so the common full-screen path skips the PNG encode +
+    /// decode round trip. Other engines fall back to encoding once here.
+    /// </summary>
+    /// <exception cref="OcrException">Engine unavailable or recognition failed.</exception>
+    public static async Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(
+        BitmapSource image,
+        SnipSettings settings,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        if (ResolveEngine(settings) == OcrEngineKind.SimdPaddle)
+        {
+            return await RecognizeWithSimdPaddleAsync(
+                image,
+                settings?.OcrBackend ?? OcrBackendKind.Cpu,
+                cancellationToken).ConfigureAwait(false);
+        }
+
+        // WeChat writes a file; Windows OCR decodes PNG. Encode lazily here
+        // instead of making every caller pay for a PNG they may not need.
+        byte[] png = await PngEncoder.EncodeAsync(image, cancellationToken).ConfigureAwait(false);
+        return await RecognizeLinesAsync(png, settings, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>
     /// Mirrors the WeChat path: small selections are upscaled up front (the
     /// detector does not enlarge below its side-length limit either, and a 2x
     /// upscale only ever helps), then boxes are mapped back to source space.
     /// </summary>
     private static async Task<IReadOnlyList<OcrTextLine>> RecognizeWithSimdPaddleAsync(
         byte[] png,
+        OcrBackendKind backend,
         CancellationToken cancellationToken)
     {
         var size = PngReader.TryReadSize(png);
@@ -119,12 +150,42 @@ public static class OcrService
                 Log.Info(
                     $"Snip OCR: upscaled small image for recognition (scale {scale:0.##}).",
                     typeof(OcrService));
-                var lines = await SimdPaddleOcrService.RecognizeLinesAsync(upscaled, cancellationToken).ConfigureAwait(false);
+                var lines = await SimdPaddleOcrService.RecognizeLinesAsync(upscaled, backend, cancellationToken).ConfigureAwait(false);
                 return MapLinesToSource(lines, scale);
             }
         }
 
-        return await SimdPaddleOcrService.RecognizeLinesAsync(png, cancellationToken).ConfigureAwait(false);
+        return await SimdPaddleOcrService.RecognizeLinesAsync(png, backend, cancellationToken).ConfigureAwait(false);
+    }
+
+    /// <summary>Bitmap counterpart of the PaddleOCR path (no PNG round trip).</summary>
+    private static async Task<IReadOnlyList<OcrTextLine>> RecognizeWithSimdPaddleAsync(
+        BitmapSource image,
+        OcrBackendKind backend,
+        CancellationToken cancellationToken)
+    {
+        var plan = OcrUpscalePolicy.PlanUpscale(image.PixelWidth, image.PixelHeight);
+        if (plan is { Width: > 0, Height: > 0 })
+        {
+            var scaled = new TransformedBitmap(
+                image,
+                new ScaleTransform(
+                    plan.Value.Width / (double)image.PixelWidth,
+                    plan.Value.Height / (double)image.PixelHeight));
+            scaled.Freeze();
+            double scale = OcrUpscalePolicy.ActualScale(
+                image.PixelWidth,
+                image.PixelHeight,
+                plan.Value.Width,
+                plan.Value.Height);
+            Log.Info(
+                $"Snip OCR: upscaled small image for recognition (scale {scale:0.##}).",
+                typeof(OcrService));
+            var lines = await SimdPaddleOcrService.RecognizeLinesAsync(scaled, backend, cancellationToken).ConfigureAwait(false);
+            return MapLinesToSource(lines, scale);
+        }
+
+        return await SimdPaddleOcrService.RecognizeLinesAsync(image, backend, cancellationToken).ConfigureAwait(false);
     }
 
     private static async Task<IReadOnlyList<OcrTextLine>> RecognizeWithWeChatAsync(

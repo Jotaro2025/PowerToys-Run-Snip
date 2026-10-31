@@ -101,59 +101,82 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
         int failedLines = 0;
         TranslatorException firstFailure = null;
         var chunks = TranslatorBatch.Chunk(work, TranslatorBatch.HttpMaxLines, TranslatorBatch.HttpMaxChars);
-        foreach (var chunk in chunks)
+
+        // Remote round-trips dominate; run a few chunks at a time. Result slots
+        // are index-disjoint, so order is preserved without locks.
+        var throttle = new SemaphoreSlim(
+            TranslatorBatch.MaxConcurrentHttpChunks,
+            TranslatorBatch.MaxConcurrentHttpChunks);
+        var tasks = new List<Task>(chunks.Count);
+
+        async Task ProcessChunkAsync(List<(int Index, string Text)> chunk)
         {
-            cancellationToken.ThrowIfCancellationRequested();
-            var lines = chunk.Select(c => c.Text).ToList();
             try
             {
-                var reply = await CompleteAsync(
-                    TranslatorBatch.BuildNumberedPrompt(targetLanguage, lines),
-                    maxTokens: Math.Clamp(lines.Sum(l => l.Length) * 4, 128, 4096),
-                    cancellationToken).ConfigureAwait(false);
-
-                if (TranslatorBatch.TryParseNumberedReply(reply, lines.Count, out var parsed))
-                {
-                    for (int i = 0; i < chunk.Count; i++)
-                    {
-                        results[chunk[i].Index] = parsed[i];
-                    }
-
-                    completed += chunk.Count;
-                    progress?.Report(new TranslatorProgress(completed, work.Count));
-                    continue;
-                }
-
-                Log.Info(
-                    $"Snip HTTP translator batch parse failed for {lines.Count} lines; falling back to per-line.",
-                    typeof(HttpOpenAiTranslator));
-            }
-            catch (TranslatorException)
-            {
-                // Fall through to per-line for this chunk.
-                Log.Info(
-                    $"Snip HTTP translator batch request failed for {lines.Count} lines; falling back to per-line.",
-                    typeof(HttpOpenAiTranslator));
-            }
-
-            foreach (var (index, text) in chunk)
-            {
                 cancellationToken.ThrowIfCancellationRequested();
+                var lines = chunk.Select(c => c.Text).ToList();
                 try
                 {
-                    results[index] = await TranslateOneAsync(text, targetLanguage, cancellationToken).ConfigureAwait(false);
+                    var reply = await CompleteAsync(
+                        TranslatorBatch.BuildNumberedPrompt(targetLanguage, lines),
+                        maxTokens: Math.Clamp(lines.Sum(l => l.Length) * 4, 128, 4096),
+                        cancellationToken).ConfigureAwait(false);
+
+                    if (TranslatorBatch.TryParseNumberedReply(reply, lines.Count, out var parsed))
+                    {
+                        for (int i = 0; i < chunk.Count; i++)
+                        {
+                            results[chunk[i].Index] = parsed[i];
+                        }
+
+                        int done = Interlocked.Add(ref completed, chunk.Count);
+                        progress?.Report(new TranslatorProgress(done, work.Count));
+                        return;
+                    }
+
+                    Log.Info(
+                        $"Snip HTTP translator batch parse failed for {lines.Count} lines; falling back to per-line.",
+                        typeof(HttpOpenAiTranslator));
                 }
-                catch (TranslatorException ex)
+                catch (TranslatorException)
                 {
-                    firstFailure ??= ex;
-                    failedLines++;
-                    results[index] = text;
+                    // Fall through to per-line for this chunk.
+                    Log.Info(
+                        $"Snip HTTP translator batch request failed for {lines.Count} lines; falling back to per-line.",
+                        typeof(HttpOpenAiTranslator));
                 }
 
-                completed++;
-                progress?.Report(new TranslatorProgress(completed, work.Count));
+                foreach (var (index, text) in chunk)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                    try
+                    {
+                        results[index] = await TranslateOneAsync(text, targetLanguage, cancellationToken).ConfigureAwait(false);
+                    }
+                    catch (TranslatorException ex)
+                    {
+                        Interlocked.CompareExchange(ref firstFailure, ex, null);
+                        Interlocked.Increment(ref failedLines);
+                        results[index] = text;
+                    }
+
+                    int done = Interlocked.Increment(ref completed);
+                    progress?.Report(new TranslatorProgress(done, work.Count));
+                }
+            }
+            finally
+            {
+                throttle.Release();
             }
         }
+
+        foreach (var chunk in chunks)
+        {
+            await throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
+            tasks.Add(ProcessChunkAsync(chunk));
+        }
+
+        await Task.WhenAll(tasks).ConfigureAwait(false);
 
         if (failedLines >= work.Count && firstFailure != null)
         {

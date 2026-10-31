@@ -43,6 +43,8 @@ public sealed class SnipSettingsWindow : Window
     private TextBlock _hotkeyStatus;
     private ComboBox _provider;
     private TextBox _targetLang;
+    private CheckBox _translationCache;
+    private TextBlock _translationCacheStatus;
     private Border _httpPanel;
     private Border _hymtPanel;
     private TextBox _httpUrl;
@@ -55,6 +57,7 @@ public sealed class SnipSettingsWindow : Window
     private ComboBox _hymtBackend;
     private ComboBox _uiLanguage;
     private ComboBox _ocrEngine;
+    private ComboBox _ocrBackend;
     private ComboBox _windowsOcrLang;
     private TabControl _tabs;
     private bool _suppressLanguageChanged;
@@ -361,6 +364,11 @@ public sealed class SnipSettingsWindow : Window
             _windowsOcrLang.Items.Add(new ComboBoxItem { Content = tag, Tag = tag });
         }
 
+        _ocrBackend = CreateCombo();
+        _ocrBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_backend_auto, Tag = OcrBackendKind.Auto });
+        _ocrBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_backend_cpu, Tag = OcrBackendKind.Cpu });
+        _ocrBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_backend_vulkan, Tag = OcrBackendKind.Vulkan });
+
         return TabPage(
             Card(
                 SectionHeader(Properties.Resources.settings_section_interface),
@@ -378,6 +386,7 @@ public sealed class SnipSettingsWindow : Window
             Card(
                 SectionHeader(Properties.Resources.settings_section_ocr),
                 Field(Properties.Resources.opt_ocr_engine_label, _ocrEngine, Properties.Resources.opt_ocr_engine_desc),
+                Field(Properties.Resources.opt_ocr_backend_label, _ocrBackend, Properties.Resources.opt_ocr_backend_desc),
                 Field(Properties.Resources.opt_windows_ocr_lang_label, _windowsOcrLang, Properties.Resources.opt_windows_ocr_lang_desc)));
     }
 
@@ -453,13 +462,56 @@ public sealed class SnipSettingsWindow : Window
                 Properties.Resources.opt_hymt_idle_unload_desc),
             BuildUnloadRow());
 
+        _translationCache = new CheckBox
+        {
+            Content = Properties.Resources.opt_tr_cache_label,
+        };
+        _translationCacheStatus = Hint(string.Empty);
+
         return TabPage(
             Card(
                 SectionHeader(Properties.Resources.settings_section_translate),
                 Field(StripEnginePrefix(Properties.Resources.opt_tr_provider_label, "翻译"), _provider, Properties.Resources.settings_tr_fold_hint),
-                Field(StripEnginePrefix(Properties.Resources.opt_tr_lang_label, "翻译"), _targetLang)),
+                Field(StripEnginePrefix(Properties.Resources.opt_tr_lang_label, "翻译"), _targetLang),
+                Field(null, _translationCache),
+                Field(null, BuildTranslationCacheRow(), Properties.Resources.opt_tr_cache_desc),
+                _translationCacheStatus),
             _httpPanel,
             _hymtPanel);
+    }
+
+    private UIElement BuildTranslationCacheRow()
+    {
+        var clear = SecondaryButton(Properties.Resources.settings_tr_cache_clear);
+        clear.Click += (_, _) =>
+        {
+            TranslationMemory.Clear();
+            UpdateTranslationCacheStatus(cleared: true);
+        };
+
+        var panel = new StackPanel
+        {
+            Orientation = Orientation.Horizontal,
+            VerticalAlignment = VerticalAlignment.Center,
+        };
+        panel.Children.Add(clear);
+        return panel;
+    }
+
+    private void UpdateTranslationCacheStatus(bool cleared)
+    {
+        if (_translationCacheStatus == null)
+        {
+            return;
+        }
+
+        string template = cleared
+            ? Properties.Resources.settings_tr_cache_cleared
+            : Properties.Resources.settings_tr_cache_count;
+        _translationCacheStatus.Text = template.Replace(
+            "{0}",
+            TranslationMemory.Count.ToString(System.Globalization.CultureInfo.CurrentCulture),
+            StringComparison.Ordinal);
     }
 
     /// <summary>
@@ -640,9 +692,12 @@ public sealed class SnipSettingsWindow : Window
             : Properties.Resources.settings_hotkey_current.Replace("{0}", hotkey, StringComparison.Ordinal);
 
         SelectOcrEngine(_draft.OcrEngine);
+        SelectOcrBackend(_draft.OcrBackend);
         SelectWindowsOcrLanguage(_draft.WindowsOcrLanguage);
         SelectProvider(_draft.TranslatorProvider);
         _targetLang.Text = _draft.TargetLanguage ?? string.Empty;
+        _translationCache.IsChecked = _draft.TranslationCacheEnabled;
+        UpdateTranslationCacheStatus(cleared: false);
         _httpUrl.Text = _draft.HttpBaseUrl ?? string.Empty;
         var key = _draft.HttpApiKey ?? string.Empty;
         _httpKeyPassword.Password = key;
@@ -713,9 +768,11 @@ public sealed class SnipSettingsWindow : Window
         _draft.HyMtIdleUnloadMinutes = Math.Clamp(idleUnload, 0, HyMT2SharpTranslatorCache.MaxIdleUnloadMinutes);
         _draft.GlobalHotkey = HotkeyParser.Normalize(hotkeyText);
         _draft.OcrEngine = SelectedOcrEngine();
+        _draft.OcrBackend = SelectedOcrBackend();
         _draft.WindowsOcrLanguage = SelectedWindowsOcrLanguage();
         _draft.TranslatorProvider = SelectedProvider();
         _draft.TargetLanguage = string.IsNullOrWhiteSpace(_targetLang.Text) ? "简体中文" : _targetLang.Text.Trim();
+        _draft.TranslationCacheEnabled = _translationCache.IsChecked == true;
         var uiLang = SelectedUiLanguage();
         _draft.UiLanguage = uiLang == UiLanguageHelper.System ? string.Empty : uiLang;
         _draft.HttpBaseUrl = _httpUrl.Text?.Trim() ?? string.Empty;
@@ -918,6 +975,23 @@ public sealed class SnipSettingsWindow : Window
 
     private OcrEngineKind SelectedOcrEngine()
         => _ocrEngine?.SelectedItem is ComboBoxItem item && item.Tag is OcrEngineKind k ? k : OcrEngineKind.Auto;
+
+    private void SelectOcrBackend(OcrBackendKind backend)
+    {
+        for (var i = 0; i < _ocrBackend.Items.Count; i++)
+        {
+            if (_ocrBackend.Items[i] is ComboBoxItem item && item.Tag is OcrBackendKind b && b == backend)
+            {
+                _ocrBackend.SelectedIndex = i;
+                return;
+            }
+        }
+
+        _ocrBackend.SelectedIndex = 0;
+    }
+
+    private OcrBackendKind SelectedOcrBackend()
+        => _ocrBackend?.SelectedItem is ComboBoxItem item && item.Tag is OcrBackendKind b ? b : OcrBackendKind.Auto;
 
     private void SelectProvider(TranslatorProvider provider)
     {
