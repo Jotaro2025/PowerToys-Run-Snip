@@ -143,7 +143,8 @@ public static class OcrService
     {
         ArgumentNullException.ThrowIfNull(image);
 
-        if (ResolveEngine(settings) == OcrEngineKind.SimdPaddle)
+        var engine = ResolveEngine(settings);
+        if (engine == OcrEngineKind.SimdPaddle)
         {
             return await RecognizeWithSimdPaddleAsync(
                 image,
@@ -151,8 +152,13 @@ public static class OcrService
                 cancellationToken).ConfigureAwait(false);
         }
 
-        // WeChat writes a file; Windows OCR decodes PNG. Encode lazily here
-        // instead of making every caller pay for a PNG they may not need.
+        if (engine == OcrEngineKind.WeChat)
+        {
+            // The WeChat handoff file is written as BMP (much cheaper than PNG).
+            return await WeChatOcrService.RecognizeLinesAsync(image, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Windows OCR decodes PNG internally: encode lazily only for that engine.
         byte[] png = await PngEncoder.EncodeAsync(image, cancellationToken).ConfigureAwait(false);
         return await RecognizeLinesAsync(png, settings, cancellationToken).ConfigureAwait(false);
     }

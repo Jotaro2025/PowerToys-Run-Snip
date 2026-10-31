@@ -1553,8 +1553,9 @@ public sealed class SnipWindow : Window
 
         try
         {
-            // PaddleOCR consumes the bitmap, so skip the PNG encode for it.
-            var built = await BuildAndEncodeAsync(includePng: OcrService.ResolveEngine(_settings) != OcrEngineKind.SimdPaddle)
+            // Only Windows OCR needs the encoded PNG (it decodes internally);
+            // PaddleOCR reads the bitmap and WeChat OCR now writes a BMP.
+            var built = await BuildAndEncodeAsync(includePng: OcrService.ResolveEngine(_settings) == OcrEngineKind.Windows)
                 .ConfigureAwait(true);
             if (built == null)
             {
@@ -1606,8 +1607,9 @@ public sealed class SnipWindow : Window
 
         try
         {
-            // PaddleOCR consumes the bitmap, so skip the PNG encode for it.
-            var built = await BuildAndEncodeAsync(includePng: OcrService.ResolveEngine(_settings) != OcrEngineKind.SimdPaddle)
+            // Only Windows OCR needs the encoded PNG (it decodes internally);
+            // PaddleOCR reads the bitmap and WeChat OCR now writes a BMP.
+            var built = await BuildAndEncodeAsync(includePng: OcrService.ResolveEngine(_settings) == OcrEngineKind.Windows)
                 .ConfigureAwait(true);
             if (built == null)
             {

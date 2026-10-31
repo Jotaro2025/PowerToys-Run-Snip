@@ -46,6 +46,7 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 ### 性能 / Performance
 
 - OCR 不再为 PaddleOCR 预先编码 PNG：文本提取/图片翻译直接把手上的 `BitmapSource` 交给识别器（只在微信/Windows OCR 路径才编码），全屏截图省掉 ~50–200 ms 的 PNG 编码与一次全帧拷贝；小图放大也不再编码一次 — No PNG encode before PaddleOCR: text extraction / image translate hand the bitmap straight to the recognizer (PNG only for the WeChat/Windows paths), saving ~50–200 ms and a full-frame copy per full-screen capture; small-image upscaling no longer encodes either (@Jotaro2025)
+- 微信 OCR 输入改用 BMP：原生 `WeChatOCR.exe` 直接读未压缩 BMP，插件不再预编码 PNG（实测冷路径 715 → 562 ms；预热后原生约 250 ms）。上游包装层的 protobuf→文本→JSON 解析实测仅 0.44 ms/次，未 fork，分析见 `docs/wechatocr-optimization.md` — WeChat OCR now hands the native engine a BMP instead of a PNG (cold path 715 → 562 ms; native warm ~250 ms). The wrapper's protobuf→text→JSON pass costs only 0.44 ms/call, so no fork; see `docs/wechatocr-optimization.md` (@Jotaro2025)
 - OCR 窗口的二维码扫描与 OCR 改为并行（之前先扫完整图才开始识别） — QR scanning and OCR now run concurrently in the OCR result window (@Jotaro2025)
 - HTTP / 腾讯翻译的分批请求最多 3 路并发（结果槽位互不相交，顺序不变；3 路低于腾讯默认 5 QPS） — Remote translator chunks run up to 3 in flight (index-disjoint result slots preserve order; 3 stays under Tencent's default 5 QPS) (@Jotaro2025)
 - HyMT2Sharp 批量翻译从 8 行/1500 字提升到 12 行/2000 字，减少重复指令 prefill；对齐失败仍回退逐行 — HyMT2Sharp batches 12 lines / 2000 chars instead of 8 / 1500, cutting repeated instruction prefill; misalignment still falls back per line (@Jotaro2025)

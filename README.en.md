@@ -180,6 +180,7 @@ Uses the [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/) NuGet package (s
 > **PowerToys Additional Options · API key**: the box stays empty with a “leave empty to keep the saved key” placeholder and **never** shows `dpapi:v1:` ciphertext. Empty on save keeps the key; clear it only in the **Snip settings window**.- Managed DLLs (`WeChatOcr.dll`, etc., ~1.3 MB) ship in both packs
 - **x64 only**; missing / timeout / failed OCR shows a message in the result window
 - Closing the result window cancels in-flight recognition; a busy engine shows a wait hint
+- Screenshots are handed to `WeChatOCR.exe` as an **uncompressed BMP** (no PNG compression; with preload, a 60-line full screen is ~450–560 ms on first use). Native inference is ~250 ms of that and is closed-source; wrapper analysis: [`docs/wechatocr-optimization.md`](docs/wechatocr-optimization.md)
 
 ### Windows OCR
 

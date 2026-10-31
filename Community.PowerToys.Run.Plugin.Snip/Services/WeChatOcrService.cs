@@ -11,6 +11,7 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Media.Imaging;
 
 using Community.PowerToys.Run.Plugin.Snip.Models;
 using WeChatOcr;
@@ -283,6 +284,58 @@ public static class WeChatOcrService
             cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Recognizes text lines from an already-decoded bitmap. Uses an
+    /// uncompressed BMP for the handoff instead of a PNG: the encoder is ~10×
+    /// cheaper than WPF's PNG encoder and the native engine reads it directly
+    /// (measured ~30 ms less per full-screen call plus the skipped PNG encode).
+    /// </summary>
+    public static async Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(
+        BitmapSource image,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(image);
+
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        {
+            throw new OcrException(Properties.Resources.ocr_err_arch);
+        }
+
+        BitmapSource frozen = image;
+        if (!frozen.IsFrozen)
+        {
+            var clone = frozen.Clone();
+            clone.Freeze();
+            frozen = clone;
+        }
+
+        var imagePath = Path.Combine(Path.GetTempPath(), $"snip-ocr-{Guid.NewGuid():N}.bmp");
+        try
+        {
+            await Task.Run(
+                () =>
+                {
+                    using var stream = new FileStream(
+                        imagePath,
+                        FileMode.Create,
+                        FileAccess.Write,
+                        FileShare.Read,
+                        bufferSize: 64 * 1024,
+                        FileOptions.SequentialScan);
+                    var encoder = new BmpBitmapEncoder();
+                    encoder.Frames.Add(BitmapFrame.Create(frozen));
+                    encoder.Save(stream);
+                },
+                cancellationToken).ConfigureAwait(false);
+
+            return await RunOcrPathAsync(imagePath, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            TryDelete(imagePath);
+        }
+    }
+
     /// <summary>Lists the bundled OCR files missing from <paramref name="dataDirectory"/>.</summary>
     public static IEnumerable<string> FindMissingFiles(string dataDirectory)
     {
@@ -381,11 +434,28 @@ public static class WeChatOcrService
     private static async Task<IReadOnlyList<OcrTextLine>> RunOcrLinesAsync(byte[] png, CancellationToken cancellationToken)
     {
         var imagePath = Path.Combine(Path.GetTempPath(), $"snip-ocr-{Guid.NewGuid():N}.png");
-        var tcs = new TaskCompletionSource<IReadOnlyList<OcrTextLine>>(TaskCreationOptions.RunContinuationsAsynchronously);
         try
         {
             await File.WriteAllBytesAsync(imagePath, png, cancellationToken).ConfigureAwait(false);
+            return await RunOcrPathAsync(imagePath, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            TryDelete(imagePath);
+        }
+    }
 
+    /// <summary>
+    /// Runs one already-written image file through the shared component. The
+    /// caller owns the file and its cleanup; the native protocol takes a path.
+    /// </summary>
+    private static async Task<IReadOnlyList<OcrTextLine>> RunOcrPathAsync(
+        string imagePath,
+        CancellationToken cancellationToken)
+    {
+        var tcs = new TaskCompletionSource<IReadOnlyList<OcrTextLine>>(TaskCreationOptions.RunContinuationsAsynchronously);
+        try
+        {
             // Point WeChatOcr at the folder that contains wco_data (plugin or LocalAppData).
             var dataDir = ResolveOcrDataDirectory()
                 ?? throw new OcrException(Properties.Resources.ocr_err_need_install);
@@ -435,10 +505,6 @@ public static class WeChatOcrService
         {
             Log.Exception($"Snip WeChat OCR failed: {ex.Message}", ex, typeof(WeChatOcrService));
             throw new OcrException(FailedMessage(ex.Message), ex);
-        }
-        finally
-        {
-            TryDelete(imagePath);
         }
     }
 

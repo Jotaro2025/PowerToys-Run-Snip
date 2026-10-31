@@ -180,6 +180,7 @@ ARM64 版 PowerToys 中始终使用 Windows OCR 或 PaddleOCR（微信 OCR 只�
 > **PowerToys 附加选项 · API Key**：框内始终为空并显示占位「留空则保留已保存的密钥」，**不**展示 `dpapi:v1:` 密文。留空保存=保留密钥；仅在 **Snip 设置窗口** 清空并保存才会删除。- 托管 DLL（`WeChatOcr.dll` 等约 1.3 MB）随两种包一起分发
 - 仅 **x64**；OCR 缺失 / 超时 / 失败时结果窗会提示
 - 关闭结果窗会取消进行中的识别；引擎忙碌时会显示等待提示
+- 截图以 **BMP** 临时文件交给 `WeChatOCR.exe`（未压缩，免 PNG 压缩；配合「截图时预加载 OCR」，全屏 60 行首次识别约 450–560 ms）。原生推理约占 250 ms，属闭源部分；包装层分析见 [`docs/wechatocr-optimization.md`](docs/wechatocr-optimization.md)
 
 ### Windows OCR
 
