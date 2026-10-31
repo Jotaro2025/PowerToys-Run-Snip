@@ -359,6 +359,16 @@ public sealed class TranslateResultWindow : Window, IDisposable
         ITranslator translator = null;
         try
         {
+            // Create the translator before OCR so the in-process HyMT model can
+            // start loading while recognition runs. Configuration was validated
+            // by SnipWindow before this window opened.
+            translator = TranslatorFactory.Create(_settings);
+            var hyMt = translator as HyMT2SharpTranslator;
+            if (hyMt != null && _settings.PrewarmTranslatorOnTranslate)
+            {
+                _ = hyMt.PrewarmAsync();
+            }
+
             // OCR returns fragments for inline code / punctuation runs; translating each
             // in place paints stray 1–2 character glyphs ("black dots"). Merge to one box
             // per visual line before translating and erasing.
@@ -380,12 +390,12 @@ public sealed class TranslateResultWindow : Window, IDisposable
             }
 
             SetBusy(Properties.Resources.tr_busy_translate);
-            translator = TranslatorFactory.Create(_settings);
-            if (translator is HyMT2SharpTranslator hymt)
+            if (hyMt != null)
             {
-                hymt.ModelLoading += OnModelLoading;
-                if (hymt.IsBusy)
+                hyMt.ModelLoading += OnModelLoading;
+                if (hyMt.IsBusy)
                 {
+                    // Prewarm (or a concurrent translation) is still loading the GGUF.
                     SetBusy(Properties.Resources.tr_busy_hymt_wait);
                 }
             }

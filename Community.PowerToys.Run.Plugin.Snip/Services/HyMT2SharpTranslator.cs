@@ -209,6 +209,47 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         }
     }
 
+    /// <summary>
+    /// Starts loading the GGUF ahead of the first translation request so the
+    /// model load can overlap OCR. Runs on the thread pool and never throws;
+    /// a real translation request still surfaces load errors.
+    /// </summary>
+    public Task PrewarmAsync()
+    {
+        if (_disposed)
+        {
+            return Task.CompletedTask;
+        }
+
+        return Task.Run(() =>
+        {
+            if (!_gate.Wait(0))
+            {
+                // A translation is already running or loading.
+                return;
+            }
+
+            try
+            {
+                if (_disposed)
+                {
+                    return;
+                }
+
+                EnsureModelLoaded();
+            }
+            catch (Exception ex)
+            {
+                Log.Warn($"Snip HyMT2Sharp prewarm failed: {ex.Message}", typeof(HyMT2SharpTranslator));
+            }
+            finally
+            {
+                Interlocked.Exchange(ref _lastUsedUtcTicks, DateTime.UtcNow.Ticks);
+                _gate.Release();
+            }
+        });
+    }
+
     private void EnsureModelLoaded()
     {
         if (_model != null)

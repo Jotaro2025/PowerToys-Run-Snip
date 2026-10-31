@@ -1234,6 +1234,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
                 return ResourceManager.GetString("opt_ocr_backend_vulkan", resourceCulture);
             }
         }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Preload OCR when snipping.
+        /// </summary>
+        public static string opt_prewarm_ocr_label {
+            get {
+                return ResourceManager.GetString("opt_prewarm_ocr_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Starts the OCR engine when the snip overlay opens.
+        /// </summary>
+        public static string opt_prewarm_ocr_desc {
+            get {
+                return ResourceManager.GetString("opt_prewarm_ocr_desc", resourceCulture);
+            }
+        }
         /// <summary>
         ///   Looks up a localized string similar to Target language.
         /// </summary>
@@ -1293,6 +1311,24 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         public static string settings_tr_cache_count {
             get {
                 return ResourceManager.GetString("settings_tr_cache_count", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Preload translation model.
+        /// </summary>
+        public static string opt_prewarm_translator_label {
+            get {
+                return ResourceManager.GetString("opt_prewarm_translator_label", resourceCulture);
+            }
+        }
+
+        /// <summary>
+        ///   Looks up a localized string similar to Starts loading the HyMT model while OCR runs.
+        /// </summary>
+        public static string opt_prewarm_translator_desc {
+            get {
+                return ResourceManager.GetString("opt_prewarm_translator_desc", resourceCulture);
             }
         }
         /// <summary>

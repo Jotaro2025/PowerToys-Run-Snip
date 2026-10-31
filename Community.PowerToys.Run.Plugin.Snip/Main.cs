@@ -38,9 +38,11 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
     private const string OptionTranslatorProvider = "TranslatorProvider";
     private const string OptionOcrEngine = "OcrEngine";
     private const string OptionOcrBackend = "OcrBackend";
+    private const string OptionPrewarmOcrOnCapture = "PrewarmOcrOnCapture";
     private const string OptionWindowsOcrLanguage = "WindowsOcrLanguage";
     private const string OptionTargetLanguage = "TargetLanguage";
     private const string OptionTranslationCacheEnabled = "TranslationCacheEnabled";
+    private const string OptionPrewarmTranslatorOnTranslate = "PrewarmTranslatorOnTranslate";
     private const string OptionUiLanguage = "UiLanguage";
     private const string OptionHttpBaseUrl = "HttpBaseUrl";
     private const string OptionHttpApiKey = "HttpApiKey";
@@ -203,6 +205,14 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         },
         new PluginAdditionalOption()
         {
+            Key = OptionPrewarmOcrOnCapture,
+            DisplayLabel = Properties.Resources.opt_prewarm_ocr_label,
+            DisplayDescription = Properties.Resources.opt_prewarm_ocr_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.PrewarmOcrOnCapture,
+        },
+        new PluginAdditionalOption()
+        {
             Key = OptionWindowsOcrLanguage,
             DisplayLabel = Properties.Resources.opt_windows_ocr_lang_label,
             DisplayDescription = Properties.Resources.opt_windows_ocr_lang_desc,
@@ -245,6 +255,14 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             DisplayDescription = Properties.Resources.opt_tr_cache_desc,
             PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
             Value = _settings.TranslationCacheEnabled,
+        },
+        new PluginAdditionalOption()
+        {
+            Key = OptionPrewarmTranslatorOnTranslate,
+            DisplayLabel = Properties.Resources.opt_prewarm_translator_label,
+            DisplayDescription = Properties.Resources.opt_prewarm_translator_desc,
+            PluginOptionType = PluginAdditionalOption.AdditionalOptionType.Checkbox,
+            Value = _settings.PrewarmTranslatorOnTranslate,
         },
         new PluginAdditionalOption()
         {
@@ -588,6 +606,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             _settings.OcrBackend = (OcrBackendKind)ocrBackendOpt.ComboBoxValue;
         }
 
+        var prewarmOcrOpt = options.FirstOrDefault(x => x.Key == OptionPrewarmOcrOnCapture);
+        if (prewarmOcrOpt != null)
+        {
+            _settings.PrewarmOcrOnCapture = prewarmOcrOpt.Value;
+        }
+
         var ocrLang = options.FirstOrDefault(x => x.Key == OptionWindowsOcrLanguage)?.TextValue?.Trim();
         if (!string.IsNullOrEmpty(ocrLang))
         {
@@ -619,6 +643,12 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         if (cacheOpt != null)
         {
             _settings.TranslationCacheEnabled = cacheOpt.Value;
+        }
+
+        var prewarmTranslatorOpt = options.FirstOrDefault(x => x.Key == OptionPrewarmTranslatorOnTranslate);
+        if (prewarmTranslatorOpt != null)
+        {
+            _settings.PrewarmTranslatorOnTranslate = prewarmTranslatorOpt.Value;
         }
 
         _settings.UiLanguage = UiLanguageHelper.Normalize(

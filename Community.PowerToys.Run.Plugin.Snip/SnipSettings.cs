@@ -48,6 +48,13 @@ public sealed class SnipSettings
     public OcrEngineKind OcrEngine { get; set; } = OcrEngineKind.Auto;
 
     /// <summary>
+    /// Warm the effective OCR engine when the snip overlay opens (PaddleOCR
+    /// models / WeChatOCR.exe child process), so the first recognition after the
+    /// selection does not pay the startup cost. Default on.
+    /// </summary>
+    public bool PrewarmOcrOnCapture { get; set; } = true;
+
+    /// <summary>
     /// Compute backend for the PaddleOCR engine (see <see cref="OcrBackendKind"/>).
     /// Only used when <see cref="OcrEngine"/> resolves to PaddleOCR. Defaults to
     /// CPU so an upgrade never starts loading a graphics driver in the host
@@ -72,6 +79,13 @@ public sealed class SnipSettings
     /// memory). Same-provider/model/target only; default on.
     /// </summary>
     public bool TranslationCacheEnabled { get; set; } = true;
+
+    /// <summary>
+    /// Start loading the in-process HyMT model as soon as the image-translate
+    /// window opens (in parallel with OCR) instead of waiting for the first
+    /// translation request. Default on; other providers need no preload.
+    /// </summary>
+    public bool PrewarmTranslatorOnTranslate { get; set; } = true;
 
     /// <summary>
     /// Plugin UI language override.
@@ -180,10 +194,12 @@ public sealed class SnipSettings
             GlobalHotkey = GlobalHotkey,
             OcrEngine = OcrEngine,
             OcrBackend = OcrBackend,
+            PrewarmOcrOnCapture = PrewarmOcrOnCapture,
             WindowsOcrLanguage = WindowsOcrLanguage,
             TranslatorProvider = TranslatorProvider,
             TargetLanguage = TargetLanguage,
             TranslationCacheEnabled = TranslationCacheEnabled,
+            PrewarmTranslatorOnTranslate = PrewarmTranslatorOnTranslate,
             UiLanguage = UiLanguage,
             HttpBaseUrl = HttpBaseUrl,
             HttpApiKey = HttpApiKey,
@@ -216,10 +232,12 @@ public sealed class SnipSettings
         GlobalHotkey = other.GlobalHotkey;
         OcrEngine = other.OcrEngine;
         OcrBackend = other.OcrBackend;
+        PrewarmOcrOnCapture = other.PrewarmOcrOnCapture;
         WindowsOcrLanguage = other.WindowsOcrLanguage;
         TranslatorProvider = other.TranslatorProvider;
         TargetLanguage = other.TargetLanguage;
         TranslationCacheEnabled = other.TranslationCacheEnabled;
+        PrewarmTranslatorOnTranslate = other.PrewarmTranslatorOnTranslate;
         UiLanguage = other.UiLanguage;
         HttpBaseUrl = other.HttpBaseUrl;
         HttpApiKey = other.HttpApiKey;

@@ -111,12 +111,12 @@ public sealed class SnipWindow : Window
 
         _settings = settings ?? new SnipSettings();
 
-        // Warm PaddleOCR (models / GPU pipeline compile) while the user is still
-        // dragging the selection, so the first OCR does not pay the load cost.
-        if (OcrService.ResolveEngine(_settings) == OcrEngineKind.SimdPaddle)
+        // Warm the OCR engine (PaddleOCR models / WeChatOCR.exe child process)
+        // while the user is still selecting a region, so the first recognition
+        // after the click does not pay the startup cost.
+        if (_settings.PrewarmOcrOnCapture)
         {
-            var backend = _settings.OcrBackend;
-            _ = Task.Run(() => SimdPaddleOcrService.Prewarm(backend));
+            _ = Task.Run(() => OcrService.Prewarm(_settings));
         }
 
         _source = source;

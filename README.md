@@ -166,6 +166,8 @@ ARM64 版 PowerToys 中始终使用 Windows OCR 或 PaddleOCR（微信 OCR 只�
 
 实测（Ryzen 9 9900X + Radeon RX 9070，3440×1440 全屏 60 行文字）：CPU ~550 ms，Vulkan / 自动 ~60 ms，约 **8–9×**，识别结果一致。注意：Vulkan 会在 PowerToys Run 宿主进程内加载显卡驱动与第三方 Vulkan layer（Steam / Epic 等），驱动故障会一并带走宿主；因此默认保持 CPU，只在确认稳定后切换到 Vulkan。后端切换会在下次识别时重建推理管线；截图覆盖层打开时会预加载，首次识别不再等待。
 
+设置项 **截图时预加载 OCR**（默认开启）：选区覆盖层一打开就在后台启动当前引擎——PaddleOCR 加载模型，微信 OCR 启动 WeChatOCR.exe 子进程，Windows OCR 预建识别器。实测微信 OCR 首次识别 715 ms → 440 ms；Paddle 的 80–250 ms 模型加载也完全被选区操作覆盖。取消截图会产生少量后台工作（微信子进程仍按闲置时间回收）。
+
 ### 微信 OCR
 
 使用 NuGet 包 [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/)（见上文致谢）。**不需要安装微信**。
@@ -194,6 +196,8 @@ ARM64 版 PowerToys 中始终使用 Windows OCR 或 PaddleOCR（微信 OCR 只�
 **翻译记忆**：完全一致的原文→译文按「引擎 + 模型 + 目标语言」缓存在
 `%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\translation-memory.json`
 （LRU，最多 5000 条）。同一界面再次截图时直接命中、不再跑模型；同一张图里重复的文本只翻译一次。设置窗口「图片翻译」页可关闭或一键清空。
+
+**预加载翻译模型**（默认开启）：图片翻译窗一打开就开始加载进程内 HyMT GGUF，与 OCR 并行，而不是等 OCR 完成后再加载。实测 Q2 模型加载 1.9–2.3 s，期间 CPU OCR 仅从 422 ms 变为 449 ms（+6%）；OCR 结束后只剩约 1.4 s 加载，首次翻译 130 ms。HTTP / 腾讯引擎无需预加载。
 
 翻译引擎默认**关闭**，需在设置中任选其一：
 

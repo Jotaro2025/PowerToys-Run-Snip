@@ -60,6 +60,46 @@ public class HyMT2SharpTranslatorDisposeTests
         t.GateForTests.Release();
     }
 
+    [TestMethod]
+    public async Task Prewarm_WithoutGguf_DoesNotThrow()
+    {
+        var t = new HyMT2SharpTranslator(TempGguf(), HyMtBackendKind.Cpu);
+
+        await t.PrewarmAsync();
+
+        Assert.IsFalse(t.IsBusy);
+        t.Dispose();
+    }
+
+    [TestMethod]
+    public async Task Prewarm_WhenBusy_ReturnsWithoutBlocking()
+    {
+        var t = new HyMT2SharpTranslator(TempGguf(), HyMtBackendKind.Cpu);
+        t.GateForTests.Wait();
+        try
+        {
+            var sw = Stopwatch.StartNew();
+            await t.PrewarmAsync();
+            sw.Stop();
+            Assert.IsTrue(sw.Elapsed < TimeSpan.FromSeconds(1), $"prewarm blocked {sw.Elapsed}");
+        }
+        finally
+        {
+            t.GateForTests.Release();
+        }
+
+        t.Dispose();
+    }
+
+    [TestMethod]
+    public async Task Prewarm_AfterDispose_IsNoOp()
+    {
+        var t = new HyMT2SharpTranslator(TempGguf(), HyMtBackendKind.Cpu);
+        t.Dispose();
+
+        await t.PrewarmAsync();
+    }
+
     private static string TempGguf()
         => Path.Combine(Path.GetTempPath(), $"snip-hymt-dispose-{Path.GetRandomFileName()}.gguf");
 }

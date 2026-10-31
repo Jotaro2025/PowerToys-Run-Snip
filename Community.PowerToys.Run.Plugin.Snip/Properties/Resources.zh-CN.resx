@@ -416,6 +416,12 @@
   <data name="opt_ocr_backend_vulkan" xml:space="preserve">
     <value>Vulkan GPU（最快）</value>
   </data>
+  <data name="opt_prewarm_ocr_label" xml:space="preserve">
+    <value>截图时预加载 OCR</value>
+  </data>
+  <data name="opt_prewarm_ocr_desc" xml:space="preserve">
+    <value>选区截图窗一打开就在后台启动所选 OCR 引擎（PaddleOCR 模型或 WeChatOCR.exe 子进程），选完区域后第一次文字提取/图片翻译不再等启动。即使取消截图也会产生少量后台工作。</value>
+  </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>翻译 · 目标语言</value>
   </data>
@@ -436,6 +442,12 @@
   </data>
   <data name="settings_tr_cache_count" xml:space="preserve">
     <value>当前缓存 {0} 条翻译。</value>
+  </data>
+  <data name="opt_prewarm_translator_label" xml:space="preserve">
+    <value>图片翻译时预加载翻译模型</value>
+  </data>
+  <data name="opt_prewarm_translator_desc" xml:space="preserve">
+    <value>图片翻译窗打开时就开始加载进程内 HyMT GGUF，与 OCR 并行，而不是等第一次翻译请求。首次截图可省下约模型加载时间；HTTP/腾讯无需预加载。</value>
   </data>
   <data name="opt_tr_http_url_label" xml:space="preserve">
     <value>HTTP · Base URL</value>

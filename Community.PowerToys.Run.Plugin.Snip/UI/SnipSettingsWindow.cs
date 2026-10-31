@@ -44,6 +44,7 @@ public sealed class SnipSettingsWindow : Window
     private ComboBox _provider;
     private TextBox _targetLang;
     private CheckBox _translationCache;
+    private CheckBox _prewarmTranslator;
     private TextBlock _translationCacheStatus;
     private Border _httpPanel;
     private Border _hymtPanel;
@@ -58,6 +59,7 @@ public sealed class SnipSettingsWindow : Window
     private ComboBox _uiLanguage;
     private ComboBox _ocrEngine;
     private ComboBox _ocrBackend;
+    private CheckBox _prewarmOcr;
     private ComboBox _windowsOcrLang;
     private TabControl _tabs;
     private bool _suppressLanguageChanged;
@@ -369,6 +371,11 @@ public sealed class SnipSettingsWindow : Window
         _ocrBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_backend_cpu, Tag = OcrBackendKind.Cpu });
         _ocrBackend.Items.Add(new ComboBoxItem { Content = Properties.Resources.opt_ocr_backend_vulkan, Tag = OcrBackendKind.Vulkan });
 
+        _prewarmOcr = new CheckBox
+        {
+            Content = Properties.Resources.opt_prewarm_ocr_label,
+        };
+
         return TabPage(
             Card(
                 SectionHeader(Properties.Resources.settings_section_interface),
@@ -387,6 +394,7 @@ public sealed class SnipSettingsWindow : Window
                 SectionHeader(Properties.Resources.settings_section_ocr),
                 Field(Properties.Resources.opt_ocr_engine_label, _ocrEngine, Properties.Resources.opt_ocr_engine_desc),
                 Field(Properties.Resources.opt_ocr_backend_label, _ocrBackend, Properties.Resources.opt_ocr_backend_desc),
+                Field(null, _prewarmOcr, Properties.Resources.opt_prewarm_ocr_desc),
                 Field(Properties.Resources.opt_windows_ocr_lang_label, _windowsOcrLang, Properties.Resources.opt_windows_ocr_lang_desc)));
     }
 
@@ -466,6 +474,10 @@ public sealed class SnipSettingsWindow : Window
         {
             Content = Properties.Resources.opt_tr_cache_label,
         };
+        _prewarmTranslator = new CheckBox
+        {
+            Content = Properties.Resources.opt_prewarm_translator_label,
+        };
         _translationCacheStatus = Hint(string.Empty);
 
         return TabPage(
@@ -473,6 +485,7 @@ public sealed class SnipSettingsWindow : Window
                 SectionHeader(Properties.Resources.settings_section_translate),
                 Field(StripEnginePrefix(Properties.Resources.opt_tr_provider_label, "翻译"), _provider, Properties.Resources.settings_tr_fold_hint),
                 Field(StripEnginePrefix(Properties.Resources.opt_tr_lang_label, "翻译"), _targetLang),
+                Field(null, _prewarmTranslator, Properties.Resources.opt_prewarm_translator_desc),
                 Field(null, _translationCache),
                 Field(null, BuildTranslationCacheRow(), Properties.Resources.opt_tr_cache_desc),
                 _translationCacheStatus),
@@ -693,10 +706,12 @@ public sealed class SnipSettingsWindow : Window
 
         SelectOcrEngine(_draft.OcrEngine);
         SelectOcrBackend(_draft.OcrBackend);
+        _prewarmOcr.IsChecked = _draft.PrewarmOcrOnCapture;
         SelectWindowsOcrLanguage(_draft.WindowsOcrLanguage);
         SelectProvider(_draft.TranslatorProvider);
         _targetLang.Text = _draft.TargetLanguage ?? string.Empty;
         _translationCache.IsChecked = _draft.TranslationCacheEnabled;
+        _prewarmTranslator.IsChecked = _draft.PrewarmTranslatorOnTranslate;
         UpdateTranslationCacheStatus(cleared: false);
         _httpUrl.Text = _draft.HttpBaseUrl ?? string.Empty;
         var key = _draft.HttpApiKey ?? string.Empty;
@@ -769,10 +784,12 @@ public sealed class SnipSettingsWindow : Window
         _draft.GlobalHotkey = HotkeyParser.Normalize(hotkeyText);
         _draft.OcrEngine = SelectedOcrEngine();
         _draft.OcrBackend = SelectedOcrBackend();
+        _draft.PrewarmOcrOnCapture = _prewarmOcr.IsChecked == true;
         _draft.WindowsOcrLanguage = SelectedWindowsOcrLanguage();
         _draft.TranslatorProvider = SelectedProvider();
         _draft.TargetLanguage = string.IsNullOrWhiteSpace(_targetLang.Text) ? "简体中文" : _targetLang.Text.Trim();
         _draft.TranslationCacheEnabled = _translationCache.IsChecked == true;
+        _draft.PrewarmTranslatorOnTranslate = _prewarmTranslator.IsChecked == true;
         var uiLang = SelectedUiLanguage();
         _draft.UiLanguage = uiLang == UiLanguageHelper.System ? string.Empty : uiLang;
         _draft.HttpBaseUrl = _httpUrl.Text?.Trim() ?? string.Empty;

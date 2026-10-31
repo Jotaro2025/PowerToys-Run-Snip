@@ -81,6 +81,8 @@ public class SnipSettingsPersisterTests
             CopyAfterCapture = false,
             OcrBackend = OcrBackendKind.Vulkan,
             TranslationCacheEnabled = false,
+            PrewarmOcrOnCapture = false,
+            PrewarmTranslatorOnTranslate = false,
         };
 
         var patches = SnipSettingsPersister.BuildPatchesFromSettings(settings);
@@ -90,6 +92,8 @@ public class SnipSettingsPersisterTests
         Assert.IsTrue(patches.Any(p => p.Key == "CaptureDelayMs" && p.NumberValue == 200));
         Assert.IsTrue(patches.Any(p => p.Key == "OcrBackend" && p.ComboBoxValue == (int)OcrBackendKind.Vulkan));
         Assert.IsTrue(patches.Any(p => p.Key == "TranslationCacheEnabled" && p.BoolValue == false));
+        Assert.IsTrue(patches.Any(p => p.Key == "PrewarmOcrOnCapture" && p.BoolValue == false));
+        Assert.IsTrue(patches.Any(p => p.Key == "PrewarmTranslatorOnTranslate" && p.BoolValue == false));
         Assert.IsTrue(patches.Any(p => p.Key == "UiLanguage" && p.TextValue == string.Empty));
     }
 

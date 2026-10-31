@@ -65,6 +65,32 @@ public static class OcrService
             _ => WindowsOcrService.IsBusy,
         };
 
+    /// <summary>
+    /// Warms the effective OCR engine so the first recognition after the user
+    /// finishes selecting a region does not pay the startup cost. Blocking:
+    /// callers must run this on a background thread (the snip overlay does).
+    /// </summary>
+    public static void Prewarm(SnipSettings settings)
+    {
+        if (settings == null || !settings.PrewarmOcrOnCapture)
+        {
+            return;
+        }
+
+        switch (ResolveEngine(settings))
+        {
+            case OcrEngineKind.SimdPaddle:
+                SimdPaddleOcrService.Prewarm(settings.OcrBackend);
+                break;
+            case OcrEngineKind.WeChat:
+                WeChatOcrService.Prewarm();
+                break;
+            default:
+                WindowsOcrService.Prewarm();
+                break;
+        }
+    }
+
     /// <summary>Recognizes lines with the effective engine.</summary>
     /// <remarks>
     /// Small selections are upscaled before recognition (both engines

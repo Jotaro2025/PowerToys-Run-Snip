@@ -64,6 +64,22 @@ public static class WindowsOcrService
         }
     }
 
+    /// <summary>
+    /// Creates the WinRT recognizer once so the first recognition skips engine
+    /// construction. Never throws (prewarm is best-effort).
+    /// </summary>
+    public static void Prewarm()
+    {
+        try
+        {
+            _ = CreateEngine();
+        }
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip Windows OCR prewarm failed: {ex.Message}", typeof(WindowsOcrService));
+        }
+    }
+
     /// <summary>Recognizes text lines (image pixel space, reading order) in a PNG.</summary>
     /// <exception cref="OcrException">No OCR language installed, or recognition failed.</exception>
     public static Task<IReadOnlyList<OcrTextLine>> RecognizeLinesAsync(

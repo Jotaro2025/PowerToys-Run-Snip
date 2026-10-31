@@ -416,6 +416,12 @@
   <data name="opt_ocr_backend_vulkan" xml:space="preserve">
     <value>Vulkan GPU (fastest)</value>
   </data>
+  <data name="opt_prewarm_ocr_label" xml:space="preserve">
+    <value>Preload OCR when snipping</value>
+  </data>
+  <data name="opt_prewarm_ocr_desc" xml:space="preserve">
+    <value>Starts the selected OCR engine in the background as soon as the snip overlay opens (PaddleOCR models or the WeChatOCR.exe child process), so the first Text extract / Image translate after selecting a region does not pay the startup cost. Adds background work even if you cancel the snip.</value>
+  </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>Translate · Target language</value>
   </data>
@@ -436,6 +442,12 @@
   </data>
   <data name="settings_tr_cache_count" xml:space="preserve">
     <value>{0} cached translations.</value>
+  </data>
+  <data name="opt_prewarm_translator_label" xml:space="preserve">
+    <value>Preload translation model</value>
+  </data>
+  <data name="opt_prewarm_translator_desc" xml:space="preserve">
+    <value>Starts loading the in-process HyMT GGUF as soon as the Image translate window opens, in parallel with OCR, instead of waiting for the first translation request. Saves roughly the model load time on the first capture; HTTP/Tencent providers need no preload.</value>
   </data>
   <data name="opt_tr_http_url_label" xml:space="preserve">
     <value>HTTP · Base URL</value>

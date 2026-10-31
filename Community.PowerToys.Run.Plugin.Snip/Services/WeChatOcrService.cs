@@ -69,6 +69,55 @@ public static class WeChatOcrService
     /// <summary>True when another recognition currently holds the process-wide gate.</summary>
     public static bool IsBusy => Gate.CurrentCount == 0;
 
+    /// <summary>
+    /// Starts the WeChatOCR.exe component ahead of the first recognition (the
+    /// constructor launches the child process and loads its model, which costs
+    /// seconds). Blocking; call on a background thread. Never throws.
+    /// </summary>
+    public static void Prewarm()
+    {
+        if (RuntimeInformation.ProcessArchitecture != Architecture.X64)
+        {
+            return;
+        }
+
+        if (!Gate.Wait(0))
+        {
+            // A recognition is already running (and has thus warmed the component).
+            return;
+        }
+
+        try
+        {
+            _lastUseUtc = DateTime.UtcNow;
+            if (_sharedOcr != null)
+            {
+                return;
+            }
+
+            var dataDir = ResolveOcrDataDirectory();
+            if (dataDir == null)
+            {
+                return;
+            }
+
+            var baseDir = Path.GetDirectoryName(dataDir.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar))
+                ?? PluginDirectory;
+            DataLocation.SetBaseDirectory(baseDir);
+            _sharedOcr = new ImageOcr();
+            Log.Info("Snip WeChat OCR prewarm: component started.", typeof(WeChatOcrService));
+        }
+        catch (Exception ex)
+        {
+            TryDisposeSharedOcr();
+            Log.Warn($"Snip WeChat OCR prewarm failed: {ex.Message}", typeof(WeChatOcrService));
+        }
+        finally
+        {
+            Gate.Release();
+        }
+    }
+
     /// <summary>Current idle timeout for the OCR child process; <see cref="TimeSpan.Zero"/> = keep it warm forever.</summary>
     public static TimeSpan IdleTimeout => _idleTimeout;
 

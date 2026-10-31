@@ -166,6 +166,8 @@ When the PaddleOCR engine is selected, **PaddleOCR compute backend** is availabl
 
 Measured on a Ryzen 9 9900X + Radeon RX 9070, 3440×1440 screen with 60 text lines: CPU ~550 ms, Vulkan / Auto ~60 ms — about **8–9×**, identical output. Note that Vulkan loads the graphics driver and third-party Vulkan layers (Steam / Epic, etc.) inside the PowerToys Run host process, so a driver fault would take the host down with it; CPU stays the default and Vulkan is opt-in. Changing the backend rebuilds the pipeline on the next recognition, and the pipeline is prewarmed while the snip overlay opens.
 
+Setting **Preload OCR when snipping** (on by default): the effective engine starts in the background as soon as the overlay opens — PaddleOCR loads its models, WeChat OCR starts the WeChatOCR.exe child process, Windows OCR creates its recognizer. Measured first WeChat OCR 715 ms → 440 ms; Paddle's 80–250 ms model load is fully hidden by the selection gesture. Cancelling a snip still leaves a little background work (the WeChat child process is recycled by the idle timer).
+
 ### WeChat OCR
 
 Uses the [WeChatOcr](https://www.nuget.org/packages/WeChatOcr/) NuGet package (see Acknowledgments). **WeChat app install is not required**.
@@ -194,6 +196,8 @@ Reuses OCR line boxes; after translation, erases the original and redraws the tr
 **Translation memory**: exact source→translation pairs are cached per engine + model + target language in
 `%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\translation-memory.json`
 (LRU, up to 5000 entries). Re-capturing the same screen hits the cache and skips the model; repeated strings within one capture are translated once. Disable or clear it on the Image translation page of the settings window.
+
+**Preload translation model** (on by default): the in-process HyMT GGUF starts loading as soon as the image-translate window opens, in parallel with OCR, instead of after OCR. Measured Q2 load 1.9–2.3 s; CPU OCR only goes from 422 to 449 ms (+6%) while loading, leaving ~1.4 s after OCR and a 130 ms first translation. HTTP / Tencent need no preload.
 
 Translation is **off** by default; pick one engine in settings:
 
