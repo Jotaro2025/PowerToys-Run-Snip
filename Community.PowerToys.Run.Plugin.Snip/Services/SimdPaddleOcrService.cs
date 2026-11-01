@@ -49,6 +49,9 @@ public static class SimdPaddleOcrService
     /// <summary>Backend of the currently loaded pipeline (CPU until first use).</summary>
     public static OcrBackendKind ActiveBackend => _activeBackend;
 
+    /// <summary>True when a model pipeline is currently loaded (test/diagnostics).</summary>
+    internal static bool IsPipelineLoaded => _sharedOcr != null;
+
     /// <summary>
     /// Recognizes text lines with their axis-aligned boxes (for erase+repaint).
     /// Lines are returned in reading order (top-to-bottom, then left-to-right).

@@ -79,8 +79,17 @@ public static class OcrService
 
         switch (ResolveEngine(settings))
         {
+            case OcrEngineKind.SimdPaddle when settings.OcrBackend == OcrBackendKind.Cpu:
+                SimdPaddleOcrService.Prewarm(OcrBackendKind.Cpu);
+                break;
             case OcrEngineKind.SimdPaddle:
-                SimdPaddleOcrService.Prewarm(settings.OcrBackend);
+                // Initializing Vulkan (or Auto, which may pick a GPU) while the
+                // snip overlay is being captured and first painted can blank the
+                // D3D composition on some drivers. The GPU backend loads on the
+                // first recognition instead, after the overlay is hidden.
+                Log.Info(
+                    $"Snip OCR prewarm skipped for {settings.OcrBackend} backend; it loads on first recognition.",
+                    typeof(OcrService));
                 break;
             case OcrEngineKind.WeChat:
                 WeChatOcrService.Prewarm();

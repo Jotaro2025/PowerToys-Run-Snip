@@ -125,4 +125,48 @@ public class OcrServiceTests
         Assert.IsNull(WindowsOcrService.TryBuildTallPreferWindowsHint(800, 10000));
         Assert.IsNotNull(WindowsOcrService.TryBuildTallPreferWindowsHint(12000, 10000));
     }
+
+    [TestMethod]
+    public void PrewarmSkipsGpuPaddleBackend()
+    {
+        // Loading Vulkan while the overlay is being captured/rendered can blank
+        // D3D composition on some drivers; the GPU pipeline must stay lazy.
+        SimdPaddleOcrService.ShutdownOcr();
+        try
+        {
+            OcrService.Prewarm(new SnipSettings
+            {
+                OcrEngine = OcrEngineKind.SimdPaddle,
+                OcrBackend = OcrBackendKind.Vulkan,
+                PrewarmOcrOnCapture = true,
+            });
+
+            Assert.IsFalse(SimdPaddleOcrService.IsPipelineLoaded);
+        }
+        finally
+        {
+            SimdPaddleOcrService.ShutdownOcr();
+        }
+    }
+
+    [TestMethod]
+    public void PrewarmRespectsDisabledSetting()
+    {
+        SimdPaddleOcrService.ShutdownOcr();
+        try
+        {
+            OcrService.Prewarm(new SnipSettings
+            {
+                OcrEngine = OcrEngineKind.SimdPaddle,
+                OcrBackend = OcrBackendKind.Cpu,
+                PrewarmOcrOnCapture = false,
+            });
+
+            Assert.IsFalse(SimdPaddleOcrService.IsPipelineLoaded);
+        }
+        finally
+        {
+            SimdPaddleOcrService.ShutdownOcr();
+        }
+    }
 }

@@ -111,14 +111,6 @@ public sealed class SnipWindow : Window
 
         _settings = settings ?? new SnipSettings();
 
-        // Warm the OCR engine (PaddleOCR models / WeChatOCR.exe child process)
-        // while the user is still selecting a region, so the first recognition
-        // after the click does not pay the startup cost.
-        if (_settings.PrewarmOcrOnCapture)
-        {
-            _ = Task.Run(() => OcrService.Prewarm(_settings));
-        }
-
         _source = source;
         _physicalBounds = new Int32Rect(
             (int)screen.Bounds.X,
@@ -342,6 +334,39 @@ public sealed class SnipWindow : Window
         {
             _ = Win32.SetForegroundWindow(hwnd);
         }
+
+        Log.Info(
+            $"Snip overlay loaded: {_physicalBounds.Width}x{_physicalBounds.Height} dpi={VisualTreeHelper.GetDpi(this).DpiScaleX:F3}",
+            GetType());
+
+        // Warm the OCR engine only after the overlay has been painted. Starting
+        // it in the constructor (or on Loaded) races the capture/D3D first frame;
+        // on GPU backends that can blank the overlay. ApplicationIdle runs after
+        // the render queue, and the short delay lets the compositor settle.
+        if (_settings.PrewarmOcrOnCapture)
+        {
+            _ = Dispatcher.BeginInvoke(
+                DispatcherPriority.ApplicationIdle,
+                new Action(() => StartOcrPrewarm()));
+        }
+    }
+
+    private void StartOcrPrewarm()
+    {
+        var settings = _settings;
+        _ = Task.Run(
+            async () =>
+            {
+                try
+                {
+                    await Task.Delay(300).ConfigureAwait(false);
+                    OcrService.Prewarm(settings);
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"Snip OCR prewarm failed: {ex.Message}", GetType());
+                }
+            });
     }
 
     private void OnClosed(object sender, EventArgs e)

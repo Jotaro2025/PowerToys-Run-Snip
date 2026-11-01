@@ -166,7 +166,7 @@ ARM64 版 PowerToys 中始终使用 Windows OCR 或 PaddleOCR（微信 OCR 只�
 
 实测（Ryzen 9 9900X + Radeon RX 9070，3440×1440 全屏 60 行文字）：CPU ~550 ms，Vulkan / 自动 ~60 ms，约 **8–9×**，识别结果一致。注意：Vulkan 会在 PowerToys Run 宿主进程内加载显卡驱动与第三方 Vulkan layer（Steam / Epic 等），驱动故障会一并带走宿主；因此默认保持 CPU，只在确认稳定后切换到 Vulkan。后端切换会在下次识别时重建推理管线；截图覆盖层打开时会预加载，首次识别不再等待。
 
-设置项 **截图时预加载 OCR**（默认开启）：选区覆盖层一打开就在后台启动当前引擎——PaddleOCR 加载模型，微信 OCR 启动 WeChatOCR.exe 子进程，Windows OCR 预建识别器。实测微信 OCR 首次识别 715 ms → 440 ms；Paddle 的 80–250 ms 模型加载也完全被选区操作覆盖。取消截图会产生少量后台工作（微信子进程仍按闲置时间回收）。
+设置项 **截图时预加载 OCR**（默认开启）：覆盖层首帧绘制完成后，在后台启动当前引擎——PaddleOCR（仅 CPU 后端）加载模型，微信 OCR 启动 WeChatOCR.exe 子进程，Windows OCR 预建识别器。实测微信 OCR 首次识别 715 ms → 440 ms；Paddle 的 80–250 ms 模型加载也完全被选区操作覆盖。**Vulkan/Auto GPU 后端不在截图期间预热**（首次识别时才加载），避免在覆盖层捕获/首帧渲染时拉起 Vulkan 驱动与 D3D 争用——这是之前“灰屏/无法绘制”类问题的环境相关诱因。取消截图仍会产生少量后台工作（微信子进程按闲置时间回收）。
 
 ### 微信 OCR
 

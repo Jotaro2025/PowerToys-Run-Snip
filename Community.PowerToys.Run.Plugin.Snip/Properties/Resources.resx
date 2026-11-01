@@ -420,7 +420,7 @@
     <value>Preload OCR when snipping</value>
   </data>
   <data name="opt_prewarm_ocr_desc" xml:space="preserve">
-    <value>Starts the selected OCR engine in the background as soon as the snip overlay opens (PaddleOCR models or the WeChatOCR.exe child process), so the first Text extract / Image translate after selecting a region does not pay the startup cost. Adds background work even if you cancel the snip.</value>
+    <value>Starts the selected OCR engine in the background after the snip overlay's first frame (PaddleOCR CPU models, the WeChatOCR.exe child process or the Windows recognizer), so the first Text extract / Image translate does not pay the startup cost. Vulkan/Auto GPU backends are not prewarmed during capture — they load on first recognition so they cannot interfere with overlay rendering. Adds background work even if you cancel the snip.</value>
   </data>
   <data name="opt_tr_lang_label" xml:space="preserve">
     <value>Translate · Target language</value>
