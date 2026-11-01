@@ -160,6 +160,40 @@ internal static class WinRtCaptureNative
         }
     }
 
+    internal static bool IsLikelyBlank(
+        ReadOnlySpan<byte> pixels,
+        int width,
+        int height,
+        out int minLuma,
+        out int maxLuma)
+    {
+        minLuma = 255;
+        maxLuma = 0;
+
+        // Tiny crops can legitimately be a single color; don't second-guess them.
+        if (width < 64 || height < 64 || pixels.Length < 16 * 1024)
+        {
+            return false;
+        }
+
+        int step = Math.Max(4, (pixels.Length / 4096) & ~3);
+        for (int offset = 0; offset + 3 < pixels.Length; offset += step)
+        {
+            int luma = (pixels[offset] + pixels[offset + 1] + pixels[offset + 2]) / 3;
+            if (luma < minLuma)
+            {
+                minLuma = luma;
+            }
+
+            if (luma > maxLuma)
+            {
+                maxLuma = luma;
+            }
+        }
+
+        return maxLuma == 0 || maxLuma - minLuma <= 1;
+    }
+
     private static unsafe bool TryCaptureUnlocked(
         IntPtr key,
         bool isWindow,
@@ -307,6 +341,18 @@ internal static class WinRtCaptureNative
             else
             {
                 CopyBgraRows(mappedResource.PData, (int)mappedResource.RowPitch, pixels, stride, sourceWidth, sourceHeight);
+            }
+
+            if (IsLikelyBlank(pixels.AsSpan(0, byteCount), sourceWidth, sourceHeight, out int minLuma, out int maxLuma))
+            {
+                // WGC can hand back an all-black/uniform frame on the first capture
+                // after the D3D device is created (or after a driver/display reset).
+                // Returning false makes the caller fall back to GDI, so the user
+                // sees the desktop instead of a blank overlay.
+                Log.Warn(
+                    $"Snip WinRT captured a blank frame ({sourceWidth}x{sourceHeight}, luma {minLuma}..{maxLuma}); falling back to GDI.",
+                    typeof(WinRtCaptureNative));
+                return false;
             }
 
             frame = new CapturedFrame(pixels, sourceWidth, sourceHeight, stride, rentedFromPool: true);

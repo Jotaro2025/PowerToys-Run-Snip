@@ -252,8 +252,9 @@ internal static class WinRtGraphicsCapture
             _loggedBackend = true;
         }
 
+        var stats = frame.GetLumaStats();
         Log.Info(
-            $"Snip WinRT capture active: {kind} {frame.Width}x{frame.Height} {(toneMapped ? "FP16->SDR" : "BGRA8")}",
+            $"Snip WinRT capture active: {kind} {frame.Width}x{frame.Height} {(toneMapped ? "FP16->SDR" : "BGRA8")} luma {stats.Min}..{stats.Max} mean={stats.Mean:F1}",
             typeof(WinRtGraphicsCapture));
     }
 }

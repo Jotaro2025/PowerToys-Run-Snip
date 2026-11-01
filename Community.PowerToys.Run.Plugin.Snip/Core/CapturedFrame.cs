@@ -83,6 +83,61 @@ public sealed class CapturedFrame : IDisposable
 
     public int Stride { get; }
 
+    /// <summary>Sampled luminance range of this frame (diagnostics for blank captures).</summary>
+    internal readonly record struct LumaStats(int Min, int Max, double Mean);
+
+    /// <summary>
+    /// Samples up to ~4096 pixels and returns their luma range/mean. Safe to call
+    /// before the frame is consumed; never copies the whole frame.
+    /// </summary>
+    internal LumaStats GetLumaStats()
+    {
+        int byteCount = CaptureBuffers.BgraByteCount(Width, Height);
+        if (_bits != IntPtr.Zero)
+        {
+            unsafe
+            {
+                return ComputeLumaStats(new ReadOnlySpan<byte>((void*)_bits, byteCount));
+            }
+        }
+
+        return _pixels != null
+            ? ComputeLumaStats(_pixels.AsSpan(0, Math.Min(byteCount, _pixels.Length)))
+            : new LumaStats(0, 0, 0);
+    }
+
+    private static LumaStats ComputeLumaStats(ReadOnlySpan<byte> pixels)
+    {
+        if (pixels.Length < 16 * 1024)
+        {
+            return new LumaStats(0, 0, 0);
+        }
+
+        int min = 255;
+        int max = 0;
+        long sum = 0;
+        int count = 0;
+        int step = Math.Max(4, (pixels.Length / 4096) & ~3);
+        for (int offset = 0; offset + 3 < pixels.Length; offset += step)
+        {
+            int luma = (pixels[offset] + pixels[offset + 1] + pixels[offset + 2]) / 3;
+            if (luma < min)
+            {
+                min = luma;
+            }
+
+            if (luma > max)
+            {
+                max = luma;
+            }
+
+            sum += luma;
+            count++;
+        }
+
+        return new LumaStats(min, max, count > 0 ? (double)sum / count : 0);
+    }
+
     /// <summary>
     /// True when this frame still owns a GDI DIB (production capture path).
     /// </summary>
