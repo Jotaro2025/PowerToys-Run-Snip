@@ -176,6 +176,12 @@ public sealed class AnnotationCanvas : FrameworkElement
 
     protected override void OnRender(DrawingContext drawingContext)
     {
+        // A custom FrameworkElement only hit-tests where it draws. With no
+        // committed annotations the surface is empty, so the first press inside
+        // the selection fell through to the input catcher and no rectangle /
+        // ellipse / pen stroke could ever start. A transparent full-surface
+        // rectangle makes the whole canvas hit-testable.
+        drawingContext.DrawRectangle(Brushes.Transparent, null, new Rect(0, 0, ActualWidth, ActualHeight));
         RenderCore(drawingContext, includeChrome: true, allowMosaicPreview: true);
     }
 
