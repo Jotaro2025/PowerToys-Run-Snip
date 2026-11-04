@@ -113,7 +113,6 @@ public sealed class ToolbarButton : Border
 
         _pressed = true;
         UpdateChrome();
-        Click?.Invoke(this, EventArgs.Empty);
         CaptureMouse();
         e.Handled = true;
         base.OnMouseLeftButtonDown(e);
@@ -121,9 +120,21 @@ public sealed class ToolbarButton : Border
 
     protected override void OnMouseLeftButtonUp(MouseButtonEventArgs e)
     {
+        // Click on release, never on press. A click handler may open a modal
+        // dialog (e.g. the "translation engine not configured" warning); when
+        // Click ran from the mouse-down event the physical mouse-up was
+        // consumed by that dialog, so this method never ran and the
+        // CaptureMouse() that followed the handler stuck forever -- every
+        // later click anywhere was routed back to this button.
+        bool wasPressed = _pressed;
         _pressed = false;
         ReleaseMouseCapture();
         UpdateChrome();
+        if (wasPressed)
+        {
+            Click?.Invoke(this, EventArgs.Empty);
+        }
+
         e.Handled = true;
         base.OnMouseLeftButtonUp(e);
     }
