@@ -247,13 +247,10 @@ public sealed class AnnotationCanvas : FrameworkElement
                 DrawArrow(drawingContext, arr);
                 break;
             case LineAnnotation line:
-                {
-                    var p = GetAnnotationPen(line);
-                    p.StartLineCap = PenLineCap.Round;
-                    p.EndLineCap = PenLineCap.Round;
-                    drawingContext.DrawGeometry(null, p, CreatePolyline([line.Start, line.End], false));
-                    break;
-                }
+                // The shared pen is already frozen with round caps; assigning them
+                // here threw "Pen ... is in a read-only state" during render.
+                drawingContext.DrawGeometry(null, GetAnnotationPen(line), CreatePolyline([line.Start, line.End], false));
+                break;
 
             case HighlightAnnotation hi:
                 {
@@ -363,7 +360,9 @@ public sealed class AnnotationCanvas : FrameworkElement
             ctx.BeginFigure(points[0], isFilled, false);
             for (int i = 1; i < points.Count; i++)
             {
-                ctx.LineTo(points[i], false, false);
+                // isStroked must be true or DrawGeometry draws nothing with a pen:
+                // the segment is only part of the filled area, never of the stroke.
+                ctx.LineTo(points[i], true, false);
             }
         }
 
