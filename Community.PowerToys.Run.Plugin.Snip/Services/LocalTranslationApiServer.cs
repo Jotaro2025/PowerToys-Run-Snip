@@ -282,12 +282,10 @@ internal sealed class LocalTranslationApiServer : IDisposable
             return;
         }
 
-        if (!TryAcquireRateLimit())
-        {
-            await WriteJsonAsync(stream, 429, "Too Many Requests", "{\"error\":\"rate limit exceeded\"}", allowOrigin, cancellationToken).ConfigureAwait(false);
-            return;
-        }
-
+        // The rate-limit response must not be written before the request body is
+        // consumed: closing a socket with unread request bytes makes Windows send
+        // RST, which can discard the 429 and surface as a network error. Checked
+        // after the body is read for that reason.
         var bodyReader = new RequestBodyReader(bodyPrefix, stream);
         byte[] body;
         bool chunked = headers.TryGetValue("transfer-encoding", out var transferEncoding)
@@ -334,6 +332,12 @@ internal sealed class LocalTranslationApiServer : IDisposable
             {
                 return;
             }
+        }
+
+        if (!TryAcquireRateLimit())
+        {
+            await WriteJsonAsync(stream, 429, "Too Many Requests", "{\"error\":\"rate limit exceeded\"}", allowOrigin, cancellationToken).ConfigureAwait(false);
+            return;
         }
 
         TranslateRequest request;
