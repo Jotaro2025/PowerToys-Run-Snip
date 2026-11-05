@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -353,5 +354,101 @@ public class TranslatorBatchTests
 
         protected override Task<HttpResponseMessage> SendAsync(HttpRequestMessage request, CancellationToken cancellationToken)
             => _impl(request, cancellationToken);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task OversizedSuccessResponseStopsReadingWithoutPerLineFallback(bool knownLength)
+    {
+        int calls = 0;
+        using var source = new CountingStream(HttpOpenAiTranslator.MaxResponseBytes + 100_000, knownLength);
+        using var http = new HttpClient(new ScriptableHandler((_, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(source) });
+        }));
+        using var translator = new HttpOpenAiTranslator("http://localhost/v1", null, "model", http);
+        var error = await Assert.ThrowsExactlyAsync<TranslatorException>(() => translator.TranslateAsync(["Hello", "World"], "zh"));
+        Assert.IsFalse(error.AllowBatchFallback);
+        Assert.AreEqual(1, calls);
+        Assert.IsTrue(source.BytesRead <= HttpOpenAiTranslator.MaxResponseBytes + 1);
+        if (knownLength)
+        {
+            Assert.AreEqual(0, source.BytesRead);
+        }
+    }
+
+    [TestMethod]
+    public async Task OversizedErrorResponseOnlyReadsBoundedPrefix()
+    {
+        using var source = new CountingStream(10_000_000, knownLength: false);
+        using var http = new HttpClient(new ScriptableHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StreamContent(source) })));
+        using var translator = new HttpOpenAiTranslator("http://localhost/v1", null, "model", http);
+        var error = await Assert.ThrowsExactlyAsync<TranslatorException>(() => translator.TranslateAsync(["Hello"], "zh"));
+        Assert.IsFalse(error.AllowBatchFallback);
+        StringAssert.Contains(error.Message, "401");
+        Assert.AreEqual(HttpOpenAiTranslator.MaxErrorResponseBytes, source.BytesRead);
+    }
+
+    [TestMethod]
+    public async Task ResponseBodyRemainsSubjectToHttpClientTimeout()
+    {
+        using var source = new CountingStream(1, knownLength: false, stall: true);
+        using var http = new HttpClient(new ScriptableHandler((_, _) => Task.FromResult(
+            new HttpResponseMessage(HttpStatusCode.OK) { Content = new StreamContent(source) })))
+        {
+            Timeout = TimeSpan.FromMilliseconds(200),
+        };
+        using var translator = new HttpOpenAiTranslator("http://localhost/v1", null, "model", http);
+        var error = await Assert.ThrowsExactlyAsync<TranslatorException>(
+            () => translator.TranslateAsync(["Hello"], "zh").WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.IsFalse(error.AllowBatchFallback);
+    }
+
+    private sealed class CountingStream(int length, bool knownLength, bool stall = false) : Stream
+    {
+        public int BytesRead { get; private set; }
+
+        public override bool CanRead => true;
+
+        public override bool CanSeek => knownLength;
+
+        public override bool CanWrite => false;
+
+        public override long Length => knownLength ? length : throw new NotSupportedException();
+
+        public override long Position { get => BytesRead; set => throw new NotSupportedException(); }
+
+        public override int Read(byte[] buffer, int offset, int count)
+        {
+            int size = Math.Min(count, length - BytesRead);
+            buffer.AsSpan(offset, size).Fill((byte)'x');
+            BytesRead += size;
+            return size;
+        }
+
+        public override async ValueTask<int> ReadAsync(Memory<byte> buffer, CancellationToken cancellationToken = default)
+        {
+            if (stall)
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
+            }
+
+            cancellationToken.ThrowIfCancellationRequested();
+            int size = Math.Min(buffer.Length, length - BytesRead);
+            buffer.Span[..size].Fill((byte)'x');
+            BytesRead += size;
+            return size;
+        }
+
+        public override void Flush() => throw new NotSupportedException();
+
+        public override long Seek(long offset, SeekOrigin origin) => throw new NotSupportedException();
+
+        public override void SetLength(long value) => throw new NotSupportedException();
+
+        public override void Write(byte[] buffer, int offset, int count) => throw new NotSupportedException();
     }
 }

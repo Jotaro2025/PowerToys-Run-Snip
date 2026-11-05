@@ -1031,6 +1031,12 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         /// <summary>
         ///   Looks up a localized string similar to The HTTP translator returned an empty response..
         /// </summary>
+        public static string tr_err_http_too_large {
+            get {
+                return ResourceManager.GetString("tr_err_http_too_large", resourceCulture);
+            }
+        }
+
         public static string tr_err_http_empty {
             get {
                 return ResourceManager.GetString("tr_err_http_empty", resourceCulture);

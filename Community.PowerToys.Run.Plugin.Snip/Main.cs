@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Controls;
 
@@ -628,8 +629,7 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         if (unloadHyMt is { Value: true })
         {
             unloadHyMt.Value = false;
-            HyMT2SharpTranslatorCache.Unload();
-            Notify(Properties.Resources.opt_unload_hymt_done, string.Empty);
+            _ = UnloadHyMtAsync();
         }
 
         var hotkey = options.FirstOrDefault(x => x.Key == OptionGlobalHotkey)?.TextValue;
@@ -968,6 +968,22 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
             SimdPaddleOcrService.ShutdownOcr();
 
             _disposed = true;
+        }
+    }
+
+    private async Task UnloadHyMtAsync()
+    {
+        try
+        {
+            await HyMT2SharpTranslatorCache.UnloadAsync().ConfigureAwait(false);
+            if (!_disposed)
+            {
+                Notify(Properties.Resources.opt_unload_hymt_done, string.Empty);
+            }
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip model unload failed: {ex.Message}", ex, GetType());
         }
     }
 

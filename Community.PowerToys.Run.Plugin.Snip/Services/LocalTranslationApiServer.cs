@@ -26,7 +26,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// enforces an origin allowlist, request size limits and rate limits, and closes
 /// the connection after one request.
 /// </summary>
-internal sealed class LocalTranslationApiServer : IDisposable
+internal sealed class LocalTranslationApiServer : IDisposable, IAsyncDisposable
 {
     internal const int MaxHeaderBytes = 16 * 1024;
     internal const int MaxBodyBytes = 1024 * 1024;
@@ -50,9 +50,14 @@ internal sealed class LocalTranslationApiServer : IDisposable
     private readonly Func<IReadOnlyList<string>, string, CancellationToken, Task<IReadOnlyList<string>>> _translate;
     private readonly int _maxRequestsPerMinute;
     private readonly SemaphoreSlim _concurrency = new(4, 4);
+    private readonly SemaphoreSlim _connections = new(16, 16);
+    private readonly TimeSpan _requestTimeout;
+    private readonly TimeSpan _translationTimeout;
 
     private TcpListener _listener;
     private CancellationTokenSource _cts;
+    private Task _acceptTask = Task.CompletedTask;
+    private Task _shutdownTask = Task.CompletedTask;
     private volatile bool _running;
 
     internal LocalTranslationApiServer(
@@ -60,13 +65,17 @@ internal sealed class LocalTranslationApiServer : IDisposable
         string token,
         IReadOnlyList<string> allowedOrigins,
         Func<IReadOnlyList<string>, string, CancellationToken, Task<IReadOnlyList<string>>> translate,
-        int maxRequestsPerMinute = DefaultMaxRequestsPerMinute)
+        int maxRequestsPerMinute = DefaultMaxRequestsPerMinute,
+        TimeSpan? requestTimeout = null,
+        TimeSpan? translationTimeout = null)
     {
         RequestedPort = port;
         _token = token ?? string.Empty;
         _allowedOrigins = allowedOrigins?.Where(o => !string.IsNullOrWhiteSpace(o)).ToArray() ?? [];
         _translate = translate ?? throw new ArgumentNullException(nameof(translate));
         _maxRequestsPerMinute = Math.Max(1, maxRequestsPerMinute);
+        _requestTimeout = requestTimeout ?? TimeSpan.FromSeconds(30);
+        _translationTimeout = translationTimeout ?? TimeSpan.FromMinutes(5);
     }
 
     /// <summary>Port requested at construction (0 lets the OS choose for tests).</summary>
@@ -98,11 +107,17 @@ internal sealed class LocalTranslationApiServer : IDisposable
                 _listener = listener;
                 Port = ((IPEndPoint)listener.LocalEndpoint).Port;
                 _cts = new CancellationTokenSource();
-                var serverToken = _cts.Token;
+                var serverCts = _cts;
                 _running = true;
                 LastError = null;
 
-                _ = Task.Run(() => AcceptLoopAsync(listener, serverToken));
+                _acceptTask = Task.Run(async () =>
+                {
+                    using (serverCts)
+                    {
+                        await AcceptLoopAsync(listener, serverCts.Token).ConfigureAwait(false);
+                    }
+                });
                 Log.Info($"Snip local translate API listening on 127.0.0.1:{Port}", typeof(LocalTranslationApiServer));
             }
             catch (Exception ex)
@@ -143,14 +158,39 @@ internal sealed class LocalTranslationApiServer : IDisposable
             }
 
             _listener = null;
-            _cts?.Dispose();
             _cts = null;
+            _shutdownTask = Task.WhenAll(_shutdownTask, _acceptTask);
         }
     }
 
     public void Dispose() => Stop();
 
+    /// <summary>Cancels the server and waits for all accepted clients to finish cleanup.</summary>
+    public Task StopAsync()
+    {
+        lock (_startLock)
+        {
+            Stop();
+            return _shutdownTask;
+        }
+    }
+
+    public ValueTask DisposeAsync() => new(StopAsync());
+
     private async Task AcceptLoopAsync(TcpListener listener, CancellationToken cancellationToken)
+    {
+        var clients = new HashSet<Task>();
+        try
+        {
+            await AcceptClientsAsync(listener, clients, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            await Task.WhenAll(clients).ConfigureAwait(false);
+        }
+    }
+
+    private async Task AcceptClientsAsync(TcpListener listener, HashSet<Task> clients, CancellationToken cancellationToken)
     {
         while (!cancellationToken.IsCancellationRequested)
         {
@@ -177,7 +217,14 @@ internal sealed class LocalTranslationApiServer : IDisposable
                 continue;
             }
 
-            _ = HandleClientSafeAsync(client, cancellationToken);
+            if (!_connections.Wait(0, CancellationToken.None))
+            {
+                client.Dispose();
+                continue;
+            }
+
+            clients.RemoveWhere(static task => task.IsCompleted);
+            clients.Add(HandleClientSafeAsync(client, cancellationToken));
         }
     }
 
@@ -189,13 +236,11 @@ internal sealed class LocalTranslationApiServer : IDisposable
             acquired = await _concurrency.WaitAsync(0, cancellationToken).ConfigureAwait(false);
             if (!acquired)
             {
-                await WriteJsonAsync(
-                    client.GetStream(),
-                    429,
-                    "Too Many Requests",
-                    "{\"error\":\"too many concurrent requests\"}",
-                    null,
-                    cancellationToken).ConfigureAwait(false);
+                // Parse and consume the bounded request body before rejecting it,
+                // otherwise closing the Windows socket can discard the response.
+                using var rejectionTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                rejectionTimeout.CancelAfter(_requestTimeout);
+                await HandleClientAsync(client, rejectionTimeout.Token, rejectConcurrent: true).ConfigureAwait(false);
                 return;
             }
 
@@ -211,6 +256,7 @@ internal sealed class LocalTranslationApiServer : IDisposable
         }
         finally
         {
+            _connections.Release();
             if (acquired)
             {
                 _concurrency.Release();
@@ -226,10 +272,10 @@ internal sealed class LocalTranslationApiServer : IDisposable
         }
     }
 
-    private async Task HandleClientAsync(TcpClient client, CancellationToken serverToken)
+    private async Task HandleClientAsync(TcpClient client, CancellationToken serverToken, bool rejectConcurrent = false)
     {
         using var timeout = CancellationTokenSource.CreateLinkedTokenSource(serverToken);
-        timeout.CancelAfter(TimeSpan.FromSeconds(30));
+        timeout.CancelAfter(_requestTimeout);
         var cancellationToken = timeout.Token;
 
         var stream = client.GetStream();
@@ -335,9 +381,10 @@ internal sealed class LocalTranslationApiServer : IDisposable
             }
         }
 
-        if (!TryAcquireRateLimit())
+        if (rejectConcurrent || !TryAcquireRateLimit())
         {
-            await WriteJsonAsync(stream, 429, "Too Many Requests", "{\"error\":\"rate limit exceeded\"}", allowOrigin, cancellationToken).ConfigureAwait(false);
+            string error = rejectConcurrent ? "too many concurrent requests" : "rate limit exceeded";
+            await WriteJsonAsync(stream, 429, "Too Many Requests", ErrorJson(error), allowOrigin, cancellationToken).ConfigureAwait(false);
             return;
         }
 
@@ -365,12 +412,20 @@ internal sealed class LocalTranslationApiServer : IDisposable
             return;
         }
 
+        // Parsing and inference have independent budgets. Cold model loading and
+        // queued batches must not inherit the request-body deadline.
+        timeout.CancelAfter(Timeout.InfiniteTimeSpan);
+        using var inferenceTimeout = CancellationTokenSource.CreateLinkedTokenSource(serverToken);
+        inferenceTimeout.CancelAfter(_translationTimeout);
+        Task<IReadOnlyList<string>> translationTask = null;
         try
         {
-            var translations = await _translate(
-                request.Texts,
-                request.Target ?? string.Empty,
-                cancellationToken).ConfigureAwait(false);
+            translationTask = Task.Run(
+                () => _translate(request.Texts, request.Target ?? string.Empty, inferenceTimeout.Token),
+                inferenceTimeout.Token);
+            var translations = await translationTask.WaitAsync(inferenceTimeout.Token).ConfigureAwait(false);
+            inferenceTimeout.Token.ThrowIfCancellationRequested();
+            timeout.CancelAfter(_requestTimeout);
 
             if (translations == null || translations.Count != request.Texts.Count)
             {
@@ -385,11 +440,19 @@ internal sealed class LocalTranslationApiServer : IDisposable
         }
         catch (LocalApiUnavailableException ex)
         {
+            timeout.CancelAfter(_requestTimeout);
             await WriteJsonAsync(stream, 503, "Service Unavailable", ErrorJson(ex.Message), allowOrigin, cancellationToken).ConfigureAwait(false);
         }
         catch (TranslatorException ex)
         {
+            timeout.CancelAfter(_requestTimeout);
             await WriteJsonAsync(stream, 503, "Service Unavailable", ErrorJson(ex.Message), allowOrigin, cancellationToken).ConfigureAwait(false);
+        }
+        catch (OperationCanceledException) when (!serverToken.IsCancellationRequested && inferenceTimeout.IsCancellationRequested)
+        {
+            timeout.CancelAfter(_requestTimeout);
+            await WriteJsonAsync(stream, 504, "Gateway Timeout", "{\"error\":\"translation timed out\"}", allowOrigin, cancellationToken).ConfigureAwait(false);
+            client.Client.Shutdown(SocketShutdown.Send);
         }
         catch (OperationCanceledException)
         {
@@ -397,8 +460,25 @@ internal sealed class LocalTranslationApiServer : IDisposable
         }
         catch (Exception ex)
         {
+            timeout.CancelAfter(_requestTimeout);
             Log.Warn($"Snip local translate API translation failed: {ex.Message}", typeof(LocalTranslationApiServer));
             await WriteJsonAsync(stream, 500, "Internal Server Error", "{\"error\":\"translation failed\"}", allowOrigin, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            // A native model call may only observe cancellation after its current
+            // forward pass. Keep its slot and track it until cleanup really ends.
+            if (translationTask != null)
+            {
+                try
+                {
+                    await translationTask.ConfigureAwait(false);
+                }
+                catch (Exception)
+                {
+                    // The response above already reports the failure or timeout.
+                }
+            }
         }
     }
 

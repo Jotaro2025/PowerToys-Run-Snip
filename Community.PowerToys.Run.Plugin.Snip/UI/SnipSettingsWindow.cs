@@ -697,14 +697,33 @@ public sealed class SnipSettingsWindow : Window
         var unload = SecondaryButton(Properties.Resources.settings_unload_hymt);
         unload.Margin = new Thickness(0, 0, 0, 12);
         unload.HorizontalAlignment = HorizontalAlignment.Left;
-        unload.Click += (_, _) =>
+        unload.Click += async (_, _) =>
         {
-            HyMT2SharpTranslatorCache.Unload();
-            MessageBox.Show(
-                Properties.Resources.opt_unload_hymt_done,
-                Title,
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
+            unload.IsEnabled = false;
+            try
+            {
+                await HyMT2SharpTranslatorCache.UnloadAsync();
+                if (IsVisible)
+                {
+                    MessageBox.Show(
+                        Properties.Resources.opt_unload_hymt_done,
+                        Title,
+                        MessageBoxButton.OK,
+                        MessageBoxImage.Information);
+                }
+            }
+            catch (Exception ex)
+            {
+                Log.Exception($"Snip model unload failed: {ex.Message}", ex, typeof(SnipSettingsWindow));
+                if (IsVisible)
+                {
+                    MessageBox.Show(ex.Message, Title, MessageBoxButton.OK, MessageBoxImage.Error);
+                }
+            }
+            finally
+            {
+                unload.IsEnabled = true;
+            }
         };
 
         return unload;

@@ -22,6 +22,7 @@ public static class LocalTranslationApi
     private static LocalTranslationApiServer _server;
     private static SnipSettings _settings;
     private static string _serverSignature;
+    private static Task _shutdownTask = Task.CompletedTask;
 
     /// <summary>Applies the current settings (starts, restarts or stops the loopback server).</summary>
     public static void Apply(SnipSettings settings)
@@ -67,9 +68,23 @@ public static class LocalTranslationApi
     /// <summary>Stops the loopback server (plugin teardown).</summary>
     public static void Stop()
     {
+        try
+        {
+            StopAsync().WaitAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        }
+        catch (TimeoutException)
+        {
+            Log.Warn("Snip local API shutdown is waiting for native inference cleanup in the background.", typeof(LocalTranslationApi));
+        }
+    }
+
+    /// <summary>Cancels the listener and waits for every retired server's active requests.</summary>
+    public static Task StopAsync()
+    {
         lock (Sync)
         {
             StopLocked();
+            return _shutdownTask;
         }
     }
 
@@ -102,7 +117,10 @@ public static class LocalTranslationApi
         var server = _server;
         _server = null;
         _serverSignature = null;
-        server?.Dispose();
+        if (server != null)
+        {
+            _shutdownTask = Task.WhenAll(_shutdownTask, server.StopAsync());
+        }
     }
 
     private static void PersistToken(string token)

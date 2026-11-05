@@ -5,6 +5,7 @@
 using System;
 using System.IO;
 using System.Threading;
+using System.Threading.Tasks;
 
 using Community.PowerToys.Run.Plugin.Snip.Models;
 using Wox.Plugin.Logger;
@@ -71,6 +72,7 @@ public static class HyMT2SharpTranslatorCache
     /// </summary>
     internal static bool TryUnloadIfIdle(DateTime nowUtc)
     {
+        HyMT2SharpTranslator retired;
         lock (Sync)
         {
             if (_instance == null || _idleTimeout <= TimeSpan.Zero)
@@ -94,9 +96,11 @@ public static class HyMT2SharpTranslatorCache
             }
 
             Log.Info($"Snip HyMT2Sharp idle {idle.TotalMinutes:F1} min — unloading cached model.", typeof(HyMT2SharpTranslatorCache));
-            DisposeUnlocked();
-            return true;
+            retired = DetachUnlocked();
         }
+
+        _ = RetireAsync(retired);
+        return true;
     }
 
     /// <summary>
@@ -110,6 +114,8 @@ public static class HyMT2SharpTranslatorCache
 
         var key = NormalizePath(ggufPath);
         var modelIdentity = ModelFileIdentity.Build(key);
+        HyMT2SharpTranslator retired;
+        HyMT2SharpTranslator current;
         lock (Sync)
         {
             _lastTouchUtc = DateTime.UtcNow;
@@ -122,10 +128,17 @@ public static class HyMT2SharpTranslatorCache
                 return _instance;
             }
 
-            ReplaceUnlocked(key, modelIdentity, backend);
+            retired = DetachUnlocked();
+            _instance = new HyMT2SharpTranslator(key, backend);
+            _ggufPath = key;
+            _modelIdentity = modelIdentity;
+            _backend = backend;
             RescheduleUnlocked(_idleTimeout);
-            return _instance;
+            current = _instance;
         }
+
+        _ = RetireAsync(retired);
+        return current;
     }
 
     /// <summary>True when a translator matching the key is currently cached.</summary>
@@ -150,33 +163,54 @@ public static class HyMT2SharpTranslatorCache
     /// <summary>Disposes and clears the cached translator, if any.</summary>
     public static void Unload()
     {
+        HyMT2SharpTranslator retired;
         lock (Sync)
         {
-            DisposeUnlocked();
+            retired = DetachUnlocked();
         }
+
+        // Plugin teardown is synchronous: keep its wait bounded while the
+        // translator's async release continues if a native call is still busy.
+        retired?.Dispose();
     }
 
-    private static void ReplaceUnlocked(string ggufPath, string modelIdentity, HyMtBackendKind backend)
+    /// <summary>Removes the cached model immediately and releases it without blocking the UI or cache lock.</summary>
+    public static Task UnloadAsync()
     {
-        DisposeUnlocked();
-        _instance = new HyMT2SharpTranslator(ggufPath, backend);
-        _ggufPath = ggufPath;
-        _modelIdentity = modelIdentity;
-        _backend = backend;
-    }
-
-    private static void DisposeUnlocked()
-    {
-        if (_instance == null)
+        HyMT2SharpTranslator retired;
+        lock (Sync)
         {
-            return;
+            retired = DetachUnlocked();
         }
 
-        _instance.Dispose();
+        return retired?.DisposeAsync().AsTask() ?? Task.CompletedTask;
+    }
+
+    private static HyMT2SharpTranslator DetachUnlocked()
+    {
+        var retired = _instance;
         _instance = null;
         _ggufPath = null;
         _modelIdentity = null;
         _idleTimer?.Change(Timeout.Infinite, Timeout.Infinite);
+        return retired;
+    }
+
+    private static async Task RetireAsync(HyMT2SharpTranslator retired)
+    {
+        if (retired == null)
+        {
+            return;
+        }
+
+        try
+        {
+            await retired.DisposeAsync().ConfigureAwait(false);
+        }
+        catch (Exception ex)
+        {
+            Log.Exception($"Snip HyMT2Sharp release failed: {ex.Message}", ex, typeof(HyMT2SharpTranslatorCache));
+        }
     }
 
     private static void RescheduleUnlocked(TimeSpan dueIn)

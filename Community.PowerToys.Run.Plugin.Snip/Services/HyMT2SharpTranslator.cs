@@ -26,17 +26,19 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// after every translation. Multiple OCR lines are batched into numbered prompts in
 /// small chunks to cut Generate round-trips (no multi-segment API in HyMT2Sharp).
 /// </summary>
-public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
+public sealed class HyMT2SharpTranslator : ITranslator, IDisposable, IAsyncDisposable
 {
     private readonly string _ggufPath;
     private readonly HyMtBackendKind _backendKind;
     private readonly SemaphoreSlim _gate = new SemaphoreSlim(1, 1);
     private readonly object _loadLock = new object();
     private readonly CancellationTokenSource _disposeCts = new CancellationTokenSource();
+    private readonly CancellationToken _disposeToken;
+    private readonly object _disposeLock = new();
+    private Task _disposeTask;
     private HunyuanDenseModel _model;
     private volatile bool _disposed;
     private long _lastUsedUtcTicks = DateTime.UtcNow.Ticks;
-    private int _deferModelDispose;
 
     /// <summary>Raised once when the GGUF is about to be loaded (first inference).</summary>
     public event EventHandler ModelLoading;
@@ -46,6 +48,7 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         ArgumentException.ThrowIfNullOrWhiteSpace(ggufPath);
         _ggufPath = ggufPath;
         _backendKind = backendKind;
+        _disposeToken = _disposeCts.Token;
     }
 
     /// <summary>True when another TranslateAsync call currently holds the single-flight gate.</summary>
@@ -78,7 +81,7 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
 
         // Dispose cancels in-flight inference so it can release the gate promptly.
-        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeCts.Token);
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _disposeToken);
         cancellationToken = linked.Token;
 
         // Prefer a zero-timeout try so callers can show a busy hint before we queue.
@@ -199,11 +202,6 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
         finally
         {
             Interlocked.Exchange(ref _lastUsedUtcTicks, DateTime.UtcNow.Ticks);
-
-            if (Volatile.Read(ref _deferModelDispose) == 1)
-            {
-                DisposeModel();
-            }
 
             _gate.Release();
         }
@@ -359,46 +357,47 @@ public sealed class HyMT2SharpTranslator : ITranslator, IDisposable
 
     public void Dispose()
     {
-        if (_disposed)
+        try
         {
-            return;
+            DisposeAsync().AsTask().WaitAsync(DisposeWaitTimeout).GetAwaiter().GetResult();
         }
-
-        _disposed = true;
-
-        // Cancel in-flight inference first, then wait (bounded) for it to leave the gate.
-        _disposeCts.Cancel();
-        if (_gate.Wait(DisposeWaitTimeout))
+        catch (TimeoutException)
         {
-            try
-            {
-                DisposeModel();
-            }
-            finally
-            {
-                _gate.Release();
-                _disposeCts.Dispose();
-            }
-
-            return;
+            Log.Warn(
+                $"Snip HyMT2Sharp dispose: inference did not stop within {DisposeWaitTimeout.TotalSeconds:F0}s; deferring model release.",
+                typeof(HyMT2SharpTranslator));
         }
+    }
 
-        // Still busy (a single Forward pass can be long): let the in-flight call free the
-        // model when it releases the gate. Re-check once in case it released just now.
-        Log.Warn(
-            $"Snip HyMT2Sharp dispose: inference did not stop within {DisposeWaitTimeout.TotalSeconds:F0}s; deferring model release.",
-            typeof(HyMT2SharpTranslator));
-        Volatile.Write(ref _deferModelDispose, 1);
-        if (_gate.Wait(0))
+    /// <summary>Immediately retires the instance; model release runs outside the caller's thread.</summary>
+    public ValueTask DisposeAsync()
+    {
+        lock (_disposeLock)
         {
-            try
+            if (_disposeTask == null)
             {
-                DisposeModel();
+                _disposed = true;
+                _disposeCts.Cancel();
+                _disposeTask = Task.Run(DisposeCoreAsync);
             }
-            finally
-            {
-                _gate.Release();
-            }
+
+            return new ValueTask(_disposeTask);
+        }
+    }
+
+    private async Task DisposeCoreAsync()
+    {
+        // Keep waiting asynchronously after a synchronous Dispose caller times out.
+        // Both inference and prewarm release this gate before weights can be freed.
+        await _gate.WaitAsync().ConfigureAwait(false);
+        try
+        {
+            DisposeModel();
+        }
+        finally
+        {
+            _disposeCts.Dispose();
+            _gate.Release();
         }
     }
 

@@ -347,6 +347,9 @@
   <data name="tr_err_http_empty" xml:space="preserve">
     <value>HTTP 翻译返回了空结果。</value>
   </data>
+  <data name="tr_err_http_too_large" xml:space="preserve">
+    <value>HTTP 翻译响应超过 4 MiB 大小限制。</value>
+  </data>
   <data name="tr_err_gguf_path" xml:space="preserve">
     <value>请在 Snip 插件设置中填写 HyMT2Sharp 的 GGUF 文件路径。</value>
   </data>

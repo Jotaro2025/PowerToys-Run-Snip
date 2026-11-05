@@ -10,6 +10,9 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 修复 / Fixed
 
+- 本地翻译 API 并发满时先读取有界请求体再返回带 CORS 的 429；请求读取与推理采用独立超时，推理超时返回 504；停止时跟踪并等待在途任务清理 — Drain bounded request bodies before concurrent-limit responses, separate I/O and inference deadlines, return 504 on inference timeout and track shutdown cleanup.
+- HyMT 模型切换与卸载在缓存锁外释放资源，设置界面异步等待卸载；同步关闭保留有界等待，后台继续完成原生资源释放 — Release retired models outside the cache lock, unload asynchronously from settings and retain bounded synchronous shutdown waits.
+- HTTP 翻译使用有界流式读取：成功响应最多 4 MiB、错误正文最多读取 16 KiB，读取正文期间仍受超时约束，超限不触发逐行回退 — Bound HTTP success/error response reads, preserve body-read timeouts and prevent oversized responses from triggering per-line fallback.
 - GIF 单色/双色帧补正确的局部调色板标志；录制自动结束后直接保存，待保存会话不会被新录制覆盖；停止/关闭时等待采集结束再释放帧，并可取消在途编码 — Fix local palette flags, auto-stop saving, pending-session ownership and capture/encoder cleanup.
 - 滚动采集增加 256 MiB 原始分片预算（含池化数组实际容量），达到上限明确提示；停止/取消先等待在途采集与对齐完成，重复帧和异常分支也释放缓冲区 — Bound retained scroll tiles and serialize stop, cancel and stitch ownership.
 - 图片翻译窗口结束后解除 HyMT 模型事件订阅；渲染、段落擦除和 inpaint 支持取消，关闭窗口不再继续整段重绘 — Unsubscribe model events and cancel rendering/inpaint when the result window closes.

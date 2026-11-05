@@ -34,9 +34,11 @@ public class LocalTranslationApiServerTests
     private static LocalTranslationApiServer Start(
         Func<IReadOnlyList<string>, string, CancellationToken, Task<IReadOnlyList<string>>> translate,
         IReadOnlyList<string> origins = null,
-        int rateLimit = LocalTranslationApiServer.DefaultMaxRequestsPerMinute)
+        int rateLimit = LocalTranslationApiServer.DefaultMaxRequestsPerMinute,
+        TimeSpan? requestTimeout = null,
+        TimeSpan? translationTimeout = null)
     {
-        var server = new LocalTranslationApiServer(0, Token, origins ?? [], translate, rateLimit);
+        var server = new LocalTranslationApiServer(0, Token, origins ?? [], translate, rateLimit, requestTimeout, translationTimeout);
         server.Start();
         Assert.IsTrue(server.IsRunning, server.LastError);
         Assert.IsTrue(server.Port > 0);
@@ -226,6 +228,121 @@ public class LocalTranslationApiServerTests
         Assert.AreEqual(200, (await SendAsync(server, "POST", "/v1/translate", TranslateJson("a"))).Status);
         Assert.AreEqual(200, (await SendAsync(server, "POST", "/v1/translate", TranslateJson("b"))).Status);
         Assert.AreEqual(429, (await SendAsync(server, "POST", "/v1/translate", TranslateJson("c"))).Status);
+    }
+
+    [TestMethod]
+    public async Task ConcurrentLimitReturnsReadable429WithCorsAndDrainsLargeBody()
+    {
+        int entered = 0;
+        var allEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = Start(async (texts, _, token) =>
+        {
+            if (Interlocked.Increment(ref entered) == 4)
+            {
+                allEntered.TrySetResult();
+            }
+
+            await release.Task.WaitAsync(token);
+            return texts;
+        }, ["chrome-extension://abc"]);
+        var pending = Enumerable.Range(0, 4)
+            .Select(i => SendAsync(server, "POST", "/v1/translate", TranslateJson(i.ToString(System.Globalization.CultureInfo.InvariantCulture))))
+            .ToArray();
+        try
+        {
+            await allEntered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            string largeBody = TranslateJson("fifth") + new string(' ', 200_000);
+            var rejected = await SendAsync(server, "POST", "/v1/translate", largeBody, origin: "chrome-extension://abc");
+            Assert.AreEqual(429, rejected.Status);
+            Assert.AreEqual("chrome-extension://abc", rejected.Headers["Access-Control-Allow-Origin"]);
+            StringAssert.Contains(rejected.Body, "too many concurrent requests");
+            Assert.AreEqual(4, entered);
+            Assert.AreEqual(200, (await SendAsync(server, "GET", "/v1/health")).Status);
+        }
+        finally
+        {
+            release.TrySetResult();
+            await Task.WhenAll(pending);
+        }
+    }
+
+    [TestMethod]
+    public async Task TranslationHasIndependentBudgetAndReturns504BeforeNativeWorkFinishes()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var release = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        await using var server = Start(async (texts, _, _) =>
+        {
+            entered.TrySetResult();
+            await release.Task;
+            return texts;
+        }, translationTimeout: TimeSpan.FromMilliseconds(250));
+        var pending = SendAsync(server, "POST", "/v1/translate", TranslateJson("slow"));
+        try
+        {
+            await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            var reply = await pending.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(504, reply.Status);
+            StringAssert.Contains(reply.Body, "translation timed out");
+            var stopping = server.StopAsync();
+            Assert.IsFalse(stopping.IsCompleted, "StopAsync must track native work until it really exits");
+            release.TrySetResult();
+            await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        finally
+        {
+            release.TrySetResult();
+        }
+    }
+
+    [TestMethod]
+    public async Task RequestDeadlineDoesNotCancelLongerInference()
+    {
+        await using var server = Start(async (texts, _, token) =>
+        {
+            await Task.Delay(400, token);
+            return texts;
+        }, requestTimeout: TimeSpan.FromMilliseconds(200), translationTimeout: TimeSpan.FromSeconds(5));
+
+        Assert.AreEqual(200, (await SendAsync(server, "POST", "/v1/translate", TranslateJson("slow"))).Status);
+    }
+
+    [TestMethod]
+    public async Task StopAsyncCancelsAndDrainsActiveRequestsThenAllowsRestart()
+    {
+        var entered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        int active = 0;
+        await using var server = Start(async (texts, _, token) =>
+        {
+            Interlocked.Increment(ref active);
+            entered.TrySetResult();
+            try
+            {
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                return texts;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref active);
+            }
+        });
+        var pending = SendAsync(server, "POST", "/v1/translate", TranslateJson("cancel"));
+        await entered.Task.WaitAsync(TimeSpan.FromSeconds(5));
+        await server.StopAsync().WaitAsync(TimeSpan.FromSeconds(5));
+        Assert.AreEqual(0, active);
+        Assert.IsFalse(server.IsRunning);
+        try
+        {
+            await pending;
+        }
+        catch (Exception ex) when (ex is AssertFailedException or System.IO.IOException)
+        {
+            // A stopped server closes the client without an HTTP response.
+        }
+
+        server.Start();
+        Assert.AreEqual(200, (await SendAsync(server, "GET", "/v1/health")).Status);
     }
 
     [TestMethod]

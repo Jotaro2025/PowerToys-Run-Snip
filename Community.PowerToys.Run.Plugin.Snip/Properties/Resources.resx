@@ -347,6 +347,9 @@
   <data name="tr_err_http_empty" xml:space="preserve">
     <value>The HTTP translator returned an empty response.</value>
   </data>
+  <data name="tr_err_http_too_large" xml:space="preserve">
+    <value>The HTTP translator response exceeds the 4 MiB limit.</value>
+  </data>
   <data name="tr_err_gguf_path" xml:space="preserve">
     <value>Please set the HyMT2Sharp GGUF file path in the Snip plugin settings.</value>
   </data>

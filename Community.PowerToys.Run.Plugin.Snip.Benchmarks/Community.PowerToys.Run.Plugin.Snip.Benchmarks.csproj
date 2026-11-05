@@ -22,6 +22,8 @@
 
   <ItemGroup>
     <PackageReference Include="BenchmarkDotNet" Version="0.15.2" />
+    <!-- Align the benchmark dependency with PowerToys.ManagedCommon. -->
+    <PackageReference Include="System.Management" Version="10.0.9" />
   </ItemGroup>
 
   <ItemGroup>

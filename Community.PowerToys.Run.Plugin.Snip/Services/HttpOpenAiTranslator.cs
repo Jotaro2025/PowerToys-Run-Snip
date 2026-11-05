@@ -3,7 +3,9 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Buffers;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
@@ -23,6 +25,8 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// </summary>
 public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
 {
+    internal const int MaxResponseBytes = 4 * 1024 * 1024;
+    internal const int MaxErrorResponseBytes = 16 * 1024;
     private static readonly SocketsHttpHandler SharedHandler = new() { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
     private readonly HttpClient _http;
     private readonly Uri _endpoint;
@@ -221,8 +225,12 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
                     request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
                 }
 
-                using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
-                var raw = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                // ResponseHeadersRead avoids HttpClient's unbounded pre-buffering.
+                // Its own timeout ends at headers, so retain the deadline while reading.
+                using var attemptTimeout = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+                attemptTimeout.CancelAfter(_http.Timeout);
+                using var response = await _http.SendAsync(request, HttpCompletionOption.ResponseHeadersRead, attemptTimeout.Token).ConfigureAwait(false);
+                var raw = await ReadResponseAsync(response, attemptTimeout.Token).ConfigureAwait(false);
                 if (!response.IsSuccessStatusCode)
                 {
                     bool transient = response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout
@@ -270,6 +278,59 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
             };
         }
     }
+
+    private static async Task<string> ReadResponseAsync(HttpResponseMessage response, CancellationToken cancellationToken)
+    {
+        bool success = response.IsSuccessStatusCode;
+        int limit = success ? MaxResponseBytes : MaxErrorResponseBytes;
+        if (success && response.Content.Headers.ContentLength > limit)
+        {
+            throw ResponseTooLarge();
+        }
+
+        using var stream = await response.Content.ReadAsStreamAsync(cancellationToken).ConfigureAwait(false);
+        using var output = new MemoryStream();
+        byte[] buffer = ArrayPool<byte>.Shared.Rent(8192);
+        try
+        {
+            while (output.Length <= limit)
+            {
+                int remaining = limit - (int)output.Length;
+                if (!success && remaining == 0)
+                {
+                    break;
+                }
+
+                int read = await stream.ReadAsync(buffer.AsMemory(0, Math.Min(buffer.Length, remaining + (success ? 1 : 0))), cancellationToken).ConfigureAwait(false);
+                if (read == 0)
+                {
+                    break;
+                }
+
+                if (output.Length + read > limit)
+                {
+                    throw ResponseTooLarge();
+                }
+
+                output.Write(buffer, 0, read);
+            }
+        }
+        finally
+        {
+            ArrayPool<byte>.Shared.Return(buffer);
+        }
+
+        output.Position = 0;
+        string charset = response.Content.Headers.ContentType?.CharSet?.Trim('"');
+        var encoding = string.IsNullOrEmpty(charset) ? Encoding.UTF8 : Encoding.GetEncoding(charset);
+        using var reader = new StreamReader(output, encoding, detectEncodingFromByteOrderMarks: true);
+        return await reader.ReadToEndAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    private static TranslatorException ResponseTooLarge() => new(Properties.Resources.tr_err_http_too_large)
+    {
+        AllowBatchFallback = false,
+    };
 
     public void Dispose()
     {

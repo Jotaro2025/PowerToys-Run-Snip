@@ -157,6 +157,54 @@ public class HyMT2SharpTranslatorCacheTests
         Assert.IsFalse(HyMT2SharpTranslatorCache.IsCached(MakeTempPath("empty"), HyMtBackendKind.Auto));
     }
 
+    [TestMethod]
+    public async Task BusyModelUnloadDoesNotHoldCacheLockOrBlockCaller()
+    {
+        var path = MakeTempPath("busy");
+        var instance = HyMT2SharpTranslatorCache.GetOrCreate(path, HyMtBackendKind.Cpu);
+        instance.GateForTests.Wait();
+        Task unload = null;
+        try
+        {
+            unload = HyMT2SharpTranslatorCache.UnloadAsync();
+            Assert.IsFalse(unload.IsCompleted);
+            Assert.IsFalse(HyMT2SharpTranslatorCache.IsCached(path, HyMtBackendKind.Cpu));
+            await Assert.ThrowsExactlyAsync<ObjectDisposedException>(
+                () => instance.TranslateAsync(["hi"], "English"));
+            var next = await Task.Run(() => HyMT2SharpTranslatorCache.GetOrCreate(path, HyMtBackendKind.Cpu))
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.AreNotSame(instance, next);
+        }
+        finally
+        {
+            instance.GateForTests.Release();
+            if (unload != null)
+            {
+                await unload;
+            }
+        }
+    }
+
+    [TestMethod]
+    public async Task SwitchingBusyModelRetiresOldInstanceWithoutWaitingForInference()
+    {
+        var path = MakeTempPath("busy-switch");
+        var first = HyMT2SharpTranslatorCache.GetOrCreate(path, HyMtBackendKind.Cpu);
+        first.GateForTests.Wait();
+        try
+        {
+            var next = await Task.Run(() => HyMT2SharpTranslatorCache.GetOrCreate(path, HyMtBackendKind.Vulkan))
+                .WaitAsync(TimeSpan.FromSeconds(2));
+            Assert.AreNotSame(first, next);
+            await Assert.ThrowsExactlyAsync<ObjectDisposedException>(() => first.TranslateAsync(["hi"], "English"));
+        }
+        finally
+        {
+            first.GateForTests.Release();
+            await first.DisposeAsync();
+        }
+    }
+
     private static string MakeTempPath(string tag)
     {
         return Path.Combine(Path.GetTempPath(), $"snip-hymt-cache-{tag}-{Path.GetRandomFileName()}.gguf");
