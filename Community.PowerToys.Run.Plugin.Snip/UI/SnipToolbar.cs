@@ -233,6 +233,15 @@ public sealed class SnipToolbar : Border
         _redoButton.Opacity = redoCount > 0 ? 1.0 : 0.38;
     }
 
+    internal void SetGifState(bool recording, bool saving)
+    {
+        _recordButton.IsEnabled = !saving;
+        _recordButton.IsAccent = recording;
+        _recordButton.ToolTip = saving
+            ? Properties.Resources.gif_encoding
+            : recording ? Properties.Resources.gif_recording_stop : Properties.Resources.tip_record_gif;
+    }
+
     public void SetActiveTool(string id)
     {
         if (ActiveTool == id)

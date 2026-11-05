@@ -7,6 +7,7 @@ using System.Globalization;
 using System.Windows;
 using System.Windows.Controls;
 using System.Windows.Input;
+using System.Windows.Interop;
 using System.Windows.Media;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
@@ -22,6 +23,7 @@ public sealed class ScrollStopStripWindow : Window
     private readonly TextBlock _title;
     private readonly TextBlock _tip;
     private readonly Button _stopButton;
+    private readonly bool _isGifRecording;
     private bool _closing;
     private bool _paused;
     private bool _hotkeyConflict;
@@ -30,8 +32,9 @@ public sealed class ScrollStopStripWindow : Window
 
     public event Action StopClicked;
 
-    public ScrollStopStripWindow()
+    public ScrollStopStripWindow(bool isGifRecording = false)
     {
+        _isGifRecording = isGifRecording;
         WindowStyle = WindowStyle.None;
         AllowsTransparency = true;
         Background = Brushes.Transparent;
@@ -131,6 +134,13 @@ public sealed class ScrollStopStripWindow : Window
 
     private void RefreshTitleAndTip()
     {
+        if (_isGifRecording)
+        {
+            _title.Text = Properties.Resources.gif_recording;
+            _tip.Text = _hotkeyConflict ? Properties.Resources.scroll_stop_strip_conflict_tip : Properties.Resources.gif_stop_strip_tip;
+            return;
+        }
+
         string count = _tileCount > 0
             ? "  " + _tileCount.ToString(CultureInfo.CurrentCulture)
             : string.Empty;
@@ -237,6 +247,14 @@ public sealed class ScrollStopStripWindow : Window
         {
             // STA may already be shutting down.
         }
+    }
+
+    protected override void OnSourceInitialized(EventArgs e)
+    {
+        base.OnSourceInitialized(e);
+
+        // Keep the floating controls out of both screen-captured GIFs and scroll tiles.
+        _ = Win32.SetWindowDisplayAffinity(new WindowInteropHelper(this).Handle, Win32.WdaExcludeFromCapture);
     }
 
     protected override void OnClosed(EventArgs e)

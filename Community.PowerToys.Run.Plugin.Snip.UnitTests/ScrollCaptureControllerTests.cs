@@ -3,7 +3,13 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Collections.Generic;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
+using System.Windows.Media.Imaging;
+using System.Windows.Threading;
 
 using Community.PowerToys.Run.Plugin.Snip.Core;
 using Community.PowerToys.Run.Plugin.Snip.Services;
@@ -194,6 +200,141 @@ public class ScrollCaptureControllerTests
         // #100 keeps overlay visible; blanking the frozen preview leaves a white/blank hole.
         Assert.IsTrue(ScrollCaptureController.ShouldKeepFrozenScrollPreview(preferWindowCapture: true));
         Assert.IsFalse(ScrollCaptureController.ShouldKeepFrozenScrollPreview(preferWindowCapture: false));
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task StopAndCancelAwaitInFlightCapture(bool discard)
+    {
+        await RunOnDispatcherAsync(async () =>
+        {
+            var capture = new GatedCapture();
+            var controller = new ScrollCaptureController(capture, new Canvas(), new Int32Rect(0, 0, 3, 3), maxTiles: 1);
+            int stopped = 0;
+            int cancelled = 0;
+            controller.CapturingStopped += _ => stopped++;
+            controller.Cancelled += () => cancelled++;
+            controller.Begin();
+            await capture.Started.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task stopping = discard ? controller.CancelAsync() : controller.StopCapturingAsync();
+            try
+            {
+                Assert.IsFalse(stopping.IsCompleted, "the outstanding capture still owns its buffer");
+            }
+            finally
+            {
+                capture.Release.TrySetResult();
+            }
+
+            await stopping.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.IsFalse(controller.IsActive);
+            Assert.AreEqual(0, controller.TileCount);
+            Assert.AreEqual(0L, controller.RetainedBytes);
+            Assert.AreEqual(discard ? 0 : 1, stopped);
+            Assert.AreEqual(discard ? 1 : 0, cancelled);
+            Assert.ThrowsExactly<ObjectDisposedException>(() => capture.Frame.ToOwnedPixels());
+        });
+    }
+
+    [TestMethod]
+    [DataRow(36L, true)]
+    [DataRow(128L, false)]
+    public async Task BudgetCountsActualPooledBufferAndNotifiesOnFirstTile(long budget, bool capped)
+    {
+        await RunOnDispatcherAsync(async () =>
+        {
+            var capture = new GatedCapture();
+            capture.Release.TrySetResult();
+            var controller = new ScrollCaptureController(capture, new Canvas(), new Int32Rect(0, 0, 3, 3), maxTiles: 1, captureBudgetBytes: budget);
+            var stopped = new TaskCompletionSource<int>(TaskCreationOptions.RunContinuationsAsynchronously);
+            controller.CapturingStopped += count => stopped.TrySetResult(count);
+            controller.Begin();
+            int tiles = await stopped.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(capped, controller.MemoryCapReached);
+            Assert.AreEqual(capped ? 0 : 1, tiles);
+            if (!capped)
+            {
+                Assert.IsTrue(controller.RetainedBytes > 36, "ArrayPool capacity must be included in the budget");
+                Assert.IsTrue(controller.RetainedBytes <= budget);
+            }
+
+            await controller.CancelAsync().WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(0L, controller.RetainedBytes);
+        });
+    }
+
+    [TestMethod]
+    public async Task CancelDuringStitchDoesNotApplyAResultOrRetainTiles()
+    {
+        await RunOnDispatcherAsync(async () =>
+        {
+            var capture = new GatedCapture();
+            capture.Release.TrySetResult();
+            var controller = new ScrollCaptureController(capture, new Canvas(), new Int32Rect(0, 0, 3, 3), maxTiles: 1);
+            var stopped = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+            controller.CapturingStopped += _ => stopped.TrySetResult();
+            controller.Begin();
+            await stopped.Task.WaitAsync(TimeSpan.FromSeconds(5));
+            Task<WriteableBitmap> stitch = controller.StitchAsync();
+            Task discard = controller.CancelAsync();
+            Assert.IsNull(await stitch.WaitAsync(TimeSpan.FromSeconds(5)));
+            await discard.WaitAsync(TimeSpan.FromSeconds(5));
+            Assert.AreEqual(0L, controller.RetainedBytes);
+            Assert.IsFalse(controller.HasTiles);
+        });
+    }
+
+    private static Task RunOnDispatcherAsync(Func<Task> action)
+    {
+        var completion = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        var thread = new Thread(() =>
+        {
+            var dispatcher = Dispatcher.CurrentDispatcher;
+            SynchronizationContext.SetSynchronizationContext(new DispatcherSynchronizationContext(dispatcher));
+            dispatcher.BeginInvoke(new Action(async () =>
+            {
+                try
+                {
+                    await action();
+                    completion.TrySetResult();
+                }
+                catch (Exception ex)
+                {
+                    completion.TrySetException(ex);
+                }
+                finally
+                {
+                    dispatcher.BeginInvokeShutdown(DispatcherPriority.Background);
+                }
+            }));
+            Dispatcher.Run();
+        }) { IsBackground = true };
+        thread.SetApartmentState(ApartmentState.STA);
+        thread.Start();
+        return completion.Task.WaitAsync(TimeSpan.FromSeconds(15));
+    }
+
+    private sealed class GatedCapture : ICaptureService
+    {
+        public TaskCompletionSource Started { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public TaskCompletionSource Release { get; } = new(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        public CapturedFrame Frame { get; } = new(new byte[36], 3, 3, 12);
+
+        public IReadOnlyList<ScreenInfo> GetScreens() => [];
+
+        public WriteableBitmap CaptureScreen(ScreenInfo screen) => throw new NotSupportedException();
+
+        public CapturedFrame CaptureScreenPixels(ScreenInfo screen) => throw new NotSupportedException();
+
+        public CapturedFrame CaptureScreenRectPixels(int physicalX, int physicalY, int width, int height)
+        {
+            Started.TrySetResult();
+            Release.Task.Wait(TimeSpan.FromSeconds(5));
+            return Frame;
+        }
     }
 }
 

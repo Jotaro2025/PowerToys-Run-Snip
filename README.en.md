@@ -35,7 +35,8 @@ You can also configure a **global hotkey** in settings to start a region capture
 - Annotations: rectangle, ellipse, arrow, pen, text, mosaic
 - 7-color palette + 4 stroke widths; undo / redo
 - Shortcuts: Enter finish, Esc cancel, right-click cancel, Ctrl+C copy, Ctrl+S save, Ctrl+Z undo, Ctrl+Y redo, Delete remove selected annotation
-- **Scroll capture** (UX from TDS): after selecting a region, use the toolbar **Scroll capture** button — hole-punch the overlay, auto-wheel, then Done/Save stitches once. Wheel prefers `SendInput(MOUSEEVENTF_WHEEL)` (works with Chromium/Edge), then `PostMessage`/`SendMessage(WM_MOUSEWHEEL)` fallback; overlay is session-hidden once to reduce flicker; mid-stop via floating **Stop** strip / Esc / Space keeps frames already captured
+- **Scroll capture** (UX from TDS): after selecting a region, use the toolbar **Scroll capture** button — hole-punch the overlay, auto-wheel, then Done/Save stitches once. Wheel prefers `SendInput(MOUSEEVENTF_WHEEL)` (works with Chromium/Edge), then `PostMessage`/`SendMessage(WM_MOUSEWHEEL)` fallback; overlay is session-hidden once to reduce flicker; mid-stop via floating **Stop** strip / Esc / Space keeps frames already captured. Retained raw tiles have a 256 MiB budget; capture stops with a save hint at the memory or stitched-height limit
+- **GIF recording**: scales the selection proportionally to a maximum dimension of 960 px, targets an 80 ms sampling interval and records actual capture timing for playback. Use the floating **Stop** strip / Esc / Space to save. Capture saves automatically at 300 frames or its 24–256 MiB retained-frame budget. A pending save blocks another recording; closing the snip window cancels capture and encoding
 - **Text extraction (OCR)**: recognize text in the selection; editable result window; closing returns to the overlay
 - **Pin image**: lightweight always-on-top window (drag to move; Esc / double-click / right-click to close); does not end the capture session
 - **Image translation**: OCR boxes → translate → erase original and redraw translated text; “re-render” / “save image”
@@ -197,6 +198,10 @@ Reuses OCR line boxes; after translation, erases the original and redraws the tr
 **Translation memory**: exact source→translation pairs are cached per engine + model + target language in
 `%LOCALAPPDATA%\PowerToys\RunPlugins\Community.PowerToys.Run.Plugin.Snip\translation-memory.json`
 (LRU, up to 5000 entries). Re-capturing the same screen hits the cache and skips the model; repeated strings within one capture are translated once. Disable or clear it on the Image translation page of the settings window.
+
+Cache entries also include the HTTP endpoint path, or the full local model path, file size, modification time and backend. Changing services or replacing a model triggers fresh translation. Updated cache keys do not reuse older entries, which age out through the LRU limit. Nearby writes are coalesced in the background, with a final flush when the plugin exits.
+
+HTTP authentication errors fail immediately. Status 429 / 408 / 502 / 503 / 504 receives at most two retries, honoring `Retry-After` up to 30 seconds. Per-line fallback is reserved for successful responses whose content cannot be parsed or aligned, avoiding a burst of requests after a service error.
 
 **Preload translation model** (on by default): the in-process HyMT GGUF starts loading as soon as the image-translate window opens, in parallel with OCR, instead of after OCR. Measured Q2 load 1.9–2.3 s; CPU OCR only goes from 422 to 449 ms (+6%) while loading, leaving ~1.4 s after OCR and a 130 ms first translation. HTTP / Tencent need no preload.
 

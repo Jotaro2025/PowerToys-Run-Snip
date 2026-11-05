@@ -3,17 +3,17 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
-using System.Buffers;
 using System.Collections.Generic;
 using System.IO;
+using System.Threading;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
 /// Minimal animated-GIF writer for region screen recording: per-frame median-cut
 /// palettes (local color tables), LZW compression, per-frame delays in a
-/// Graphic Control Extension. Zero dependencies, allocation-bounded via
-/// <see cref="ArrayPool{T}"/> for the index buffer.
+/// Graphic Control Extension. Frames are encoded one at a time to bound
+/// temporary palette and index buffers.
 /// </summary>
 public static class GifEncoder
 {
@@ -39,6 +39,22 @@ public static class GifEncoder
         int stride,
         bool loopForever = true)
     {
+        using var output = new MemoryStream();
+        EncodeToStream(output, frames, delaysMs, width, height, stride, loopForever);
+        return output.ToArray();
+    }
+
+    internal static void EncodeToStream(
+        Stream ms,
+        IReadOnlyList<byte[]> frames,
+        IReadOnlyList<int> delaysMs,
+        int width,
+        int height,
+        int stride,
+        bool loopForever = true,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(ms);
         ArgumentNullException.ThrowIfNull(frames);
         ArgumentNullException.ThrowIfNull(delaysMs);
         if (frames.Count == 0 || frames.Count != delaysMs.Count)
@@ -46,12 +62,12 @@ public static class GifEncoder
             throw new ArgumentException("frames and delaysMs must be non-empty and equal length.");
         }
 
-        if (width <= 0 || height <= 0 || stride < (width * 4))
+        if (width <= 0 || height <= 0 || width > ushort.MaxValue || height > ushort.MaxValue || stride < checked(width * 4))
         {
             throw new ArgumentOutOfRangeException(nameof(width), "invalid frame geometry");
         }
 
-        using var ms = new MemoryStream(frames.Count * width * height / 4);
+        cancellationToken.ThrowIfCancellationRequested();
         WriteHeader(ms);
         WriteLogicalScreenDescriptor(ms, width, height, globalColorTable: false);
         if (loopForever)
@@ -59,23 +75,22 @@ public static class GifEncoder
             WriteNetscapeLoop(ms);
         }
 
-        var indexBuffer = new byte[width * height];
         for (int f = 0; f < frames.Count; f++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             int delay = Math.Clamp(delaysMs[f], 10, MaxDelayMs);
-            var palette = MedianCutPalette(frames[f], stride, width, height, out var indices);
+            var palette = MedianCutPalette(frames[f], stride, width, height, out var indices, cancellationToken);
             WriteGraphicControlExtension(ms, delay);
-            WriteImageDescriptor(ms, width, height, palette.Count > 2);
+            WriteImageDescriptor(ms, width, height, localColorTable: true);
             WriteLocalColorTable(ms, palette);
-            WriteLzwImageData(ms, indices, width, height, palette.Count);
+            WriteLzwImageData(ms, indices, width, height, palette.Count, cancellationToken);
         }
 
         ms.WriteByte(0x3B); // Trailer
-        return ms.ToArray();
     }
 
     // ---------------------------------------------------------------- header
-    private static void WriteHeader(MemoryStream ms)
+    private static void WriteHeader(Stream ms)
     {
         ms.WriteByte(0x47); // G
         ms.WriteByte(0x49); // I
@@ -85,7 +100,7 @@ public static class GifEncoder
         ms.WriteByte(0x61); // a
     }
 
-    private static void WriteLogicalScreenDescriptor(MemoryStream ms, int width, int height, bool globalColorTable)
+    private static void WriteLogicalScreenDescriptor(Stream ms, int width, int height, bool globalColorTable)
     {
         ms.WriteByte((byte)(width & 0xFF));
         ms.WriteByte((byte)((width >> 8) & 0xFF));
@@ -96,7 +111,7 @@ public static class GifEncoder
         ms.WriteByte(0); // pixel aspect ratio
     }
 
-    private static void WriteNetscapeLoop(MemoryStream ms)
+    private static void WriteNetscapeLoop(Stream ms)
     {
         ms.WriteByte(0x21); // extension
         ms.WriteByte(0xFF); // application
@@ -113,20 +128,20 @@ public static class GifEncoder
         ms.WriteByte(0); // block terminator
     }
 
-    private static void WriteGraphicControlExtension(MemoryStream ms, int delayMs)
+    private static void WriteGraphicControlExtension(Stream ms, int delayMs)
     {
         int centis = Math.Max(1, delayMs / 10);
         ms.WriteByte(0x21); // extension
         ms.WriteByte(0xF9); // graphic control
         ms.WriteByte(4); // block size
-        ms.WriteByte(0x04); // disposal = do not dispose, no transparency
+        ms.WriteByte(0x04); // disposal = keep previous frame, no transparency
         ms.WriteByte((byte)(centis & 0xFF));
         ms.WriteByte((byte)((centis >> 8) & 0xFF));
         ms.WriteByte(0); // transparent index (unused)
         ms.WriteByte(0); // block terminator
     }
 
-    private static void WriteImageDescriptor(MemoryStream ms, int width, int height, bool localColorTable)
+    private static void WriteImageDescriptor(Stream ms, int width, int height, bool localColorTable)
     {
         ms.WriteByte(0x2C); // image separator
         ms.WriteByte(0); // left
@@ -142,7 +157,7 @@ public static class GifEncoder
         ms.WriteByte(localColorTable ? (byte)0x87 : (byte)0x07);
     }
 
-    private static void WriteLocalColorTable(MemoryStream ms, List<(byte B, byte G, byte R)> palette)
+    private static void WriteLocalColorTable(Stream ms, List<(byte B, byte G, byte R)> palette)
     {
         // Pad to 256 entries so the size bits stay 0b111.
         for (int i = 0; i < 256; i++)
@@ -170,15 +185,22 @@ public static class GifEncoder
     /// and maps every pixel to its palette index into <paramref name="indices"/>.
     /// </summary>
     internal static List<(byte B, byte G, byte R)> MedianCutPalette(
-        byte[] bgra, int stride, int width, int height, out byte[] indices)
+        byte[] bgra, int stride, int width, int height, out byte[] indices, CancellationToken cancellationToken = default)
     {
-        indices = new byte[width * height];
+        ArgumentNullException.ThrowIfNull(bgra);
+        if (bgra.LongLength < (long)stride * height)
+        {
+            throw new ArgumentException("Frame buffer is shorter than its geometry.", nameof(bgra));
+        }
+
+        indices = new byte[checked(width * height)];
 
         // Collect unique-ish colors via 4-bit-per-channel buckets (fast, bounded).
         var buckets = new Dictionary<int, (long B, long G, long R, int Count)>(4096);
         int sampleStepY = Math.Max(1, height / 128);
         for (int y = 0; y < height; y += sampleStepY)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             int rowOff = y * stride;
             for (int x = 0; x < width; x++)
             {
@@ -285,6 +307,7 @@ public static class GifEncoder
 
         for (int y = 0; y < height; y++)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             int rowOff = y * stride;
             int idxRow = y * width;
             for (int x = 0; x < width; x++)
@@ -324,7 +347,7 @@ public static class GifEncoder
     }
 
     // ------------------------------------------------------------------- LZW
-    private static void WriteLzwImageData(MemoryStream ms, byte[] indices, int width, int height, int paletteCount)
+    private static void WriteLzwImageData(Stream ms, byte[] indices, int width, int height, int paletteCount, CancellationToken cancellationToken)
     {
         int minCodeSize = paletteCount <= 2 ? 2 : 8;
         ms.WriteByte((byte)minCodeSize);
@@ -365,6 +388,11 @@ public static class GifEncoder
         int prefix = indices[0];
         for (int i = 1; i < width * height; i++)
         {
+            if ((i & 16383) == 0)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+            }
+
             byte b = indices[i];
             if (dict.TryGetValue((prefix, b), out int code))
             {
@@ -401,11 +429,13 @@ public static class GifEncoder
         }
 
         // Sub-block framing (max 255 bytes each).
-        var bytes = lzw.ToArray();
+        var bytes = lzw.GetBuffer();
+        int length = checked((int)lzw.Length);
         int off = 0;
-        while (off < bytes.Length)
+        while (off < length)
         {
-            int n = Math.Min(255, bytes.Length - off);
+            cancellationToken.ThrowIfCancellationRequested();
+            int n = Math.Min(255, length - off);
             ms.WriteByte((byte)n);
             ms.Write(bytes, off, n);
             off += n;

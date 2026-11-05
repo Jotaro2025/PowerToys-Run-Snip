@@ -4,6 +4,8 @@
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
+using System.IO;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
@@ -13,168 +15,311 @@ using Wox.Plugin.Logger;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
-/// <summary>
-/// Region GIF recording session: captures the frozen selection area on a timer
-/// (GDI BitBlt of the live screen through the overlay hole), collects frames up
-/// to a memory budget, and encodes via <see cref="GifEncoder"/> on stop.
-/// Esc / the toolbar toggle ends the session; the result is saved next to the
-/// user's save directory with a timestamped name.
-/// </summary>
+/// <summary>Bounded GIF capture with measured frame delays and a separate pending-save state.</summary>
 internal sealed class GifRecordingSession : IDisposable
 {
-    /// <summary>Capture interval; ~12.5 fps keeps files small and smooth enough.</summary>
     private const int IntervalMs = 80;
-
-    /// <summary>Hard frame cap so a forgotten session cannot exhaust memory.</summary>
     private const int MaxFrames = 300;
-
-    /// <summary>Minimum retained-frame budget (small regions keep the old behavior).</summary>
     private const long MinBudgetBytes = 24L * 1024 * 1024;
-
-    /// <summary>Upper bound for the retained-frame budget (PowerLauncher is long-lived).</summary>
     private const long MaxBudgetBytes = 256L * 1024 * 1024;
-
-    /// <summary>Frames to target before the byte cap bites (~6.4 s at 80 ms).</summary>
     private const int TargetFrames = 80;
-
-    /// <summary>Target start fps via frame delay (GIF centiseconds resolve to 10 fps at 100 ms).</summary>
-    public static TimeSpan Interval => TimeSpan.FromMilliseconds(IntervalMs);
+    private const int MaxOutputDimension = 960;
 
     private readonly Int32Rect _physicalRect;
     private readonly ICaptureService _capture;
     private readonly List<byte[]> _frames = new();
     private readonly List<int> _delays = new();
     private readonly CancellationTokenSource _cts = new();
-
-    // Cached token: safe to read after the CTS is disposed (unlike _cts.Token,
-    // which throws ObjectDisposedException once Dispose has run mid-loop).
+    private readonly CancellationTokenSource _lifetime = new();
     private readonly CancellationToken _token;
-    private Task _loop;
-    private long _budgetBytes;
+    private readonly CancellationToken _lifetimeToken;
+    private readonly object _sync = new();
+    private readonly int _width;
+    private readonly int _height;
+    private readonly int _maxFrames;
+    private Task _loop = Task.CompletedTask;
+    private Task _encoding = Task.CompletedTask;
+    private bool _started;
+    private bool _disposed;
+    private bool _encodingStarted;
+    private long _retainedBytes;
+    private int _frameCount;
 
-    public GifRecordingSession(Int32Rect physicalRect, ICaptureService capture)
+    public GifRecordingSession(Int32Rect physicalRect, ICaptureService capture, int maxFrames = MaxFrames)
     {
+        ArgumentNullException.ThrowIfNull(capture);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(physicalRect.Width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(physicalRect.Height);
+        ArgumentOutOfRangeException.ThrowIfLessThan(maxFrames, 2);
         _physicalRect = physicalRect;
         _capture = capture;
+        _maxFrames = maxFrames;
         _token = _cts.Token;
-
-        // Budget targets ~80 frames (~6.4 s at 80 ms) scaled by the frame size.
-        // 24 MB floor: a fixed 24 MB only ever held TWO 3440×1440 frames
-        // (~19.8 MB each), so a full-screen GIF silently stopped after 0.2 s.
-        long frameBytes = Math.Max(1L, (long)physicalRect.Width * physicalRect.Height * 4);
-        _budgetBytes = Math.Clamp(frameBytes * TargetFrames, MinBudgetBytes, MaxBudgetBytes);
+        _lifetimeToken = _lifetime.Token;
+        double scale = Math.Min(1.0, MaxOutputDimension / (double)Math.Max(physicalRect.Width, physicalRect.Height));
+        _width = Math.Max(1, (int)Math.Round(physicalRect.Width * scale));
+        _height = Math.Max(1, (int)Math.Round(physicalRect.Height * scale));
+        long sourceBytes = checked((long)physicalRect.Width * physicalRect.Height * 4);
+        BudgetBytes = Math.Clamp(sourceBytes * TargetFrames, MinBudgetBytes, MaxBudgetBytes);
     }
 
-    public bool IsRunning => _loop is { IsCompleted: false };
+    public static TimeSpan Interval => TimeSpan.FromMilliseconds(IntervalMs);
 
-    public int FrameCount => _frames.Count;
+    public bool IsRunning => _started && !_token.IsCancellationRequested && !_loop.IsCompleted;
 
-    /// <summary>Retained-frame byte budget (test hook).</summary>
-    internal long BudgetBytes => _budgetBytes;
+    public bool HasPendingFrames => _started && !_encodingStarted && !_disposed;
+
+    public int FrameCount => Volatile.Read(ref _frameCount);
+
+    public Task Completion => _loop;
+
+    internal long BudgetBytes { get; }
+
+    internal int OutputWidth => _width;
+
+    internal int OutputHeight => _height;
+
+    internal IReadOnlyList<int> FrameDelays => _delays;
 
     public void Start()
     {
-        if (IsRunning)
+        lock (_sync)
         {
-            return;
-        }
-
-        _loop = Task.Run(
-            async () =>
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            if (_started)
             {
-                while (!_token.IsCancellationRequested && _frames.Count < MaxFrames && _budgetBytes > 0)
-                {
-                    try
-                    {
-                        using var frame = _capture.CaptureScreenRectPixels(
-                            _physicalRect.X, _physicalRect.Y, _physicalRect.Width, _physicalRect.Height);
-                        if (frame == null)
-                        {
-                            await Task.Delay(IntervalMs, _token).ConfigureAwait(false);
-                            continue;
-                        }
+                return;
+            }
 
-                        // ToOwnedPixels transfers a contiguous BGRA copy (pooled when
-                        // the frame is pool-backed); we hand ownership to the frame list.
-                        using var tile = frame.ToOwnedPixels();
-                        var arr = tile.DangerousGetArray();
-                        var copy = new byte[tile.Stride * tile.Height];
-                        System.Array.Copy(arr, copy, Math.Min(arr.Length, copy.Length));
-                        _budgetBytes -= copy.Length;
-                        _frames.Add(copy);
-                        _delays.Add(IntervalMs);
-                    }
-                    catch (OperationCanceledException)
-                    {
-                        break;
-                    }
-                    catch (Exception ex)
-                    {
-                        Log.Warn($"Snip GIF frame capture failed: {ex.Message}", typeof(GifRecordingSession));
-                        if (_token.IsCancellationRequested)
-                        {
-                            break;
-                        }
-                    }
-
-                    if (_token.IsCancellationRequested)
-                    {
-                        break;
-                    }
-
-                    await Task.Delay(IntervalMs, _token).ConfigureAwait(false);
-                }
-            },
-            _token);
+            _started = true;
+            _loop = Task.Run(CaptureLoopAsync);
+        }
     }
 
-    /// <summary>
-    /// Stops capturing and encodes the collected frames. Returns the GIF bytes,
-    /// or null when too few frames were captured for a meaningful clip.
-    /// </summary>
-    public async Task<byte[]> StopAndEncodeAsync()
+    private async Task CaptureLoopAsync()
     {
-        _cts.Cancel();
+        var clock = Stopwatch.StartNew();
+        long previousFrameMs = 0;
+        int frameBytes = checked(_width * _height * 4);
         try
         {
-            if (_loop != null)
+            while (!_token.IsCancellationRequested && FrameCount < _maxFrames && frameBytes <= BudgetBytes - _retainedBytes)
             {
-                await _loop.ConfigureAwait(false);
+                long captureStart = clock.ElapsedMilliseconds;
+                try
+                {
+                    using var frame = _capture.CaptureScreenRectPixels(
+                        _physicalRect.X, _physicalRect.Y, _physicalRect.Width, _physicalRect.Height);
+                    _token.ThrowIfCancellationRequested();
+                    if (frame != null)
+                    {
+                        using var tile = frame.ToOwnedPixels();
+                        var pixels = new byte[frameBytes];
+                        var source = tile.Pixels;
+                        for (int y = 0; y < _height; y++)
+                        {
+                            _token.ThrowIfCancellationRequested();
+                            int sourceY = (int)((long)y * tile.Height / _height);
+                            for (int x = 0; x < _width; x++)
+                            {
+                                int sourceX = (int)((long)x * tile.Width / _width);
+                                source.Slice((sourceY * tile.Stride) + (sourceX * 4), 4)
+                                    .CopyTo(pixels.AsSpan(((y * _width) + x) * 4, 4));
+                            }
+                        }
+
+                        long now = clock.ElapsedMilliseconds;
+                        if (_delays.Count > 0)
+                        {
+                            _delays[^1] = (int)Math.Clamp(now - previousFrameMs, 10, 1000);
+                        }
+
+                        previousFrameMs = now;
+                        _frames.Add(pixels);
+                        _delays.Add(IntervalMs);
+                        _retainedBytes += pixels.Length;
+                        Interlocked.Increment(ref _frameCount);
+                    }
+                }
+                catch (OperationCanceledException)
+                {
+                    break;
+                }
+                catch (Exception ex)
+                {
+                    Log.Warn($"Snip GIF frame capture failed: {ex.Message}", typeof(GifRecordingSession));
+                }
+
+                int remaining = (int)Math.Max(0, IntervalMs - (clock.ElapsedMilliseconds - captureStart));
+                await Task.Delay(remaining, _token).ConfigureAwait(false);
             }
         }
         catch (OperationCanceledException)
         {
-            // Expected on stop.
+            // Normal stop.
         }
-
-        if (_frames.Count < 2)
+        finally
         {
-            return null;
+            if (_delays.Count > 0)
+            {
+                _delays[^1] = (int)Math.Clamp(clock.ElapsedMilliseconds - previousFrameMs, 10, 1000);
+            }
         }
-
-        int w = _physicalRect.Width;
-        int h = _physicalRect.Height;
-        return await Task.Run(() => GifEncoder.Encode(_frames, _delays, w, h, w * 4)).ConfigureAwait(false);
     }
 
-    public static string BuildFileName()
-        => $"Snip-GIF-{DateTime.Now:yyyyMMdd-HHmmss}.gif";
+    public Task<byte[]> StopAndEncodeAsync()
+    {
+        lock (_sync)
+        {
+            BeginEncoding();
+            var task = EncodeBytesAsync();
+            _encoding = task;
+            return task;
+        }
+    }
 
-    /// <summary>Releases the capture loop: cancels it first so the pending
-    /// <c>Task.Delay</c> unwinds instead of throwing
-    /// <see cref="ObjectDisposedException"/> forever, then disposes the CTS.
-    /// Frames are discarded; safe to call multiple times.</summary>
+    public Task StopCapturingAsync()
+    {
+        lock (_sync)
+        {
+            ObjectDisposedException.ThrowIf(_disposed, this);
+            _cts.Cancel();
+            return _loop;
+        }
+    }
+
+    private async Task<byte[]> EncodeBytesAsync()
+    {
+        await _loop.ConfigureAwait(false);
+        try
+        {
+            _lifetimeToken.ThrowIfCancellationRequested();
+            if (_frames.Count < 2)
+            {
+                return null;
+            }
+
+            return await Task.Run(
+                () =>
+                {
+                    using var output = new MemoryStream();
+                    GifEncoder.EncodeToStream(output, _frames, _delays, _width, _height, _width * 4, cancellationToken: _lifetimeToken);
+                    return output.ToArray();
+                },
+                _lifetimeToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            ReleaseFrames();
+        }
+    }
+
+    public Task<bool> StopAndSaveAsync(string path, CancellationToken cancellationToken = default)
+    {
+        lock (_sync)
+        {
+            BeginEncoding();
+            var task = SaveAsync(path, cancellationToken);
+            _encoding = task;
+            return task;
+        }
+    }
+
+    private void BeginEncoding()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (_encodingStarted)
+        {
+            throw new InvalidOperationException("GIF is already being encoded.");
+        }
+
+        _encodingStarted = true;
+        _cts.Cancel();
+    }
+
+    private async Task<bool> SaveAsync(string path, CancellationToken cancellationToken)
+    {
+        using var linked = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken, _lifetimeToken);
+        var saveToken = linked.Token;
+        await _loop.ConfigureAwait(false);
+        string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
+        try
+        {
+            saveToken.ThrowIfCancellationRequested();
+            if (_frames.Count < 2)
+            {
+                return false;
+            }
+
+            await Task.Run(
+                () =>
+                {
+                    using (var output = new FileStream(temporary, FileMode.CreateNew, FileAccess.Write, FileShare.None))
+                    {
+                        GifEncoder.EncodeToStream(output, _frames, _delays, _width, _height, _width * 4, cancellationToken: saveToken);
+                    }
+
+                    saveToken.ThrowIfCancellationRequested();
+                    File.Move(temporary, path, overwrite: false);
+                },
+                saveToken).ConfigureAwait(false);
+            return true;
+        }
+        finally
+        {
+            ReleaseFrames();
+            if (File.Exists(temporary))
+            {
+                File.Delete(temporary);
+            }
+        }
+    }
+
+    public static string BuildFileName() => $"Snip-GIF-{DateTime.Now:yyyyMMdd-HHmmss-fff}-{Guid.NewGuid():N}.gif";
+
+    private void ReleaseFrames()
+    {
+        _frames.Clear();
+        _delays.Clear();
+        _retainedBytes = 0;
+    }
+
     public void Dispose()
+    {
+        lock (_sync)
+        {
+            if (_disposed)
+            {
+                return;
+            }
+
+            _disposed = true;
+            _lifetime.Cancel();
+            _cts.Cancel();
+            _ = ReleaseAsync();
+        }
+    }
+
+    private async Task ReleaseAsync()
     {
         try
         {
-            _cts.Cancel();
+            await _loop.ConfigureAwait(false);
+            await _encoding.ConfigureAwait(false);
         }
-        catch (ObjectDisposedException)
+        catch (OperationCanceledException)
         {
-            // Already disposed.
+            // Closing the session cancels capture and any in-flight encoder.
         }
-
-        _cts.Dispose();
+        catch (Exception ex)
+        {
+            Log.Warn($"Snip GIF cleanup: {ex.Message}", typeof(GifRecordingSession));
+        }
+        finally
+        {
+            ReleaseFrames();
+            _cts.Dispose();
+            _lifetime.Dispose();
+        }
     }
 }

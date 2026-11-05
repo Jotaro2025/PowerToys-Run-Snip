@@ -7,6 +7,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Net.Http.Headers;
 using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
@@ -198,9 +199,9 @@ public class TranslatorBatchTests
             if (n == 1)
             {
                 // Force per-line fallback.
-                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.InternalServerError)
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
                 {
-                    Content = new StringContent("batch timeout"),
+                    Content = new StringContent("{invalid json"),
                 });
             }
 
@@ -213,9 +214,9 @@ public class TranslatorBatchTests
                 });
             }
 
-            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.GatewayTimeout)
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
             {
-                Content = new StringContent("chunk timeout"),
+                Content = new StringContent("{invalid json"),
             });
         });
 
@@ -225,6 +226,122 @@ public class TranslatorBatchTests
         CollectionAssert.AreEqual(new[] { "你好", "World" }, results.ToArray());
         Assert.AreEqual(1, translator.LastPartialFallbackCount);
         Assert.IsFalse(string.IsNullOrEmpty(TranslatorBatch.ConsumePartialFallbackWarning()));
+    }
+
+    [TestMethod]
+    [DataRow(HttpStatusCode.Unauthorized)]
+    [DataRow(HttpStatusCode.Forbidden)]
+    [DataRow(HttpStatusCode.InternalServerError)]
+    public async Task HttpErrorsDoNotFanOutIntoPerLineRequests(HttpStatusCode status)
+    {
+        int calls = 0;
+        using var http = new HttpClient(new ScriptableHandler((_, _) =>
+        {
+            Interlocked.Increment(ref calls);
+            return Task.FromResult(new HttpResponseMessage(status) { Content = new StringContent("failure") });
+        }));
+        using var translator = new HttpOpenAiTranslator("http://localhost/v1", "key", "model", http);
+        await Assert.ThrowsExactlyAsync<TranslatorException>(() => translator.TranslateAsync(["Hello", "World"], "zh"));
+        Assert.AreEqual(1, calls);
+        Assert.AreEqual(0, translator.LastPartialFallbackCount);
+    }
+
+    [TestMethod]
+    [DataRow(true)]
+    [DataRow(false)]
+    public async Task RateLimitRetriesAreBoundedAndRespectRetryAfter(bool eventuallySucceeds)
+    {
+        int calls = 0;
+        using var http = new HttpClient(new ScriptableHandler((_, _) =>
+        {
+            int call = Interlocked.Increment(ref calls);
+            if (eventuallySucceeds && call == 3)
+            {
+                return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+                {
+                    Content = new StringContent("""{"choices":[{"message":{"content":"1. 你好\n2. 世界"}}]}"""),
+                });
+            }
+
+            var response = new HttpResponseMessage(HttpStatusCode.TooManyRequests) { Content = new StringContent("limited") };
+            response.Headers.RetryAfter = new RetryConditionHeaderValue(TimeSpan.Zero);
+            return Task.FromResult(response);
+        }));
+        using var translator = new HttpOpenAiTranslator("http://localhost/v1", null, "model", http);
+        if (eventuallySucceeds)
+        {
+            CollectionAssert.AreEqual(new[] { "你好", "世界" }, (await translator.TranslateAsync(["Hello", "World"], "zh")).ToArray());
+        }
+        else
+        {
+            await Assert.ThrowsExactlyAsync<TranslatorException>(() => translator.TranslateAsync(["Hello", "World"], "zh"));
+        }
+
+        Assert.AreEqual(3, calls, "two retries total; no per-line fan-out");
+    }
+
+    [TestMethod]
+    public async Task FatalChunkFailureCancelsAndDrainsOtherRequests()
+    {
+        int started = 0;
+        int active = 0;
+        int cancelled = 0;
+        var allStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        using var http = new HttpClient(new ScriptableHandler(async (_, token) =>
+        {
+            int call = Interlocked.Increment(ref started);
+            Interlocked.Increment(ref active);
+            try
+            {
+                if (call == TranslatorBatch.MaxConcurrentHttpChunks)
+                {
+                    allStarted.TrySetResult();
+                }
+
+                await allStarted.Task.WaitAsync(TimeSpan.FromSeconds(5), token);
+                if (call == 1)
+                {
+                    return new HttpResponseMessage(HttpStatusCode.Unauthorized) { Content = new StringContent("invalid key") };
+                }
+
+                await Task.Delay(Timeout.InfiniteTimeSpan, token);
+                throw new InvalidOperationException("unreachable");
+            }
+            catch (OperationCanceledException)
+            {
+                Interlocked.Increment(ref cancelled);
+                throw;
+            }
+            finally
+            {
+                Interlocked.Decrement(ref active);
+            }
+        }));
+        using var translator = new HttpOpenAiTranslator("http://localhost/v1", null, "model", http);
+        var texts = Enumerable.Range(0, TranslatorBatch.HttpMaxLines * 4).Select(i => "Line " + i).ToArray();
+        await Assert.ThrowsExactlyAsync<TranslatorException>(() => translator.TranslateAsync(texts, "zh").WaitAsync(TimeSpan.FromSeconds(5)));
+        Assert.AreEqual(TranslatorBatch.MaxConcurrentHttpChunks, started);
+        Assert.AreEqual(0, active, "TranslateAsync must await all started requests");
+        Assert.AreEqual(TranslatorBatch.MaxConcurrentHttpChunks - 1, cancelled);
+    }
+
+    [TestMethod]
+    public async Task InjectedHttpClientKeepsItsAddressAndDefaultHeaders()
+    {
+        using var http = new HttpClient(new ScriptableHandler((request, _) =>
+        {
+            Assert.AreEqual("http://target.example/v1/chat/completions", request.RequestUri.AbsoluteUri);
+            Assert.AreEqual("request-key", request.Headers.Authorization.Parameter);
+            return Task.FromResult(new HttpResponseMessage(HttpStatusCode.OK)
+            {
+                Content = new StringContent("""{"choices":[{"message":{"content":"你好"}}]}"""),
+            });
+        })) { BaseAddress = new Uri("http://original.example/") };
+        http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", "original-key");
+        using var translator = new HttpOpenAiTranslator("http://target.example/v1", "request-key", "model", http);
+        await translator.TranslateAsync(["Hello"], "zh");
+        Assert.AreEqual("http://original.example/", http.BaseAddress.AbsoluteUri);
+        Assert.AreEqual("original-key", http.DefaultRequestHeaders.Authorization.Parameter);
     }
 
     private sealed class ScriptableHandler : HttpMessageHandler

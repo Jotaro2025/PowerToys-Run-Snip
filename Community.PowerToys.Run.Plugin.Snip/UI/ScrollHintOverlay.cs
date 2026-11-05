@@ -104,6 +104,13 @@ public sealed class ScrollHintOverlay : Border
         Subtitle = _statsSubtitle;
     }
 
+    /// <summary>Auto-stopped before the retained raw tiles exceeded the memory budget.</summary>
+    public void ShowMemoryCapStopped()
+    {
+        Title = Properties.Resources.scroll_hint_stopped;
+        Subtitle = Properties.Resources.scroll_hint_memory_cap;
+    }
+
     /// <summary>Capture paused because the cursor left the selection.</summary>
     public void ShowPaused()
     {

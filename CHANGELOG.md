@@ -10,6 +10,19 @@ The single source of the version is `Version` in `plugin.json`; pushing a `v<Ver
 
 ### 修复 / Fixed
 
+- GIF 单色/双色帧补正确的局部调色板标志；录制自动结束后直接保存，待保存会话不会被新录制覆盖；停止/关闭时等待采集结束再释放帧，并可取消在途编码 — Fix local palette flags, auto-stop saving, pending-session ownership and capture/encoder cleanup.
+- 滚动采集增加 256 MiB 原始分片预算（含池化数组实际容量），达到上限明确提示；停止/取消先等待在途采集与对齐完成，重复帧和异常分支也释放缓冲区 — Bound retained scroll tiles and serialize stop, cancel and stitch ownership.
+- 图片翻译窗口结束后解除 HyMT 模型事件订阅；渲染、段落擦除和 inpaint 支持取消，关闭窗口不再继续整段重绘 — Unsubscribe model events and cancel rendering/inpaint when the result window closes.
+- 翻译记忆按 HTTP 端点、本地 GGUF 完整路径与文件版本隔离；设置保存串行合并、使用唯一临时文件与原子替换，失败保留设置窗口草稿 — Isolate cache identities and make settings writes atomic.
+- HTTP 认证/服务错误不再逐行扩散请求；瞬态错误最多重试两次并尊重 Retry-After；失败批次会取消并等待其余请求 — Bound HTTP retries and drain concurrent requests after fatal failures.
+
+### 性能与维护 / Performance and maintenance
+
+- GIF 按比例限制最长边 960 px，目标采样间隔 80 ms，按实测时间记录帧延迟，并直接编码到文件；后台合并翻译缓存与画笔设置写入 — Scale GIF frames, preserve measured timing, stream output and coalesce persistence.
+- SnipWindow 的 GIF、滚动截屏和导出协调拆到独立 partial 文件；发布打包前必须通过 Release 测试，标签必须匹配 plugin.json 版本；安装包先编译 AnyCPU IL 再按 RID 生成 R2R，兼容仓库自带 x64 宿主引用的 ARM64 交叉构建 — Split capture coordination, gate releases on tests/version validation and compile portable IL before architecture-specific R2R publishing.
+
+### 修复（其他） / Other fixes
+
 - 出现一次模态提示后，截图工具栏所有按钮都变成“图像翻译”并反复弹同一个提示（只能按 Esc 退出）：`ToolbarButton` 在鼠标**按下**时就同步触发 `Click`，提示框在按下事件里以模态方式运行并吃掉随后的鼠标松开事件，`OnMouseLeftButtonUp` 不再执行；而 `CaptureMouse()` 是在 `Click` 返回之后才调用，此时按键早已松开，捕获永久卡在这个按钮上——之后任何鼠标点击都被路由回它，于是不断重新触发同一个提示（Esc 是键盘事件所以不受影响）。现在改为在**松开**时触发 Click，并且先释放捕获再调用处理器（2 个回归单测） — Every toolbar button re-triggered the "translation engine not configured" prompt after it appeared once (only Esc could still cancel): `ToolbarButton` raised `Click` from the mouse-down handler, so a modal dialog opened there swallowed the physical mouse-up and `OnMouseLeftButtonUp` never ran; the `CaptureMouse()` that followed the handler then stuck forever and routed every later click back to that button. Click now fires on release, after the capture is released (2 regression tests) (@Jotaro2025)
 - 本地翻译 API 的 429 可能变成“连接被重置”：限流检查在读取请求体之前就返回 429，服务器随后关闭套接字时接收缓冲区里还有未读的请求体，Windows 会发 RST 并丢弃已写出的响应，浏览器扩展看到的是网络错误而不是“rate limit exceeded”。现在先读完请求体再做限流判断（限流回归测试通过） — A rate-limited local-API request could surface as a reset connection: the 429 was written before the request body was read, so closing the socket with unread bytes made Windows send RST and discard the response. The body is now consumed before the rate-limit check (@Jotaro2025)
 - 标注工具（矩形/椭圆/画笔）画不出来：`AnnotationCanvas` 是只绘制已有标注的自定义 `FrameworkElement`，空画布区域不参与 WPF 命中测试，第一次按下会落到下面的 `inputCatcher` 并被"选区拖拽"逻辑吃掉，因此永远无法创建第一个图形。现在画布先绘制一层覆盖全尺寸的透明矩形，使整个选区表面可命中；新增空画布命中测试 — Annotation tools (rect/ellipse/pen) could not draw: `AnnotationCanvas` is a custom `FrameworkElement` that only drew existing annotations, so its empty surface was not hit-testable and the first press fell through to the input catcher, where the selection-drag logic swallowed it. The canvas now paints a transparent full-surface rectangle, making the whole selection hit-testable; adds an empty-canvas hit-test regression test (@Jotaro2025)

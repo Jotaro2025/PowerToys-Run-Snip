@@ -201,7 +201,7 @@
     <value>录制 GIF（区域）</value>
   </data>
   <data name="gif_recording" xml:space="preserve">
-    <value>录制中…按 Esc 停止</value>
+    <value>正在录制 GIF…</value>
   </data>
   <data name="gif_saved" xml:space="preserve">
     <value>GIF 已保存</value>
@@ -977,5 +977,20 @@
   </data>
   <data name="settings_section_about" xml:space="preserve">
     <value>关于</value>
+  </data>
+  <data name="scroll_hint_memory_cap" xml:space="preserve">
+    <value>已达到采集内存上限，请保存或丢弃已截取的部分。</value>
+  </data>
+  <data name="gif_recording_stop" xml:space="preserve">
+    <value>停止并保存 GIF</value>
+  </data>
+  <data name="gif_encoding" xml:space="preserve">
+    <value>正在保存 GIF…</value>
+  </data>
+  <data name="settings_save_failed" xml:space="preserve">
+    <value>设置保存失败，请重试。</value>
+  </data>
+  <data name="gif_stop_strip_tip" xml:space="preserve">
+    <value>按 Esc、空格或「停止」保存 GIF；达到录制上限后也会自动保存。</value>
   </data>
 </root>

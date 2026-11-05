@@ -288,6 +288,12 @@ internal static partial class Win32
     [return: MarshalAs(UnmanagedType.Bool)]
     internal static partial bool ShowWindow(IntPtr hWnd, int nCmdShow);
 
+    internal const uint WdaExcludeFromCapture = 0x00000011;
+
+    [LibraryImport(User32, SetLastError = true)]
+    [return: MarshalAs(UnmanagedType.Bool)]
+    internal static partial bool SetWindowDisplayAffinity(IntPtr hWnd, uint dwAffinity);
+
     public const uint GaParent = 1;
 
     [LibraryImport(User32, SetLastError = true)]

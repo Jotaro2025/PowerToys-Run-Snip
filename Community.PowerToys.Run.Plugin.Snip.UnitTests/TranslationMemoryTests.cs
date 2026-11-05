@@ -144,6 +144,52 @@ public class TranslationMemoryTests
             HyMtBackend = HyMtBackendKind.Vulkan,
         };
         Assert.AreNotEqual(TranslationMemory.BuildProviderKey(hymt), TranslationMemory.BuildProviderKey(hymtVulkan));
-        StringAssert.Contains(TranslationMemory.BuildProviderKey(hymt), "model.gguf");
+        StringAssert.Contains(TranslationMemory.BuildProviderKey(hymt), @"C:\M\MODEL.GGUF");
+    }
+
+    [TestMethod]
+    public void BuildProviderKey_IsolatesEndpointsAndNormalizesEquivalentUrls()
+    {
+        _settings.HttpBaseUrl = "https://FIRST.example/v1/";
+        string first = TranslationMemory.BuildProviderKey(_settings);
+        _settings.HttpBaseUrl = "https://first.example:443/v1";
+        Assert.AreEqual(first, TranslationMemory.BuildProviderKey(_settings));
+        _settings.HttpBaseUrl = "https://second.example/v1";
+        Assert.AreNotEqual(first, TranslationMemory.BuildProviderKey(_settings));
+        _settings.HttpBaseUrl = "https://first.example/other";
+        Assert.AreNotEqual(first, TranslationMemory.BuildProviderKey(_settings));
+    }
+
+    [TestMethod]
+    public void BuildProviderKey_TracksFullModelPathAndFileVersion()
+    {
+        string modelPath = _path + ".gguf";
+        try
+        {
+            File.WriteAllText(modelPath, "model version one");
+            var settings = new SnipSettings { TranslatorProvider = TranslatorProvider.HyMT2Sharp, HyMtGgufPath = modelPath };
+            string original = TranslationMemory.BuildProviderKey(settings);
+            settings.HyMtGgufPath = Path.Combine(Path.GetDirectoryName(modelPath), "other", Path.GetFileName(modelPath));
+            Assert.AreNotEqual(original, TranslationMemory.BuildProviderKey(settings));
+            settings.HyMtGgufPath = modelPath;
+            File.AppendAllText(modelPath, " version two");
+            Assert.AreNotEqual(original, TranslationMemory.BuildProviderKey(settings));
+        }
+        finally
+        {
+            File.Delete(modelPath);
+        }
+    }
+
+    [TestMethod]
+    public void Clear_DiscardsScheduledWritesAndCleanFlushDoesNotRecreateFile()
+    {
+        string key = TranslationMemory.BuildProviderKey(_settings);
+        TranslationMemory.Store(["hello"], ["你好"], key, "zh");
+        TranslationMemory.ScheduleFlush();
+        TranslationMemory.Clear();
+        TranslationMemory.Flush();
+        Assert.IsFalse(File.Exists(_path));
+        Assert.IsNull(TranslationMemory.Lookup(["hello"], key, "zh")[0]);
     }
 }

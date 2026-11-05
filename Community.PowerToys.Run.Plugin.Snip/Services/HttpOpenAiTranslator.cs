@@ -5,6 +5,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Net;
 using System.Net.Http;
 using System.Net.Http.Headers;
 using System.Text;
@@ -22,7 +23,10 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// </summary>
 public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
 {
+    private static readonly SocketsHttpHandler SharedHandler = new() { PooledConnectionLifetime = TimeSpan.FromMinutes(10) };
     private readonly HttpClient _http;
+    private readonly Uri _endpoint;
+    private readonly string _apiKey;
     private readonly string _model;
     private readonly bool _ownsClient;
 
@@ -42,7 +46,7 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
         }
         else
         {
-            _http = new HttpClient
+            _http = new HttpClient(SharedHandler, disposeHandler: false)
             {
                 // Short screenshot texts; keep the ceiling generous for cold starts.
                 Timeout = TimeSpan.FromMinutes(2),
@@ -50,13 +54,9 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
             _ownsClient = true;
         }
 
-        var root = baseUrl.TrimEnd('/');
-        _http.BaseAddress = new Uri(root.EndsWith("/v1", StringComparison.OrdinalIgnoreCase) ? root + "/" : root + "/");
-
-        if (!string.IsNullOrWhiteSpace(apiKey))
-        {
-            _http.DefaultRequestHeaders.Authorization = new AuthenticationHeaderValue("Bearer", apiKey.Trim());
-        }
+        var root = baseUrl.Trim().TrimEnd('/') + "/";
+        _endpoint = new Uri(new Uri(root), "chat/completions");
+        _apiKey = apiKey?.Trim();
     }
 
     public async Task<IReadOnlyList<string>> TranslateAsync(
@@ -71,6 +71,7 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
             throw new TranslatorException(Properties.Resources.tr_err_no_language);
         }
 
+        LastPartialFallbackCount = 0;
         var results = new string[texts.Count];
         for (int i = 0; i < texts.Count; i++)
         {
@@ -104,79 +105,72 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
 
         // Remote round-trips dominate; run a few chunks at a time. Result slots
         // are index-disjoint, so order is preserved without locks.
-        var throttle = new SemaphoreSlim(
-            TranslatorBatch.MaxConcurrentHttpChunks,
-            TranslatorBatch.MaxConcurrentHttpChunks);
-        var tasks = new List<Task>(chunks.Count);
-
-        async Task ProcessChunkAsync(List<(int Index, string Text)> chunk)
+        async Task ProcessChunkAsync(List<(int Index, string Text)> chunk, CancellationToken token)
         {
+            token.ThrowIfCancellationRequested();
+            var lines = chunk.Select(c => c.Text).ToList();
             try
             {
-                cancellationToken.ThrowIfCancellationRequested();
-                var lines = chunk.Select(c => c.Text).ToList();
+                var reply = await CompleteAsync(
+                    TranslatorBatch.BuildNumberedPrompt(targetLanguage, lines),
+                    maxTokens: Math.Clamp(lines.Sum(l => l.Length) * 4, 128, 4096),
+                    token).ConfigureAwait(false);
+
+                if (TranslatorBatch.TryParseNumberedReply(reply, lines.Count, out var parsed))
+                {
+                    for (int i = 0; i < chunk.Count; i++)
+                    {
+                        results[chunk[i].Index] = parsed[i];
+                    }
+
+                    int done = Interlocked.Add(ref completed, chunk.Count);
+                    progress?.Report(new TranslatorProgress(done, work.Count));
+                    return;
+                }
+
+                Log.Info(
+                    $"Snip HTTP translator batch parse failed for {lines.Count} lines; falling back to per-line.",
+                    typeof(HttpOpenAiTranslator));
+            }
+            catch (TranslatorException ex) when (ex.AllowBatchFallback)
+            {
+                // Fall through to per-line for this chunk.
+                Log.Info(
+                    $"Snip HTTP translator batch request failed for {lines.Count} lines; falling back to per-line.",
+                    typeof(HttpOpenAiTranslator));
+            }
+
+            foreach (var (index, text) in chunk)
+            {
+                token.ThrowIfCancellationRequested();
                 try
                 {
-                    var reply = await CompleteAsync(
-                        TranslatorBatch.BuildNumberedPrompt(targetLanguage, lines),
-                        maxTokens: Math.Clamp(lines.Sum(l => l.Length) * 4, 128, 4096),
-                        cancellationToken).ConfigureAwait(false);
-
-                    if (TranslatorBatch.TryParseNumberedReply(reply, lines.Count, out var parsed))
-                    {
-                        for (int i = 0; i < chunk.Count; i++)
-                        {
-                            results[chunk[i].Index] = parsed[i];
-                        }
-
-                        int done = Interlocked.Add(ref completed, chunk.Count);
-                        progress?.Report(new TranslatorProgress(done, work.Count));
-                        return;
-                    }
-
-                    Log.Info(
-                        $"Snip HTTP translator batch parse failed for {lines.Count} lines; falling back to per-line.",
-                        typeof(HttpOpenAiTranslator));
+                    results[index] = await TranslateOneAsync(text, targetLanguage, token).ConfigureAwait(false);
                 }
-                catch (TranslatorException)
+                catch (TranslatorException ex) when (ex.AllowBatchFallback)
                 {
-                    // Fall through to per-line for this chunk.
-                    Log.Info(
-                        $"Snip HTTP translator batch request failed for {lines.Count} lines; falling back to per-line.",
-                        typeof(HttpOpenAiTranslator));
+                    Interlocked.CompareExchange(ref firstFailure, ex, null);
+                    Interlocked.Increment(ref failedLines);
+                    results[index] = text;
                 }
 
-                foreach (var (index, text) in chunk)
-                {
-                    cancellationToken.ThrowIfCancellationRequested();
-                    try
-                    {
-                        results[index] = await TranslateOneAsync(text, targetLanguage, cancellationToken).ConfigureAwait(false);
-                    }
-                    catch (TranslatorException ex)
-                    {
-                        Interlocked.CompareExchange(ref firstFailure, ex, null);
-                        Interlocked.Increment(ref failedLines);
-                        results[index] = text;
-                    }
-
-                    int done = Interlocked.Increment(ref completed);
-                    progress?.Report(new TranslatorProgress(done, work.Count));
-                }
+                int done = Interlocked.Increment(ref completed);
+                progress?.Report(new TranslatorProgress(done, work.Count));
             }
-            finally
+        }
+
+        await Parallel.ForEachAsync(
+            chunks,
+            new ParallelOptions
             {
-                throttle.Release();
-            }
-        }
-
-        foreach (var chunk in chunks)
-        {
-            await throttle.WaitAsync(cancellationToken).ConfigureAwait(false);
-            tasks.Add(ProcessChunkAsync(chunk));
-        }
-
-        await Task.WhenAll(tasks).ConfigureAwait(false);
+                MaxDegreeOfParallelism = TranslatorBatch.MaxConcurrentHttpChunks,
+                CancellationToken = cancellationToken,
+            },
+            async (chunk, token) =>
+            {
+                token.ThrowIfCancellationRequested();
+                await ProcessChunkAsync(chunk, token).ConfigureAwait(false);
+            }).ConfigureAwait(false);
 
         if (failedLines >= work.Count && firstFailure != null)
         {
@@ -213,38 +207,67 @@ public sealed class HttpOpenAiTranslator : ITranslator, IDisposable
             },
         };
 
-        using var content = new StringContent(JsonSerializer.Serialize(body), Encoding.UTF8, "application/json");
+        string payload = JsonSerializer.Serialize(body);
         try
         {
-            using var response = await _http.PostAsync("chat/completions", content, cancellationToken).ConfigureAwait(false);
-            var raw = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
-            if (!response.IsSuccessStatusCode)
+            for (int attempt = 0; ; attempt++)
             {
-                throw new TranslatorException($"{Properties.Resources.tr_err_http} {(int)response.StatusCode}: {Truncate(raw, 200)}");
-            }
+                using var request = new HttpRequestMessage(HttpMethod.Post, _endpoint)
+                {
+                    Content = new StringContent(payload, Encoding.UTF8, "application/json"),
+                };
+                if (!string.IsNullOrEmpty(_apiKey))
+                {
+                    request.Headers.Authorization = new AuthenticationHeaderValue("Bearer", _apiKey);
+                }
 
-            using var doc = JsonDocument.Parse(raw);
-            if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
-            {
-                throw new TranslatorException(Properties.Resources.tr_err_http_empty);
-            }
+                using var response = await _http.SendAsync(request, cancellationToken).ConfigureAwait(false);
+                var raw = await response.Content.ReadAsStringAsync(cancellationToken).ConfigureAwait(false);
+                if (!response.IsSuccessStatusCode)
+                {
+                    bool transient = response.StatusCode is HttpStatusCode.TooManyRequests or HttpStatusCode.RequestTimeout
+                        or HttpStatusCode.BadGateway or HttpStatusCode.ServiceUnavailable or HttpStatusCode.GatewayTimeout;
+                    var retryAfter = response.Headers.RetryAfter;
+                    TimeSpan delay = retryAfter?.Delta
+                        ?? (retryAfter?.Date is DateTimeOffset date ? date - DateTimeOffset.UtcNow : TimeSpan.FromMilliseconds(250 * (1 << attempt)));
+                    if (transient && attempt < 2 && delay <= TimeSpan.FromSeconds(30))
+                    {
+                        await Task.Delay(delay < TimeSpan.Zero ? TimeSpan.Zero : delay, cancellationToken).ConfigureAwait(false);
+                        continue;
+                    }
 
-            var message = choices[0].GetProperty("message");
-            var translated = message.TryGetProperty("content", out var c) ? c.GetString() : null;
-            return (translated ?? string.Empty).Trim();
+                    throw new TranslatorException($"{Properties.Resources.tr_err_http} {(int)response.StatusCode}: {Truncate(raw, 200)}")
+                    {
+                        AllowBatchFallback = false,
+                    };
+                }
+
+                using var doc = JsonDocument.Parse(raw);
+                if (!doc.RootElement.TryGetProperty("choices", out var choices) || choices.GetArrayLength() == 0)
+                {
+                    throw new TranslatorException(Properties.Resources.tr_err_http_empty);
+                }
+
+                var message = choices[0].GetProperty("message");
+                var translated = message.TryGetProperty("content", out var c) ? c.GetString() : null;
+                return (translated ?? string.Empty).Trim();
+            }
         }
         catch (TranslatorException)
         {
             throw;
         }
-        catch (OperationCanceledException)
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
             throw;
         }
         catch (Exception ex)
         {
             Log.Exception($"Snip HTTP translator failed: {ex.Message}", ex, typeof(HttpOpenAiTranslator));
-            throw new TranslatorException($"{Properties.Resources.tr_err_http} {ex.Message}", ex);
+            throw new TranslatorException($"{Properties.Resources.tr_err_http} {ex.Message}", ex)
+            {
+                AllowBatchFallback = ex is JsonException or InvalidOperationException or KeyNotFoundException,
+            };
         }
     }
 

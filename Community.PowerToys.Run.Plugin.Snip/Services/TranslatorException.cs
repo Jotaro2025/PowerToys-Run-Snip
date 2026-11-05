@@ -9,6 +9,9 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 /// <summary>User-facing failure while configuring or running a translator.</summary>
 public sealed class TranslatorException : Exception
 {
+    /// <summary>Whether a malformed batch response may be retried as individual lines.</summary>
+    internal bool AllowBatchFallback { get; init; } = true;
+
     public TranslatorException()
     {
     }

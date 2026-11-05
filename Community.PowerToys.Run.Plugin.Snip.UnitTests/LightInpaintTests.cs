@@ -3,6 +3,7 @@
 // See the LICENSE file in the project root for more information.
 
 using System;
+using System.Threading;
 
 using Community.PowerToys.Run.Plugin.Snip.Services;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -15,6 +16,18 @@ public class LightInpaintTests
     private const int Width = 80;
     private const int Height = 40;
     private const int Stride = Width * 4;
+
+    [TestMethod]
+    public void CancelledInpaintLeavesPixelsUnchanged()
+    {
+        var pixels = CreateHorizontalGradient();
+        var original = (byte[])pixels.Clone();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.ThrowsExactly<OperationCanceledException>(() => LightInpaint.TryInpaintRect(
+            pixels, Stride, Width, Height, 20, 10, 60, 30, cancellationToken: cts.Token));
+        CollectionAssert.AreEqual(original, pixels);
+    }
 
     [TestMethod]
     public void InpaintOnGradientBeatsMedianFillMae()

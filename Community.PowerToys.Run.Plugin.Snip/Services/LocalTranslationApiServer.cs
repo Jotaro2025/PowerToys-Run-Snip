@@ -98,10 +98,11 @@ internal sealed class LocalTranslationApiServer : IDisposable
                 _listener = listener;
                 Port = ((IPEndPoint)listener.LocalEndpoint).Port;
                 _cts = new CancellationTokenSource();
+                var serverToken = _cts.Token;
                 _running = true;
                 LastError = null;
 
-                _ = Task.Run(() => AcceptLoopAsync(listener, _cts.Token));
+                _ = Task.Run(() => AcceptLoopAsync(listener, serverToken));
                 Log.Info($"Snip local translate API listening on 127.0.0.1:{Port}", typeof(LocalTranslationApiServer));
             }
             catch (Exception ex)

@@ -19,6 +19,14 @@ namespace Community.PowerToys.Run.Plugin.Snip.UnitTests;
 [TestClass]
 public class ImageTranslateRendererTests
 {
+    [TestMethod]
+    public void Render_PreCancelledTokenStopsBeforeAllocatingBitmap()
+    {
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.ThrowsExactly<OperationCanceledException>(() => ImageTranslateRenderer.Render(null, [], [], cts.Token));
+    }
+
     private static void RunOnStaThread(Action action)
     {
         Exception failure = null;

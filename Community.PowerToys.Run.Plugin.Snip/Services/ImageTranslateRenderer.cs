@@ -8,6 +8,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.Text;
+using System.Threading;
 using System.Windows;
 using System.Windows.Media;
 using System.Windows.Media.Imaging;
@@ -86,8 +87,10 @@ public static class ImageTranslateRenderer
     public static BitmapSource Render(
         BitmapSource source,
         IReadOnlyList<OcrTextLine> lines,
-        IReadOnlyList<string> translations)
+        IReadOnlyList<string> translations,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         ArgumentNullException.ThrowIfNull(source);
         ArgumentNullException.ThrowIfNull(lines);
         ArgumentNullException.ThrowIfNull(translations);
@@ -128,6 +131,7 @@ public static class ImageTranslateRenderer
             var paragraphs = TranslateParagraph.Group(lines);
             foreach (var paragraph in paragraphs)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 if (paragraph.IsSingleLine)
                 {
                     RenderSingleLine(
@@ -139,7 +143,8 @@ public static class ImageTranslateRenderer
                         lines,
                         translations,
                         paragraph.LineIndices[0],
-                        jobs);
+                        jobs,
+                        cancellationToken);
                 }
                 else
                 {
@@ -152,7 +157,8 @@ public static class ImageTranslateRenderer
                         lines,
                         translations,
                         paragraph,
-                        jobs);
+                        jobs,
+                        cancellationToken);
                 }
             }
         }
@@ -165,6 +171,7 @@ public static class ImageTranslateRenderer
         // (no second full-frame RenderTargetBitmap — cuts peak ~1× frame).
         foreach (var job in jobs)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             switch (job.Kind)
             {
                 case DrawKind.Quad:
@@ -179,6 +186,7 @@ public static class ImageTranslateRenderer
             }
         }
 
+        cancellationToken.ThrowIfCancellationRequested();
         if (writable.CanFreeze)
         {
             writable.Freeze();
@@ -196,7 +204,8 @@ public static class ImageTranslateRenderer
         IReadOnlyList<OcrTextLine> lines,
         IReadOnlyList<string> translations,
         int index,
-        List<DrawJob> jobs)
+        List<DrawJob> jobs,
+        CancellationToken cancellationToken)
     {
         var line = lines[index];
         var text = translations[index];
@@ -214,7 +223,7 @@ public static class ImageTranslateRenderer
             }
 
             var eraseBox = ExpandBox(bounds, 1, 1, width, height);
-            var style = EraseSmart(pixels, stride, width, height, eraseBox, dest);
+            var style = EraseSmart(pixels, stride, width, height, eraseBox, dest, cancellationToken);
             double cap = FontCap(new Rect(0, 0, localW, localH), style.InkHeight);
             var quadLayout = BuildTextLayout(
                 text,
@@ -237,7 +246,7 @@ public static class ImageTranslateRenderer
         var bg = SampleBackground(pixels, stride, width, height, raw);
         var paintBox = ExpandBox(raw, BoxExpandX, BoxExpandY, width, height);
         paintBox = ExpandToCoverInk(pixels, stride, width, height, paintBox, bg);
-        var textStyle = EraseSmart(pixels, stride, width, height, paintBox, dest);
+        var textStyle = EraseSmart(pixels, stride, width, height, paintBox, dest, cancellationToken);
 
         // Font size is capped by the original line height, so growing the box only
         // buys wrapped lines, never an inflated font.
@@ -294,7 +303,8 @@ public static class ImageTranslateRenderer
         IReadOnlyList<OcrTextLine> lines,
         IReadOnlyList<string> translations,
         TranslateParagraph paragraph,
-        List<DrawJob> jobs)
+        List<DrawJob> jobs,
+        CancellationToken cancellationToken)
     {
         TextStyle style = default;
         bool hasStyle = false;
@@ -302,6 +312,7 @@ public static class ImageTranslateRenderer
 
         foreach (int index in paragraph.LineIndices)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             var text = translations[index];
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -324,7 +335,7 @@ public static class ImageTranslateRenderer
                 ExpandBox(raw, BoxExpandX, BoxExpandY, width, height),
                 bg);
 
-            var lineStyle = EraseSmart(pixels, stride, width, height, paintBox, dest);
+            var lineStyle = EraseSmart(pixels, stride, width, height, paintBox, dest, cancellationToken);
             if (!hasStyle || lineStyle.InkPixels > style.InkPixels)
             {
                 style = lineStyle;
@@ -522,8 +533,10 @@ public static class ImageTranslateRenderer
         int width,
         int height,
         Rect box,
-        WriteableBitmap dest)
+        WriteableBitmap dest,
+        CancellationToken cancellationToken)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         var mask = TextMaskAnalyzer.TryBuild(pixels, stride, width, height, box);
         if (mask != null && mask.IsUsable && mask.MaskPixelCount > 0)
         {
@@ -542,7 +555,8 @@ public static class ImageTranslateRenderer
                     mask.Top,
                     mask.Left + mask.Width,
                     mask.Top + mask.Height,
-                    mask.InpaintRadius),
+                    mask.InpaintRadius,
+                    cancellationToken),
             };
 
             if (!filled)
@@ -577,7 +591,7 @@ public static class ImageTranslateRenderer
         }
         else
         {
-            EraseRegion(pixels, stride, width, height, box, bg);
+            EraseRegion(pixels, stride, width, height, box, bg, cancellationToken);
         }
 
         AddDirtyRegion(dest, box, width, height);
@@ -956,8 +970,10 @@ public static class ImageTranslateRenderer
         int width,
         int height,
         Rect region,
-        Color medianFallback)
+        Color medianFallback,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         int x0 = (int)Math.Floor(region.X);
         int y0 = (int)Math.Floor(region.Y);
         int x1 = (int)Math.Ceiling(region.Right);
@@ -967,7 +983,7 @@ public static class ImageTranslateRenderer
         x1 = Math.Clamp(x1, 0, width);
         y1 = Math.Clamp(y1, 0, height);
 
-        if (LightInpaint.TryInpaintRect(pixels, stride, width, height, x0, y0, x1, y1))
+        if (LightInpaint.TryInpaintRect(pixels, stride, width, height, x0, y0, x1, y1, cancellationToken: cancellationToken))
         {
             return true;
         }

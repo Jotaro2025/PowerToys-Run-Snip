@@ -13,7 +13,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
 /// <summary>
 /// Process-wide cache for <see cref="HyMT2SharpTranslator"/>. Avoids reloading
-/// multi-GB GGUF weights after every image translate. Keyed by (gguf path, backend).
+/// multi-GB GGUF weights after every image translate. Keyed by (gguf path/version, backend).
 /// The model is not thread-safe; callers share the cached instance's single-flight gate.
 /// Call <see cref="Unload"/> from the plugin dispose hook; otherwise process exit cleans up.
 /// Optional idle auto-unload (<see cref="ConfigureIdleUnload(int)"/>) frees weights after N idle minutes.
@@ -23,6 +23,7 @@ public static class HyMT2SharpTranslatorCache
     private static readonly object Sync = new object();
     private static HyMT2SharpTranslator _instance;
     private static string _ggufPath;
+    private static string _modelIdentity;
     private static HyMtBackendKind _backend;
     private static TimeSpan _idleTimeout = TimeSpan.FromMinutes(DefaultIdleUnloadMinutes);
     private static DateTime _lastTouchUtc = DateTime.UtcNow;
@@ -108,18 +109,20 @@ public static class HyMT2SharpTranslatorCache
         ArgumentException.ThrowIfNullOrWhiteSpace(ggufPath);
 
         var key = NormalizePath(ggufPath);
+        var modelIdentity = ModelFileIdentity.Build(key);
         lock (Sync)
         {
             _lastTouchUtc = DateTime.UtcNow;
             if (_instance != null
                 && string.Equals(_ggufPath, key, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(_modelIdentity, modelIdentity, StringComparison.Ordinal)
                 && _backend == backend)
             {
                 RescheduleUnlocked(_idleTimeout);
                 return _instance;
             }
 
-            ReplaceUnlocked(key, backend);
+            ReplaceUnlocked(key, modelIdentity, backend);
             RescheduleUnlocked(_idleTimeout);
             return _instance;
         }
@@ -134,10 +137,12 @@ public static class HyMT2SharpTranslatorCache
         }
 
         var key = NormalizePath(ggufPath);
+        var modelIdentity = ModelFileIdentity.Build(key);
         lock (Sync)
         {
             return _instance != null
                 && string.Equals(_ggufPath, key, StringComparison.OrdinalIgnoreCase)
+                && string.Equals(_modelIdentity, modelIdentity, StringComparison.Ordinal)
                 && _backend == backend;
         }
     }
@@ -151,11 +156,12 @@ public static class HyMT2SharpTranslatorCache
         }
     }
 
-    private static void ReplaceUnlocked(string ggufPath, HyMtBackendKind backend)
+    private static void ReplaceUnlocked(string ggufPath, string modelIdentity, HyMtBackendKind backend)
     {
         DisposeUnlocked();
         _instance = new HyMT2SharpTranslator(ggufPath, backend);
         _ggufPath = ggufPath;
+        _modelIdentity = modelIdentity;
         _backend = backend;
     }
 
@@ -169,6 +175,7 @@ public static class HyMT2SharpTranslatorCache
         _instance.Dispose();
         _instance = null;
         _ggufPath = null;
+        _modelIdentity = null;
         _idleTimer?.Change(Timeout.Infinite, Timeout.Infinite);
     }
 

@@ -5,8 +5,10 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
+using System.Threading;
 
 using Wox.Plugin.Logger;
 
@@ -20,6 +22,57 @@ namespace Community.PowerToys.Run.Plugin.Snip.Services;
 internal static class SnipSettingsPersister
 {
     public const string PluginId = HyMtGgufPathPersister.PluginId;
+
+    private static readonly object WriteSync = new();
+    private static readonly object QueueSync = new();
+    private static readonly Dictionary<string, Dictionary<string, OptionPatch>> Pending = new(StringComparer.OrdinalIgnoreCase);
+    private static readonly Timer SaveTimer = new(static _ => FlushPending(), null, Timeout.Infinite, Timeout.Infinite);
+
+    /// <summary>Coalesces frequent UI patches; the latest value for each key wins.</summary>
+    public static void SchedulePersist(IEnumerable<OptionPatch> patches, string settingsFilePath = null)
+    {
+        ArgumentNullException.ThrowIfNull(patches);
+        string path = settingsFilePath ?? PowerToysRunSettingsPath;
+        lock (QueueSync)
+        {
+            if (!Pending.TryGetValue(path, out var values))
+            {
+                values = new Dictionary<string, OptionPatch>(StringComparer.Ordinal);
+                Pending[path] = values;
+            }
+
+            foreach (var patch in patches)
+            {
+                values[patch.Key] = patch;
+            }
+
+            SaveTimer.Change(250, Timeout.Infinite);
+        }
+    }
+
+    public static void FlushPending()
+    {
+        lock (WriteSync)
+        {
+            KeyValuePair<string, Dictionary<string, OptionPatch>>[] batches;
+            lock (QueueSync)
+            {
+                batches = Pending.ToArray();
+                Pending.Clear();
+            }
+
+            foreach (var batch in batches)
+            {
+                // This batch is older than anything queued after the snapshot.
+                // Leave newer values pending so a later flush cannot be overwritten
+                // by this batch's values during the merge used for explicit saves.
+                if (!WritePatches(batch.Value.Values, batch.Key))
+                {
+                    RestorePending(batch.Key, batch.Value);
+                }
+            }
+        }
+    }
 
     public enum OptionValueKind
     {
@@ -83,17 +136,25 @@ internal static class SnipSettingsPersister
             return false;
         }
 
-        foreach (var p in list)
+        lock (WriteSync)
         {
-            if (p.Kind == OptionValueKind.Text
-                && string.Equals(p.Key, HyMtGgufPathPersister.GgufPathOptionKey, StringComparison.Ordinal)
-                && !string.IsNullOrWhiteSpace(p.TextValue))
+            if (!TryPatchPowerToysRunSettings(list, settingsFilePath ?? PowerToysRunSettingsPath))
             {
-                HyMtGgufPathPersister.WriteSidecar(p.TextValue.Trim());
+                return false;
             }
-        }
 
-        return TryPatchPowerToysRunSettings(list, settingsFilePath ?? PowerToysRunSettingsPath);
+            foreach (var patch in list)
+            {
+                if (patch.Kind == OptionValueKind.Text
+                    && string.Equals(patch.Key, HyMtGgufPathPersister.GgufPathOptionKey, StringComparison.Ordinal)
+                    && !string.IsNullOrWhiteSpace(patch.TextValue))
+                {
+                    HyMtGgufPathPersister.WriteSidecar(patch.TextValue.Trim());
+                }
+            }
+
+            return true;
+        }
     }
 
     /// <summary>Builds patches covering every field of <paramref name="settings"/>.</summary>
@@ -141,6 +202,69 @@ internal static class SnipSettingsPersister
         ArgumentException.ThrowIfNullOrWhiteSpace(settingsFilePath);
         ArgumentNullException.ThrowIfNull(patches);
 
+        lock (WriteSync)
+        {
+            var merged = new Dictionary<string, OptionPatch>(StringComparer.Ordinal);
+            Dictionary<string, OptionPatch> queued;
+            lock (QueueSync)
+            {
+                if (Pending.Remove(settingsFilePath, out queued))
+                {
+                    foreach (var patch in queued.Values)
+                    {
+                        merged[patch.Key] = patch;
+                    }
+                }
+            }
+
+            foreach (var patch in patches)
+            {
+                merged[patch.Key] = patch;
+            }
+
+            bool saved = WritePatches(merged.Values, settingsFilePath);
+            if (!saved && queued != null)
+            {
+                RestorePending(settingsFilePath, queued);
+            }
+
+            return saved;
+        }
+    }
+
+    private static void RestorePending(string path, Dictionary<string, OptionPatch> values)
+    {
+        lock (QueueSync)
+        {
+            if (!Pending.TryGetValue(path, out var newer))
+            {
+                Pending[path] = values;
+                return;
+            }
+
+            foreach (var patch in values)
+            {
+                newer.TryAdd(patch.Key, patch.Value);
+            }
+        }
+    }
+
+    private static bool WritePatches(IEnumerable<OptionPatch> patches, string settingsFilePath)
+    {
+        for (int attempt = 0; attempt < 3; attempt++)
+        {
+            if (TryPatchOnce(patches, settingsFilePath))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    private static bool TryPatchOnce(IEnumerable<OptionPatch> patches, string settingsFilePath)
+    {
+        string tmp = settingsFilePath + ".snip." + Guid.NewGuid().ToString("N") + ".tmp";
         try
         {
             if (!File.Exists(settingsFilePath))
@@ -151,8 +275,8 @@ internal static class SnipSettingsPersister
                 return false;
             }
 
-            var json = File.ReadAllText(settingsFilePath).Trim('\0');
-            var root = JsonNode.Parse(json) as JsonObject;
+            var original = File.ReadAllText(settingsFilePath);
+            var root = JsonNode.Parse(original.Trim('\0')) as JsonObject;
             if (root == null)
             {
                 return false;
@@ -203,11 +327,16 @@ internal static class SnipSettingsPersister
                 UpsertOption(options, patch);
             }
 
-            var tmp = settingsFilePath + ".snip.tmp";
             var written = root.ToJsonString(new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(tmp, written);
-            File.Copy(tmp, settingsFilePath, overwrite: true);
-            TryDelete(tmp);
+
+            // Rebase the patches if the host saved while we were preparing this version.
+            if (!string.Equals(original, File.ReadAllText(settingsFilePath), StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            File.Replace(tmp, settingsFilePath, destinationBackupFileName: null);
             Log.Info("Snip settings persisted to PowerToys Run settings.json", typeof(SnipSettingsPersister));
             return true;
         }
@@ -215,6 +344,10 @@ internal static class SnipSettingsPersister
         {
             Log.Exception($"Snip settings persist to settings.json failed: {ex.Message}", ex, typeof(SnipSettingsPersister));
             return false;
+        }
+        finally
+        {
+            TryDelete(tmp);
         }
     }
 

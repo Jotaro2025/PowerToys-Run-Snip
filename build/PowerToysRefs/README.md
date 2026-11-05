@@ -12,3 +12,9 @@ dotnet test -p:EnableWindowsTargeting=true -p:PowerToysInstallDir="$(pwd)/build/
 ```
 
 Prefer a real PowerToys install for day-to-day development when available.
+
+These checked-in host assemblies target x64. For an ARM64 cross-build, pass
+`-r win-arm64 -p:PlatformTarget=AnyCPU`: the plugin first compiles to portable
+managed IL, while the RID selects ARM64 runtime assets and ReadyToRun code.
+`build/build-installer.ps1` supplies this setting when publishing both architectures.
+Runtime verification on ARM64 still requires an ARM64 PowerToys installation.

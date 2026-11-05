@@ -4,6 +4,7 @@
 
 using System;
 using System.Collections.Generic;
+using System.Threading;
 
 namespace Community.PowerToys.Run.Plugin.Snip.Services;
 
@@ -61,8 +62,10 @@ public static class LightInpaint
         int y0,
         int x1,
         int y1,
-        int radius = DefaultRadius)
+        int radius = DefaultRadius,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         LastRegionMaskLength = 0;
         if (width <= 0 || height <= 0 || stride < width * 4)
         {
@@ -104,7 +107,8 @@ public static class LightInpaint
             unknown,
             interior,
             radius,
-            filledMask: null);
+            filledMask: null,
+            cancellationToken);
     }
 
     /// <summary>
@@ -131,8 +135,10 @@ public static class LightInpaint
         int y0,
         int x1,
         int y1,
-        int radius = DefaultRadius)
+        int radius = DefaultRadius,
+        CancellationToken cancellationToken = default)
     {
+        cancellationToken.ThrowIfCancellationRequested();
         LastRegionMaskLength = 0;
         if (width <= 0 || height <= 0 || stride < width * 4 || maskStride <= 0)
         {
@@ -212,7 +218,8 @@ public static class LightInpaint
             unknown,
             unknownCount,
             radius,
-            filledMask);
+            filledMask,
+            cancellationToken);
     }
 
     /// <summary>
@@ -232,7 +239,8 @@ public static class LightInpaint
         bool[] unknown,
         int unknownCount,
         int radius,
-        byte[] filledMask)
+        byte[] filledMask,
+        CancellationToken cancellationToken)
     {
         if (radius < 1)
         {
@@ -250,6 +258,7 @@ public static class LightInpaint
         byte[] estimates = Array.Empty<byte>();
         while (unknownCount > 0 && guard-- > 0)
         {
+            cancellationToken.ThrowIfCancellationRequested();
             if (frontier.Count == 0)
             {
                 // Isolated islands — cannot propagate; caller should median-fill.
@@ -265,6 +274,11 @@ public static class LightInpaint
 
             for (int i = 0; i < frontier.Count; i++)
             {
+                if ((i & 255) == 0)
+                {
+                    cancellationToken.ThrowIfCancellationRequested();
+                }
+
                 int li = frontier[i];
                 int lx = li % rw;
                 int ly = li / rw;
@@ -339,13 +353,13 @@ public static class LightInpaint
             // backgrounds). Two 3×3 averaging passes inside the region blend the steps;
             // neighborhoods reach one pixel past the rect so the fill stays glued to the
             // real border pixels. Linear gradients pass through unchanged (mean == self).
-            SmoothRegion(pixels, stride, width, height, x0, y0, x0 + rw, y0 + rh, passes: 8);
+            SmoothRegion(pixels, stride, width, height, x0, y0, x0 + rw, y0 + rh, passes: 8, cancellationToken);
         }
         else
         {
             // Mask fills are thin strokes: a couple of passes on the erased pixels
             // remove banding without touching the real background around them.
-            SmoothFilled(pixels, stride, width, height, x0, y0, rw, rh, filledMask, passes: 2);
+            SmoothFilled(pixels, stride, width, height, x0, y0, rw, rh, filledMask, passes: 2, cancellationToken);
         }
 
         return true;
@@ -368,7 +382,8 @@ public static class LightInpaint
         int y0,
         int x1,
         int y1,
-        int passes)
+        int passes,
+        CancellationToken cancellationToken)
     {
         int rw = x1 - x0;
         int rh = y1 - y0;
@@ -377,6 +392,7 @@ public static class LightInpaint
         {
             for (int y = 0; y < rh; y++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 int sy = y0 + y;
                 for (int x = 0; x < rw; x++)
                 {
@@ -442,13 +458,15 @@ public static class LightInpaint
         int rw,
         int rh,
         byte[] filledMask,
-        int passes)
+        int passes,
+        CancellationToken cancellationToken)
     {
         var temp = new byte[rw * rh * 3];
         for (int p = 0; p < passes; p++)
         {
             for (int y = 0; y < rh; y++)
             {
+                cancellationToken.ThrowIfCancellationRequested();
                 int sy = y0 + y;
                 for (int x = 0; x < rw; x++)
                 {

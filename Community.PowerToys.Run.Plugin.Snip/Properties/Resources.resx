@@ -201,7 +201,7 @@
     <value>Record GIF (region)</value>
   </data>
   <data name="gif_recording" xml:space="preserve">
-    <value>Recording… Esc to stop</value>
+    <value>Recording GIF…</value>
   </data>
   <data name="gif_saved" xml:space="preserve">
     <value>GIF saved</value>
@@ -977,5 +977,20 @@
   </data>
   <data name="settings_section_about" xml:space="preserve">
     <value>About</value>
+  </data>
+  <data name="scroll_hint_memory_cap" xml:space="preserve">
+    <value>Capture stopped at the memory limit. Save or discard the captured portion.</value>
+  </data>
+  <data name="gif_recording_stop" xml:space="preserve">
+    <value>Stop and save GIF</value>
+  </data>
+  <data name="gif_encoding" xml:space="preserve">
+    <value>Saving GIF…</value>
+  </data>
+  <data name="settings_save_failed" xml:space="preserve">
+    <value>Settings could not be saved. Please try again.</value>
+  </data>
+  <data name="gif_stop_strip_tip" xml:space="preserve">
+    <value>Esc, Space or Stop saves the GIF. The recording also saves automatically at its limit.</value>
   </data>
 </root>

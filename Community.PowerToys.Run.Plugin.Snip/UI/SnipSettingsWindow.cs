@@ -834,9 +834,14 @@ public sealed class SnipSettingsWindow : Window
 
         CaptureDraftFromUi(delay, hotkeyText);
 
+        if (!SnipSettingsPersister.Persist(SnipSettingsPersister.BuildPatchesFromSettings(_draft)))
+        {
+            MessageBox.Show(this, Properties.Resources.settings_save_failed, Title, MessageBoxButton.OK, MessageBoxImage.Warning);
+            return;
+        }
+
         _target.CopyFrom(_draft);
         UiLanguageHelper.Apply(_target.UiLanguage);
-        SnipSettingsPersister.Persist(SnipSettingsPersister.BuildPatchesFromSettings(_target));
         LocalTranslationApi.Apply(_target);
         UpdateLocalApiStatus();
 

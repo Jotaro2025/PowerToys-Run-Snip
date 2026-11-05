@@ -89,7 +89,7 @@ public sealed class TranslateResultWindow : Window, IDisposable
         }
 
         _png = png;
-        _settings = settings;
+        _settings = settings.Clone();
         _sourceHeight = _originalImage.PixelHeight;
 
         Title = Properties.Resources.tr_window_title;
@@ -353,17 +353,19 @@ public sealed class TranslateResultWindow : Window, IDisposable
 
     private async Task RunPipelineAsync()
     {
+        var token = _cts.Token;
         SetBusy(OcrService.IsBusy(_settings)
             ? Properties.Resources.tr_busy_ocr_wait
             : Properties.Resources.tr_busy_ocr);
         ITranslator translator = null;
+        HyMT2SharpTranslator hyMt = null;
         try
         {
             // Create the translator before OCR so the in-process HyMT model can
             // start loading while recognition runs. Configuration was validated
             // by SnipWindow before this window opened.
             translator = TranslatorFactory.Create(_settings);
-            var hyMt = translator as HyMT2SharpTranslator;
+            hyMt = translator as HyMT2SharpTranslator;
             if (hyMt != null && _settings.PrewarmTranslatorOnTranslate)
             {
                 _ = hyMt.PrewarmAsync();
@@ -375,8 +377,8 @@ public sealed class TranslateResultWindow : Window, IDisposable
             // PaddleOCR consumes the bitmap directly: png is null on that path so the
             // full-frame PNG encode/decode round trip is skipped entirely.
             var recognized = _png != null
-                ? await OcrService.RecognizeLinesAsync(_png, _settings, _cts.Token)
-                : await OcrService.RecognizeLinesAsync(_originalImage, _settings, _cts.Token);
+                ? await OcrService.RecognizeLinesAsync(_png, _settings, token)
+                : await OcrService.RecognizeLinesAsync(_originalImage, _settings, token);
             _lines = TranslateLineMerger.Merge(recognized);
             if (_closed)
             {
@@ -415,8 +417,8 @@ public sealed class TranslateResultWindow : Window, IDisposable
                     _settings,
                     sources,
                     translateProgress,
-                    _cts.Token),
-                _cts.Token);
+                    token),
+                token);
             if (_closed)
             {
                 return;
@@ -425,8 +427,8 @@ public sealed class TranslateResultWindow : Window, IDisposable
             SetBusy(Properties.Resources.tr_busy_render);
             var lines = _lines;
             var rendered = await Task.Run(
-                () => ImageTranslateRenderer.Render(_originalImage, lines, translations),
-                _cts.Token);
+                () => ImageTranslateRenderer.Render(_originalImage, lines, translations, token),
+                token);
             if (_closed)
             {
                 return;
@@ -488,6 +490,11 @@ public sealed class TranslateResultWindow : Window, IDisposable
         }
         finally
         {
+            if (hyMt != null)
+            {
+                hyMt.ModelLoading -= OnModelLoading;
+            }
+
             // HyMT2Sharp is process-cached (HyMT2SharpTranslatorCache); only dispose short-lived translators.
             if (translator is not HyMT2SharpTranslator && translator is IDisposable d)
             {
@@ -622,11 +629,22 @@ public sealed class TranslateResultWindow : Window, IDisposable
     private void OnModelLoading(object sender, EventArgs e)
     {
         // Never block the loader thread with Dispatcher.Invoke (UI may be awaiting TranslateAsync).
-        _ = Dispatcher.BeginInvoke(new Action(() => SetBusy(Properties.Resources.tr_busy_loading_model)));
+        _ = Dispatcher.BeginInvoke(new Action(() =>
+        {
+            if (!_closed)
+            {
+                SetBusy(Properties.Resources.tr_busy_loading_model);
+            }
+        }));
     }
 
     private void SetBusy(string message)
     {
+        if (_closed)
+        {
+            return;
+        }
+
         _overlay.Visibility = Visibility.Visible;
         _busyBadge.Visibility = Visibility.Visible;
         _progress.Visibility = Visibility.Visible;
@@ -782,7 +800,8 @@ public sealed class TranslateResultWindow : Window, IDisposable
 
         try
         {
-            var rendered = await Task.Run(() => ImageTranslateRenderer.Render(_originalImage, _lines, translations));
+            var token = _cts.Token;
+            var rendered = await Task.Run(() => ImageTranslateRenderer.Render(_originalImage, _lines, translations, token), token);
             if (_closed)
             {
                 return;
@@ -796,6 +815,10 @@ public sealed class TranslateResultWindow : Window, IDisposable
             _status.Text = Properties.Resources.tr_status_reapplied;
             UpdateActionButtons(enabled: true);
             Cursor = null;
+        }
+        catch (OperationCanceledException)
+        {
+            // The window closed while rendering.
         }
         catch (Exception ex)
         {

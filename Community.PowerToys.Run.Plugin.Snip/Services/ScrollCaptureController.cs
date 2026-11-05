@@ -42,6 +42,9 @@ public sealed class ScrollCaptureController
     /// <summary>Stop when this many consecutive wheel deliveries fail (no underlay HWND).</summary>
     internal const int ConsecutiveWheelFailStopThreshold = 5;
 
+    /// <summary>Budget for retained raw tiles, independent of the stitched-output limit.</summary>
+    internal const long DefaultCaptureBudgetBytes = 256L * 1024 * 1024;
+
     private readonly ICaptureService _capture;
     private readonly Panel _overlayHost;
     private readonly ScrollHintOverlay _overlay;
@@ -53,11 +56,17 @@ public sealed class ScrollCaptureController
     private readonly int _stepsPerTick;
     private readonly bool _scrollUp;
     private readonly Dispatcher _dispatcher;
+    private readonly long _captureBudgetBytes;
+    private readonly SemaphoreSlim _lifecycle = new(1, 1);
 
     private readonly List<ScrollTilePixels> _tiles = new();
     private readonly List<ScrollStitcher.TileAlignment> _alignments = new();
     private CancellationTokenSource _cts;
-    private bool _active;
+    private volatile bool _active;
+    private volatile bool _discarding;
+    private Task _captureLoop = Task.CompletedTask;
+    private long _retainedBytes;
+    private bool _memoryCapReached;
     private int _captureBusy;
     private bool _stitchingOverlayActive;
     private bool _stoppedPending;
@@ -67,6 +76,7 @@ public sealed class ScrollCaptureController
     private volatile bool _paused;
     private ScrollCaptureStopGuard _stopGuard;
     private bool _sessionOverlayHidden;
+    private bool _pointerHoldStarted;
     private IntPtr _windowCaptureHwnd;
     private bool _preferWindowCapture;
     private int _windowCaptureFailStreak;
@@ -90,6 +100,10 @@ public sealed class ScrollCaptureController
     /// <summary>True when capture auto-stopped because the projected stitched height hit the cap.</summary>
     public bool HeightCapReached => _heightCapReached;
 
+    public bool MemoryCapReached => _memoryCapReached;
+
+    internal long RetainedBytes => Interlocked.Read(ref _retainedBytes);
+
     /// <summary>True when this session scrolls content upward (tiles are reversed before stitch).</summary>
     public bool ScrollUp => _scrollUp;
 
@@ -111,16 +125,22 @@ public sealed class ScrollCaptureController
         int scrollIntervalMs = 200,
         int stepsPerTick = 1,
         bool scrollUp = false,
-        int maxTiles = 200)
+        int maxTiles = 200,
+        long captureBudgetBytes = DefaultCaptureBudgetBytes)
     {
         _capture = capture ?? throw new ArgumentNullException(nameof(capture));
         _overlayHost = overlayHost ?? throw new ArgumentNullException(nameof(overlayHost));
         _captureRect = captureRect;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(captureRect.Width);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(captureRect.Height);
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(maxTiles);
         _overlayHwnd = overlayHwnd;
         _scrollIntervalMs = scrollIntervalMs;
         _stepsPerTick = stepsPerTick;
         _scrollUp = scrollUp;
         _maxTiles = maxTiles;
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(captureBudgetBytes);
+        _captureBudgetBytes = captureBudgetBytes;
         _overlay = new ScrollHintOverlay();
         _dispatcher = overlayHost.Dispatcher;
         _wheelDriver = new ScrollWheelDriver(_captureRect, _overlayHwnd, _scrollUp, _stepsPerTick);
@@ -140,7 +160,7 @@ public sealed class ScrollCaptureController
     /// </summary>
     public void Begin()
     {
-        if (_active)
+        if (_active || !_captureLoop.IsCompleted || _lifecycle.CurrentCount == 0)
         {
             return;
         }
@@ -149,18 +169,20 @@ public sealed class ScrollCaptureController
         _paused = false;
         _stoppedPending = false;
         _heightCapReached = false;
+        _memoryCapReached = false;
+        _discarding = false;
         Interlocked.Exchange(ref _stopNotified, 0);
         Interlocked.Exchange(ref _captureBusy, 0);
-        _tiles.Clear();
-        _alignments.Clear();
+        DisposeTiles();
 
         ShowOverlay();
         PostToOverlay(() => _overlay.ShowManualCapturing(0));
         SnipVerbose.Scroll("[scroll] auto-scroll started");
 
+        _cts?.Dispose();
         _cts = new CancellationTokenSource();
         StartStopGuard();
-        _ = AutoScrollLoopAsync(_cts.Token);
+        _captureLoop = AutoScrollLoopAsync(_cts.Token);
     }
 
     private async Task AutoScrollLoopAsync(CancellationToken ct)
@@ -173,31 +195,37 @@ public sealed class ScrollCaptureController
         int scrollHint = 0;
         string autoStopReason = null;
 
-        // Probe may already have run from SnipWindow so the frozen preview was kept
-        // for the window-capture path.
-        EnsureWindowCaptureProbed();
-
-        // Always SW_HIDE the overlay for the whole scroll session, even on the
-        // window-capture path: Chromium/Edge ignore the injected wheel while the
-        // topmost overlay covers the selection. #101 kept the overlay visible
-        // (ClearScrollCaptureHole) and the wheel stopped reaching Chrome — every
-        // PrintWindow tile came back identical and the loop auto-stopped after 4
-        // duplicates. Hiding the overlay lets SendInput hit-test Chrome directly
-        // (the #89/#90 mechanism); PrintWindow tiles are unaffected by overlay
-        // visibility. The stop strip is a separate window and stays visible.
-        BeginSessionOverlayHide();
-        Log.Info(
-            _preferWindowCapture
-                ? $"Snip scroll: session SW_HIDE for Edge wheel (window-capture tiles via PrintWindow hwnd=0x{_windowCaptureHwnd.ToInt64():X})"
-                : "Snip scroll: overlay session SW_HIDE for Edge wheel/capture (window-capture unavailable)",
-            typeof(ScrollCaptureController));
-
         try
         {
+            // Probe may already have run from SnipWindow so the frozen preview was kept
+            // for the window-capture path.
+            EnsureWindowCaptureProbed();
+
+            // Always SW_HIDE the overlay for the whole scroll session, even on the
+            // window-capture path: Chromium/Edge ignore the injected wheel while the
+            // topmost overlay covers the selection. #101 kept the overlay visible
+            // (ClearScrollCaptureHole) and the wheel stopped reaching Chrome — every
+            // PrintWindow tile came back identical and the loop auto-stopped after 4
+            // duplicates. Hiding the overlay lets SendInput hit-test Chrome directly
+            // (the #89/#90 mechanism); PrintWindow tiles are unaffected by overlay
+            // visibility. The stop strip is a separate window and stays visible.
+            BeginSessionOverlayHide();
+            Log.Info(
+                _preferWindowCapture
+                    ? $"Snip scroll: session SW_HIDE for Edge wheel (window-capture tiles via PrintWindow hwnd=0x{_windowCaptureHwnd.ToInt64():X})"
+                    : "Snip scroll: overlay session SW_HIDE for Edge wheel/capture (window-capture unavailable)",
+                typeof(ScrollCaptureController));
+
             var first = await CaptureOnceSafeAsync().ConfigureAwait(false);
             if (first != null && _active && !ct.IsCancellationRequested)
             {
-                _tiles.Add(first);
+                if (!TryRetainTile(first))
+                {
+                    first.Dispose();
+                    autoStopReason = "raw capture memory budget";
+                    return;
+                }
+
                 projectedHeight = first.Height;
                 maxHeight = ScrollStitcher.ResolveMaxStitchedHeight(first.Width);
                 _stopGuard?.SetTileCount(_tiles.Count);
@@ -206,6 +234,16 @@ public sealed class ScrollCaptureController
             else if (first == null)
             {
                 Log.Warn("Snip scroll: first tile capture failed", typeof(ScrollCaptureController));
+            }
+            else
+            {
+                first.Dispose();
+                return;
+            }
+
+            if (ct.IsCancellationRequested || !_active || _tiles.Count >= _maxTiles)
+            {
+                return;
             }
 
             // Focus underlay + hold cursor while overlay is hidden so the click hits Edge.
@@ -306,9 +344,11 @@ public sealed class ScrollCaptureController
 
                 if (bmp == null || ct.IsCancellationRequested || !_active)
                 {
+                    bmp?.Dispose();
                     break;
                 }
 
+                using var pendingTile = new PendingScrollTile(bmp);
                 bool duplicate = false;
                 if (_tiles.Count > 0)
                 {
@@ -317,8 +357,6 @@ public sealed class ScrollCaptureController
 
                 if (duplicate)
                 {
-                    bmp.Dispose();
-
                     // Failed wheels produce identical tiles; never count those toward end-of-page stop.
                     if (!ShouldCountDuplicateTowardAutoStop(wheeled, successfulWheels))
                     {
@@ -345,6 +383,13 @@ public sealed class ScrollCaptureController
 
                 consecutiveDups = 0;
 
+                if (!CanRetainTile(bmp))
+                {
+                    _memoryCapReached = true;
+                    autoStopReason = "raw capture memory budget";
+                    break;
+                }
+
                 // Scroll-up: newest tile sits on top, so measure older-below-newer (same row count).
                 int contributed;
                 if (_tiles.Count == 0)
@@ -366,6 +411,8 @@ public sealed class ScrollCaptureController
                 }
 
                 _tiles.Add(bmp);
+                _retainedBytes += bmp.DangerousGetArray().LongLength;
+                pendingTile.TransferOwnership();
                 projectedHeight += contributed;
                 NotifyLatestTileCaptured(bmp);
                 PostToOverlay(() => _overlay.ShowManualCapturing(_tiles.Count));
@@ -383,7 +430,7 @@ public sealed class ScrollCaptureController
                     SnipVerbose.Scroll("[scroll] auto-stop — stitched height cap reached");
                     break;
                 }
-        }
+            }
 
             if (autoStopReason == null && !ct.IsCancellationRequested && _tiles.Count >= _maxTiles)
             {
@@ -407,13 +454,43 @@ public sealed class ScrollCaptureController
 
             // Strip first, then unhide overlay — avoids z-order race (strip over restored
             // snip / toolbar flash) when mid-stop and loop exit interleave.
-            RestoreAfterScrollSession();
+            await _dispatcher.InvokeAsync(RestoreAfterScrollSession);
+
+            Log.Info(
+                $"Snip scroll loop exit: {_tiles.Count} tile(s), reason={autoStopReason ?? "stop signal"}",
+                typeof(ScrollCaptureController));
+            if (!_discarding)
+            {
+                await FinishCapturingUiAsync(autoStopped: !ct.IsCancellationRequested).ConfigureAwait(false);
+            }
+        }
+    }
+
+    private bool CanRetainTile(ScrollTilePixels tile)
+        => tile.DangerousGetArray().LongLength <= _captureBudgetBytes - _retainedBytes;
+
+    private bool TryRetainTile(ScrollTilePixels tile)
+    {
+        if (!CanRetainTile(tile))
+        {
+            _memoryCapReached = true;
+            return false;
         }
 
-        Log.Info(
-            $"Snip scroll loop exit: {_tiles.Count} tile(s), reason={autoStopReason ?? "stop signal"}",
-            typeof(ScrollCaptureController));
-        await FinishCapturingUiAsync(autoStopped: !ct.IsCancellationRequested).ConfigureAwait(false);
+        _tiles.Add(tile);
+        _retainedBytes += tile.DangerousGetArray().LongLength;
+        return true;
+    }
+
+    private sealed class PendingScrollTile : IDisposable
+    {
+        private ScrollTilePixels _tile;
+
+        public PendingScrollTile(ScrollTilePixels tile) => _tile = tile;
+
+        public void TransferOwnership() => _tile = null;
+
+        public void Dispose() => _tile?.Dispose();
     }
 
     /// <summary>
@@ -427,6 +504,11 @@ public sealed class ScrollCaptureController
     private void StartStopGuard()
     {
         DisposeStopGuard();
+        if (_overlayHwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
         try
         {
             double dpi = 1.0;
@@ -493,7 +575,11 @@ public sealed class ScrollCaptureController
     {
         DisposeStopGuard();
         EndSessionOverlayHide();
-        EndPointerHold();
+        if (_pointerHoldStarted)
+        {
+            _pointerHoldStarted = false;
+            EndPointerHold();
+        }
     }
 
     private void BeginSessionOverlayHide()
@@ -620,41 +706,39 @@ public sealed class ScrollCaptureController
         }
     }
 
-    private void BeginPointerHoldAtCenter() => _wheelDriver.BeginPointerHold();
+    private void BeginPointerHoldAtCenter()
+    {
+        _pointerHoldStarted = true;
+        _wheelDriver.BeginPointerHold();
+    }
 
     private static void EndPointerHold() => ScrollWheelDriver.ReleasePointer();
 
     public async Task StopCapturingAsync()
     {
-        if (!_active && _cts == null && !_stoppedPending)
-        {
-            return;
-        }
-
+        await _lifecycle.WaitAsync().ConfigureAwait(false);
         try
         {
-            _cts?.Cancel();
+            await StopCaptureLoopAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            _lifecycle.Release();
+        }
+    }
+
+    private async Task StopCaptureLoopAsync()
+    {
+        _active = false;
+        _cts?.Cancel();
+        try
+        {
+            await _captureLoop.ConfigureAwait(false);
+        }
+        finally
+        {
             _cts?.Dispose();
             _cts = null;
-            _active = false;
-            RestoreAfterScrollSession();
-            SnipVerbose.Scroll($"[scroll] stopped — {_tiles.Count} raw tile(s) kept");
-            await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"Snip scroll stop failed: {ex.Message}", ex, typeof(ScrollCaptureController));
-            _active = false;
-            try
-            {
-                RestoreAfterScrollSession();
-            }
-            catch (Exception restoreEx)
-            {
-                Log.Warn($"Snip scroll stop restore failed: {restoreEx.Message}", typeof(ScrollCaptureController));
-            }
-
-            await FinishCapturingUiAsync(autoStopped: false).ConfigureAwait(false);
         }
     }
 
@@ -662,7 +746,11 @@ public sealed class ScrollCaptureController
     private async Task FinishCapturingUiAsync(bool autoStopped)
     {
         // Idempotent: loop finally / Stop may have already restored.
-        RestoreAfterScrollSession();
+        if (_discarding)
+        {
+            return;
+        }
+
         if (_tiles.Count > 0)
         {
             _stoppedPending = true;
@@ -670,9 +758,18 @@ public sealed class ScrollCaptureController
             {
                 await _dispatcher.InvokeAsync(() =>
                 {
+                    if (_discarding)
+                    {
+                        return;
+                    }
+
                     EnsureOverlayAttached();
                     _overlay.Visibility = Visibility.Visible;
-                    if (_heightCapReached)
+                    if (_memoryCapReached)
+                    {
+                        _overlay.ShowMemoryCapStopped();
+                    }
+                    else if (_heightCapReached)
                     {
                         _overlay.ShowHeightCapStopped(_maxHeightPx);
                     }
@@ -718,6 +815,26 @@ public sealed class ScrollCaptureController
 
     /// <summary>One-shot stitch of stored tiles for confirm/save. WriteableBitmap is created on the UI STA.</summary>
     public async Task<WriteableBitmap> StitchAsync()
+    {
+        await _lifecycle.WaitAsync().ConfigureAwait(true);
+        try
+        {
+            await StopCaptureLoopAsync().ConfigureAwait(true);
+            if (_discarding)
+            {
+                return null;
+            }
+
+            var stitched = await StitchStoppedTilesAsync().ConfigureAwait(true);
+            return _discarding ? null : stitched;
+        }
+        finally
+        {
+            _lifecycle.Release();
+        }
+    }
+
+    private async Task<WriteableBitmap> StitchStoppedTilesAsync()
     {
         _stitchingOverlayActive = true;
         _stoppedPending = false;
@@ -767,9 +884,9 @@ public sealed class ScrollCaptureController
         {
             _stitchingOverlayActive = false;
             HideOverlay();
+            DisposeTiles();
         }
 
-        DisposeTiles();
         return resultBitmap ?? await _dispatcher.InvokeAsync(EmptyTile).Task.ConfigureAwait(true);
     }
 
@@ -777,41 +894,28 @@ public sealed class ScrollCaptureController
 
     public async Task CancelAsync()
     {
-        if (!_active && _tiles.Count == 0 && !_stoppedPending)
-        {
-            return;
-        }
-
+        _discarding = true;
+        await _lifecycle.WaitAsync().ConfigureAwait(false);
         try
         {
-            _cts?.Cancel();
-            _cts?.Dispose();
-            _cts = null;
-            _active = false;
+            await StopCaptureLoopAsync().ConfigureAwait(false);
             _stoppedPending = false;
-            RestoreAfterScrollSession();
-            HideOverlay();
-            DisposeTiles();
+            await _dispatcher.InvokeAsync(() =>
+            {
+                RestoreAfterScrollSession();
+                HideOverlay();
+            });
             await InvokeCancelledAsync().ConfigureAwait(false);
         }
         catch (Exception ex)
         {
             Log.Exception($"Snip scroll cancel failed: {ex.Message}", ex, typeof(ScrollCaptureController));
-            _active = false;
-            _stoppedPending = false;
-            try
-            {
-                RestoreAfterScrollSession();
-                HideOverlay();
-                DisposeTiles();
-            }
-            catch (Exception cleanupEx)
-            {
-                // Best-effort cleanup after a failed cancel.
-                Log.Exception($"Snip scroll cancel cleanup failed: {cleanupEx.Message}", cleanupEx, typeof(ScrollCaptureController));
-            }
-
-            await InvokeCancelledAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            // The capture task has drained even if dispatcher teardown failed.
+            DisposeTiles();
+            _lifecycle.Release();
         }
     }
 
@@ -864,6 +968,11 @@ public sealed class ScrollCaptureController
         _preferWindowCapture = false;
         _windowCaptureHwnd = IntPtr.Zero;
         _windowCaptureFailStreak = 0;
+        if (_overlayHwnd == IntPtr.Zero)
+        {
+            return;
+        }
+
         try
         {
             int cx = _captureRect.X + (_captureRect.Width / 2);
@@ -966,6 +1075,7 @@ public sealed class ScrollCaptureController
         }
 
         _tiles.Clear();
+        _retainedBytes = 0;
         _alignments.Clear();
         _stoppedPending = false;
     }
@@ -1065,7 +1175,13 @@ public sealed class ScrollCaptureController
             return;
         }
 
-        PostToOverlay(() => handler(tile));
+        _dispatcher.Invoke(() =>
+        {
+            if (!_discarding)
+            {
+                handler(tile);
+            }
+        });
     }
 
     private async Task NotifyCapturingStoppedOnceAsync()
@@ -1077,7 +1193,13 @@ public sealed class ScrollCaptureController
 
         try
         {
-            await _dispatcher.InvokeAsync(() => CapturingStopped?.Invoke(_tiles.Count));
+            await _dispatcher.InvokeAsync(() =>
+            {
+                if (!_discarding)
+                {
+                    CapturingStopped?.Invoke(_tiles.Count);
+                }
+            });
         }
         catch (Exception ex)
         {

@@ -33,6 +33,10 @@ public static class TranslationMemory
     private const string DirectoryName = "Community.PowerToys.Run.Plugin.Snip";
 
     private static readonly object Sync = new();
+    private static readonly object WriteSync = new();
+    private static readonly Timer FlushTimer = new(static _ => Flush(), null, Timeout.Infinite, Timeout.Infinite);
+    private static long _revision;
+    private static long _writtenRevision;
 
     private static Dictionary<string, Entry> _entries;
     private static string _pathOverride;
@@ -71,9 +75,9 @@ public static class TranslationMemory
         {
             TranslatorProvider.HyMT2Sharp => string.Create(
                 System.Globalization.CultureInfo.InvariantCulture,
-                $"hymt:{(string.IsNullOrWhiteSpace(settings.HyMtGgufPath) ? "auto" : Path.GetFileName(settings.HyMtGgufPath))}:{(int)settings.HyMtBackend}"),
-            TranslatorProvider.HttpOpenAi => "http:" + (settings.HttpModel ?? string.Empty).Trim(),
-            TranslatorProvider.Tencent => "tencent:" + (settings.TencentRegion ?? string.Empty).Trim(),
+                $"v2:hymt:{ModelFileIdentity.Build(settings.HyMtGgufPath)}:{(int)settings.HyMtBackend}"),
+            TranslatorProvider.HttpOpenAi => "v2:http:" + EndpointIdentity(settings.HttpBaseUrl) + "|" + (settings.HttpModel ?? string.Empty).Trim(),
+            TranslatorProvider.Tencent => "v2:tencent:" + (settings.TencentRegion ?? string.Empty).Trim(),
             _ => "off",
         };
     }
@@ -107,6 +111,7 @@ public static class TranslationMemory
                 {
                     result[i] = entry.Value;
                     entry.LastUsedUtcTicks = now;
+                    _revision++;
                 }
             }
         }
@@ -152,6 +157,7 @@ public static class TranslationMemory
                     continue;
                 }
 
+                _revision++;
                 _entries[BuildKey(providerKey, targetLanguage, source)] = new Entry
                 {
                     Value = translated.Trim(),
@@ -163,75 +169,112 @@ public static class TranslationMemory
         }
     }
 
-    /// <summary>Writes the cache to disk (no-op when the <paramref name="path"/> directory is unavailable).</summary>
+    /// <summary>Coalesces writes from nearby captures and local API requests.</summary>
+    public static void ScheduleFlush()
+        => FlushTimer.Change(TimeSpan.FromMilliseconds(350), Timeout.InfiniteTimeSpan);
+
+    /// <summary>Writes a snapshot without holding the lookup lock during serialization or disk I/O.</summary>
     public static void Flush()
     {
-        lock (Sync)
+        lock (WriteSync)
         {
-            EnsureLoaded();
-            TrimLocked();
+            List<EntryDto> snapshot;
+            string path;
+            long revision;
+            lock (Sync)
+            {
+                EnsureLoaded();
+                if (_revision == _writtenRevision)
+                {
+                    return;
+                }
 
+                TrimLocked();
+                path = CacheFilePath;
+                revision = _revision;
+                snapshot = _entries.Select(kv => new EntryDto
+                {
+                    Key = kv.Key,
+                    Value = kv.Value.Value,
+                    LastUsedUtcTicks = kv.Value.LastUsedUtcTicks,
+                }).ToList();
+            }
+
+            string temporary = path + "." + Guid.NewGuid().ToString("N") + ".tmp";
             try
             {
-                string path = CacheFilePath;
                 string directory = Path.GetDirectoryName(path);
                 if (string.IsNullOrEmpty(directory))
                 {
                     return;
                 }
 
-                var list = _entries
-                    .Select(kv => new EntryDto
-                    {
-                        Key = kv.Key,
-                        Value = kv.Value.Value,
-                        LastUsedUtcTicks = kv.Value.LastUsedUtcTicks,
-                    })
-                    .ToList();
-                string json = JsonSerializer.Serialize(list, SerializerOptions);
-
                 Directory.CreateDirectory(directory);
-                string tmp = path + ".tmp";
-                File.WriteAllText(tmp, json);
-                File.Move(tmp, path, overwrite: true);
+                File.WriteAllText(temporary, JsonSerializer.Serialize(snapshot, SerializerOptions));
+                File.Move(temporary, path, overwrite: true);
+                lock (Sync)
+                {
+                    _writtenRevision = revision;
+                }
             }
             catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
             {
                 Log.Warn($"Snip translation cache write failed: {ex.Message}", typeof(TranslationMemory));
             }
+            finally
+            {
+                TryDelete(temporary);
+            }
         }
     }
 
-    /// <summary>Drops every cached translation (memory + disk).</summary>
+    /// <summary>Drops every cached translation (memory + disk), including queued snapshots.</summary>
     public static void Clear()
     {
-        lock (Sync)
+        lock (WriteSync)
         {
-            _entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
-            try
+            lock (Sync)
             {
-                string path = CacheFilePath;
-                if (File.Exists(path))
-                {
-                    File.Delete(path);
-                }
-            }
-            catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
-            {
-                Log.Warn($"Snip translation cache delete failed: {ex.Message}", typeof(TranslationMemory));
+                FlushTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                _entries = new Dictionary<string, Entry>(StringComparer.Ordinal);
+                _writtenRevision = ++_revision;
+                TryDelete(CacheFilePath);
             }
         }
     }
 
-    /// <summary>Test hook: redirects the cache file so tests never touch the user cache.</summary>
+    /// <summary>Test hook: redirects the cache without letting old scheduled writes cross paths.</summary>
     internal static void SetPathForTests(string path)
     {
-        lock (Sync)
+        lock (WriteSync)
         {
-            _pathOverride = path;
-            _entries = null;
+            lock (Sync)
+            {
+                FlushTimer.Change(Timeout.Infinite, Timeout.Infinite);
+                _pathOverride = path;
+                _entries = null;
+                _revision = 0;
+                _writtenRevision = 0;
+            }
         }
     }
+
+    private static void TryDelete(string path)
+    {
+        try
+        {
+            File.Delete(path);
+        }
+        catch (Exception ex) when (ex is IOException || ex is UnauthorizedAccessException)
+        {
+            Log.Warn($"Snip translation cache cleanup failed: {ex.Message}", typeof(TranslationMemory));
+        }
+    }
+
+    private static string EndpointIdentity(string value)
+        => Uri.TryCreate(value?.Trim(), UriKind.Absolute, out var uri)
+            ? uri.GetComponents(UriComponents.SchemeAndServer | UriComponents.Path, UriFormat.UriEscaped).TrimEnd('/')
+            : value?.Trim() ?? string.Empty;
 
     private static JsonSerializerOptions SerializerOptions { get; } = new()
     {

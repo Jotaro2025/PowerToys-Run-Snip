@@ -187,6 +187,9 @@ foreach ($arch in $Architectures) {
             "publish", $Project,
             "-c", $Configuration,
             "-p:RuntimeIdentifier=$rid",
+            # The checked-in PowerToys host references are x64. Compile managed
+            # IL as AnyCPU; the RID still selects ARM64/x64 assets and R2R code.
+            "-p:PlatformTarget=AnyCPU",
             "-p:SelfContained=false",
             "-p:EnableWindowsTargeting=true",
             "-p:PowerToysInstallDir=$PowerToysInstallDir",

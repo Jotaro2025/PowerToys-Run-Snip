@@ -917,6 +917,8 @@ public class Main : IPlugin, IPluginI18n, ISettingProvider, IDisposable
         if (!_disposed && disposing)
         {
             LocalTranslationApi.Stop();
+            SnipSettingsPersister.FlushPending();
+            TranslationMemory.Flush();
 
             if (_context != null && _context.API != null)
             {

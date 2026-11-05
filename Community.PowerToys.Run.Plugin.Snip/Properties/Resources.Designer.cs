@@ -2474,5 +2474,15 @@ namespace Community.PowerToys.Run.Plugin.Snip.Properties {
         internal static string settings_section_translate => ResourceManager.GetString("settings_section_translate", resourceCulture);
 
         internal static string settings_section_about => ResourceManager.GetString("settings_section_about", resourceCulture);
+
+        internal static string scroll_hint_memory_cap => ResourceManager.GetString("scroll_hint_memory_cap", resourceCulture);
+
+        internal static string gif_recording_stop => ResourceManager.GetString("gif_recording_stop", resourceCulture);
+
+        internal static string gif_stop_strip_tip => ResourceManager.GetString("gif_stop_strip_tip", resourceCulture);
+
+        internal static string gif_encoding => ResourceManager.GetString("gif_encoding", resourceCulture);
+
+        internal static string settings_save_failed => ResourceManager.GetString("settings_save_failed", resourceCulture);
     }
 }

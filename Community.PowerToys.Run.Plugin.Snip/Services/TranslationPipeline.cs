@@ -127,9 +127,14 @@ public static class TranslationPipeline
 
                 TranslationMemory.Store(storeSources, storeValues, providerKey, target);
 
-                // One write per capture, only when new pairs were added.
-                TranslationMemory.Flush();
+                // Nearby captures and API requests share one background disk write.
+                TranslationMemory.ScheduleFlush();
             }
+        }
+
+        if (useCache && cachedCount > 0)
+        {
+            TranslationMemory.ScheduleFlush();
         }
 
         for (int i = 0; i < uniqueTexts.Count; i++)

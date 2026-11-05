@@ -117,6 +117,26 @@ public class HyMT2SharpTranslatorCacheTests
     }
 
     [TestMethod]
+    public void GetOrCreateReloadsWhenModelFileIsReplaced()
+    {
+        string path = MakeTempPath("version");
+        try
+        {
+            File.WriteAllText(path, "version one");
+            var original = HyMT2SharpTranslatorCache.GetOrCreate(path, HyMtBackendKind.Cpu);
+            File.AppendAllText(path, " changed model");
+            Assert.IsFalse(HyMT2SharpTranslatorCache.IsCached(path, HyMtBackendKind.Cpu));
+            var replacement = HyMT2SharpTranslatorCache.GetOrCreate(path, HyMtBackendKind.Cpu);
+            Assert.AreNotSame(original, replacement);
+        }
+        finally
+        {
+            HyMT2SharpTranslatorCache.Unload();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
     public async Task UnloadClearsCacheAndDisposesInstance()
     {
         var path = MakeTempPath("unload");

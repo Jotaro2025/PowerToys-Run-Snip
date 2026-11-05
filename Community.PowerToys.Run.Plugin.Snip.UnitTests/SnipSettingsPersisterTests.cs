@@ -6,6 +6,7 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json.Nodes;
+using System.Threading.Tasks;
 
 using Community.PowerToys.Run.Plugin.Snip.Models;
 using Community.PowerToys.Run.Plugin.Snip.Services;
@@ -126,6 +127,93 @@ public class SnipSettingsPersisterTests
         var patches = SnipSettingsPersister.BuildPatchesFromSettings(settings);
         Assert.IsTrue(patches.Any(p => p.Key == "LastStrokeColorHex" && p.TextValue == "#007AFF"));
         Assert.IsTrue(patches.Any(p => p.Key == "LastStrokeWidth" && p.NumberValue == 5.0));
+    }
+
+    [TestMethod]
+    public async Task ConcurrentPatchesPreserveAllKeysAndHostFields()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "snip-settings-concurrent-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            File.WriteAllText(path, """
+                {"hostField":42,"plugins":[{"Id":"7667E8C5E74948F7B2D6B5E7CED60783","AdditionalOptions":[]}]}
+                """);
+            var writes = Enumerable.Range(0, 40).Select(index => Task.Run(() =>
+                SnipSettingsPersister.TryPatchPowerToysRunSettings([SnipSettingsPersister.OptionPatch.Number("Key" + index, index)], path)));
+            var results = await Task.WhenAll(writes);
+            Assert.IsTrue(results.All(success => success));
+            var root = JsonNode.Parse(File.ReadAllText(path));
+            Assert.AreEqual(42, root["hostField"].GetValue<int>());
+            var options = root["plugins"][0]["AdditionalOptions"].AsArray();
+            Assert.AreEqual(40, options.Count);
+            for (int index = 0; index < 40; index++)
+            {
+                Assert.AreEqual((double)index, Find(options, "Key" + index)["NumberValue"].GetValue<double>());
+            }
+
+            Assert.AreEqual(0, Directory.GetFiles(Path.GetDirectoryName(path), Path.GetFileName(path) + ".snip.*.tmp").Length);
+        }
+        finally
+        {
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void QueuedPatchesKeepLatestValueAndExplicitSaveWins()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "snip-settings-queued-" + Guid.NewGuid().ToString("N") + ".json");
+        try
+        {
+            File.WriteAllText(path, """
+                {"plugins":[{"Id":"7667E8C5E74948F7B2D6B5E7CED60783","AdditionalOptions":[]}]}
+                """);
+            SnipSettingsPersister.SchedulePersist([SnipSettingsPersister.OptionPatch.Number("Width", 1)], path);
+            SnipSettingsPersister.SchedulePersist([SnipSettingsPersister.OptionPatch.Number("Width", 3)], path);
+            SnipSettingsPersister.SchedulePersist([SnipSettingsPersister.OptionPatch.Text("Color", "blue")], path);
+            SnipSettingsPersister.FlushPending();
+            var options = JsonNode.Parse(File.ReadAllText(path))["plugins"][0]["AdditionalOptions"].AsArray();
+            Assert.AreEqual(3d, Find(options, "Width")["NumberValue"].GetValue<double>());
+
+            SnipSettingsPersister.SchedulePersist([SnipSettingsPersister.OptionPatch.Number("Width", 4)], path);
+            Assert.IsTrue(SnipSettingsPersister.TryPatchPowerToysRunSettings([SnipSettingsPersister.OptionPatch.Number("Width", 5)], path));
+            SnipSettingsPersister.FlushPending();
+            options = JsonNode.Parse(File.ReadAllText(path))["plugins"][0]["AdditionalOptions"].AsArray();
+            Assert.AreEqual(5d, Find(options, "Width")["NumberValue"].GetValue<double>());
+            Assert.AreEqual("blue", Find(options, "Color")["TextValue"].GetValue<string>());
+        }
+        finally
+        {
+            SnipSettingsPersister.FlushPending();
+            File.Delete(path);
+        }
+    }
+
+    [TestMethod]
+    public void FailedBackgroundWriteKeepsPendingValuesForNextFlush()
+    {
+        string path = Path.Combine(Path.GetTempPath(), "snip-settings-retry-" + Guid.NewGuid().ToString("N") + ".json");
+        const string initial = """
+            {"plugins":[{"Id":"7667E8C5E74948F7B2D6B5E7CED60783","AdditionalOptions":[]}]}
+            """;
+        try
+        {
+            File.WriteAllText(path, "invalid json");
+            SnipSettingsPersister.SchedulePersist([SnipSettingsPersister.OptionPatch.Number("Width", 7)], path);
+            SnipSettingsPersister.FlushPending();
+            Assert.AreEqual("invalid json", File.ReadAllText(path));
+
+            File.WriteAllText(path, initial);
+            SnipSettingsPersister.FlushPending();
+            var options = JsonNode.Parse(File.ReadAllText(path))["plugins"][0]["AdditionalOptions"].AsArray();
+            Assert.AreEqual(7d, Find(options, "Width")["NumberValue"].GetValue<double>());
+        }
+        finally
+        {
+            File.WriteAllText(path, initial);
+            SnipSettingsPersister.FlushPending();
+            File.Delete(path);
+        }
     }
 
     private static JsonNode Find(JsonArray options, string key)

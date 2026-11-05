@@ -4,6 +4,10 @@
 
 using System;
 using System.Collections.Generic;
+using System.IO;
+using System.Threading;
+using System.Windows.Media;
+using System.Windows.Media.Imaging;
 
 using Community.PowerToys.Run.Plugin.Snip.Services;
 using Microsoft.VisualStudio.TestTools.UnitTesting;
@@ -108,5 +112,91 @@ public class GifEncoderTests
         }
 
         Assert.Fail("no GCE found");
+    }
+
+    [TestMethod]
+    [DataRow(1)]
+    [DataRow(2)]
+    [DataRow(3)]
+    [DataRow(16)]
+    [DataRow(256)]
+    public void Encode_DecoderPreservesPixelsAcrossPaletteAndLzwBoundaries(int colors)
+    {
+        const int width = 257;
+        const int height = 259;
+        const int stride = (width * 4) + 8;
+        var random = new Random(1742);
+        var frames = new List<byte[]>();
+        for (int f = 0; f < 2; f++)
+        {
+            var frame = new byte[stride * height];
+            for (int y = 0; y < height; y++)
+            {
+                for (int x = 0; x < width; x++)
+                {
+                    int color = random.Next(colors);
+                    int offset = (y * stride) + (x * 4);
+                    frame[offset] = (byte)((color & 15) * 16);
+                    frame[offset + 1] = (byte)((color >> 4) * 16);
+                    frame[offset + 2] = (byte)(16 + ((color % 15) * 16));
+                    frame[offset + 3] = 255;
+                }
+            }
+
+            frames.Add(frame);
+        }
+
+        using var stream = new MemoryStream(GifEncoder.Encode(frames, new[] { 70, 130 }, width, height, stride));
+        var decoder = new GifBitmapDecoder(stream, BitmapCreateOptions.PreservePixelFormat, BitmapCacheOption.OnLoad);
+        Assert.AreEqual(2, decoder.Frames.Count);
+        for (int f = 0; f < frames.Count; f++)
+        {
+            var decoded = new FormatConvertedBitmap(decoder.Frames[f], PixelFormats.Bgra32, null, 0);
+            Assert.AreEqual(width, decoded.PixelWidth);
+            Assert.AreEqual(height, decoded.PixelHeight);
+            var actual = new byte[stride * height];
+            decoded.CopyPixels(actual, stride, 0);
+            CollectionAssert.AreEqual(frames[f], actual, $"Frame {f}, palette size {colors}");
+            var metadata = (BitmapMetadata)decoder.Frames[f].Metadata;
+            Assert.AreEqual((ushort)(f == 0 ? 7 : 13), (ushort)metadata.GetQuery("/grctlext/Delay"));
+        }
+    }
+
+    [TestMethod]
+    public void EncodeToStream_CancelledBeforeStartDoesNotWrite()
+    {
+        using var stream = new MemoryStream();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+        Assert.ThrowsExactly<OperationCanceledException>(() => GifEncoder.EncodeToStream(
+            stream, new[] { SolidFrame(4, 4, 1, 2, 3) }, new[] { 80 }, 4, 4, 16, cancellationToken: cts.Token));
+        Assert.AreEqual(0L, stream.Length);
+    }
+
+    [TestMethod]
+    public void EncodeToStream_CancellationInterruptsStartedEncoding()
+    {
+        using var cts = new CancellationTokenSource();
+        using var stream = new CancellingStream(cts);
+        Assert.ThrowsExactly<OperationCanceledException>(() => GifEncoder.EncodeToStream(
+            stream, new[] { SolidFrame(128, 128, 1, 2, 3) }, new[] { 80 }, 128, 128, 512, cancellationToken: cts.Token));
+        Assert.IsTrue(stream.Length > 0, "the encoder must have started writing before cancellation");
+        Assert.AreNotEqual((byte)0x3B, stream.ToArray()[^1], "a cancelled encode must not finish a GIF");
+    }
+
+    private sealed class CancellingStream : MemoryStream
+    {
+        private readonly CancellationTokenSource _cts;
+
+        public CancellingStream(CancellationTokenSource cts) => _cts = cts;
+
+        public override void WriteByte(byte value)
+        {
+            base.WriteByte(value);
+            if (Length == 13)
+            {
+                _cts.Cancel();
+            }
+        }
     }
 }

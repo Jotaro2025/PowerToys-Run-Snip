@@ -32,8 +32,10 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
     private readonly Dispatcher _dispatcher;
     private readonly Int32Rect _capturePhysicalPx;
     private readonly double _dpiScale;
+    private readonly bool _isGifRecording;
 
     private HwndSource _source;
+    private DispatcherTimer _pollTimer;
     private ScrollStopStripWindow _strip;
     private bool _escRegistered;
     private bool _spaceRegistered;
@@ -47,12 +49,14 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
         Action onStop,
         Int32Rect capturePhysicalPx,
         double dpiScale,
-        Dispatcher dispatcher)
+        Dispatcher dispatcher,
+        bool isGifRecording = false)
     {
         _onStop = onStop ?? throw new ArgumentNullException(nameof(onStop));
         _capturePhysicalPx = capturePhysicalPx;
         _dpiScale = dpiScale > 0.01 ? dpiScale : 1.0;
         _dispatcher = dispatcher ?? throw new ArgumentNullException(nameof(dispatcher));
+        _isGifRecording = isGifRecording;
     }
 
     public void Start()
@@ -65,6 +69,10 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
 
         EnsureSourceAndHotkeys();
         ShowStrip();
+        if (_isGifRecording)
+        {
+            _pollTimer = new DispatcherTimer(TimeSpan.FromMilliseconds(40), DispatcherPriority.Input, (_, _) => PollStopKeys(), _dispatcher);
+        }
     }
 
     public void SetTileCount(int tileCount)
@@ -208,6 +216,8 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
         }
 
         _disposed = true;
+        _pollTimer?.Stop();
+        _pollTimer = null;
         UnregisterHotkeys();
         if (_source != null)
         {
@@ -303,7 +313,7 @@ internal sealed class ScrollCaptureStopGuard : IDisposable
                 return;
             }
 
-            _strip = new ScrollStopStripWindow();
+            _strip = new ScrollStopStripWindow(_isGifRecording);
             _strip.StopClicked += () => FireStop("stop-strip");
             _strip.PlaceNearCapture(_capturePhysicalPx, _dpiScale);
             _strip.Show();

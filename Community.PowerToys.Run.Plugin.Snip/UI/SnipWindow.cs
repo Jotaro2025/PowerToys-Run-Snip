@@ -28,7 +28,7 @@ namespace Community.PowerToys.Run.Plugin.Snip.UI;
 /// image-translate / pin keep the overlay (hide while a result window is open,
 /// then restore) so the user can annotate again on the same capture.
 /// </summary>
-public sealed class SnipWindow : Window
+public sealed partial class SnipWindow : Window
 {
     private static readonly Color ChromeColor = Color.FromRgb(80, 220, 100);
 
@@ -93,10 +93,6 @@ public sealed class SnipWindow : Window
 
     /// <summary>True when the overlay was <see cref="Window.Hide"/> for a session child.</summary>
     private bool _hiddenForSessionChild;
-
-    private ScrollCaptureController _scrollController;
-    private ScrollLivePreview _scrollLivePreview;
-    private GifRecordingSession _gifSession;
 
     public SnipWindow(
         System.Windows.Media.Imaging.WriteableBitmap source,
@@ -808,6 +804,13 @@ public sealed class SnipWindow : Window
 
     private void OnKeyDown(object sender, KeyEventArgs e)
     {
+        if (e.Key == Key.Escape && _gifSession != null)
+        {
+            _ = StopAndSaveGifAsync();
+            e.Handled = true;
+            return;
+        }
+
         if (_scrollController is { IsActive: true } or { HasTiles: true })
         {
             if (e.Key == Key.Enter)
@@ -819,13 +822,6 @@ public sealed class SnipWindow : Window
 
             if (e.Key == Key.Escape)
             {
-                if (_gifSession is { IsRunning: true })
-                {
-                    _ = StopAndSaveGifAsync();
-                    e.Handled = true;
-                    return;
-                }
-
                 if (_scrollController.IsActive)
                 {
                     // Stop capturing but keep tiles (toolbar Stop / Esc while rolling).
@@ -974,422 +970,6 @@ public sealed class SnipWindow : Window
     }
 
     // -----------------------------------------------------------------------------------
-    //  Scroll capture mode (adapted from TDS ScreenshotWindow)
-    // -----------------------------------------------------------------------------------
-    private void OnScrollCaptureToggled(object sender, EventArgs e) => ToggleScrollCapture(scrollUp: false);
-
-    private void OnScrollUpCaptureToggled(object sender, EventArgs e) => ToggleScrollCapture(scrollUp: true);
-
-    private void ToggleScrollCapture(bool scrollUp)
-    {
-        try
-        {
-            if (_scrollController is { IsActive: true })
-            {
-                _ = StopScrollCaptureAsync();
-            }
-            else if (_hasSelection)
-            {
-                StartScrollCapture(scrollUp);
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow scroll toggle failed: {ex.Message}", ex, GetType());
-            EnsureScrollUiRecovered();
-        }
-    }
-
-    private void StartScrollCapture(bool scrollUp = false)
-    {
-        if (!_hasSelection)
-        {
-            return;
-        }
-
-        var physicalBounds = new Int32Rect(
-            _physicalBounds.X,
-            _physicalBounds.Y,
-            Math.Max(1, _physicalBounds.Width),
-            Math.Max(1, _physicalBounds.Height));
-        var physicalRect = DpiCoordinateMapping.DipSelectionToPhysical(
-            _selection,
-            _logicalSize,
-            physicalBounds);
-
-        _scrollController = new ScrollCaptureController(
-            _captureService,
-            _root,
-            physicalRect,
-            TryGetHwnd(),
-            scrollIntervalMs: Math.Clamp(_settings.ScrollIntervalMs, 50, 1000),
-            scrollUp: scrollUp,
-            maxTiles: Math.Clamp(_settings.ScrollMaxTiles, 10, 500));
-        if (_spansMonitors)
-        {
-            _scrollController.OverlayArea = MonitorAreaFor(_selection);
-        }
-
-        _scrollController.CapturingStopped += OnScrollCapturingStopped;
-        _scrollController.Cancelled += OnScrollCaptureCancelled;
-        _toolbar.SetScrollCaptureActive(true, scrollUp);
-
-        // Probe before blanking UI: #100 window-capture keeps the overlay visible, so hiding
-        // the frozen preview + punching a hole leaves a persistent blank selection (白屏)
-        // while PrintWindow still stitches. Keep frozen preview on that path.
-        bool keepFrozenPreview = ScrollCaptureController.ShouldKeepFrozenScrollPreview(
-            _scrollController.ProbeWindowCapture());
-
-        // Keep XOR dim around the selection (not a transparent root / full-client blank).
-        _dimPath.Fill = _selectionDimBrush;
-        var outer = new RectangleGeometry(new Rect(0, 0, _logicalSize.Width, _logicalSize.Height));
-        var inner = new RectangleGeometry(_selection);
-        _dimPath.Data = new CombinedGeometry(GeometryCombineMode.Xor, outer, inner);
-        _dimPath.Visibility = Visibility.Visible;
-        _dimPath.IsHitTestVisible = false;
-        _inputCatcher.IsHitTestVisible = false;
-        _annoCanvas.IsHitTestVisible = false;
-        _annoCanvas.Visibility = Visibility.Collapsed;
-        _annoCanvas.Clip = null;
-        _toolbar.IsHitTestVisible = true;
-        _adorner.IsVisible = false;
-        _adorner.UpdateLayout();
-
-        if (keepFrozenPreview)
-        {
-            // Window-capture path: overlay stays visible — show live-updated window frames
-            // inside the selection without punching a hole or mutating _source.
-            var previewRect = new Int32Rect(
-                Math.Max(0, physicalRect.X - _physicalBounds.X),
-                Math.Max(0, physicalRect.Y - _physicalBounds.Y),
-                physicalRect.Width,
-                physicalRect.Height);
-            _scrollLivePreview = ScrollLivePreview.Create(_source, previewRect);
-            if (_scrollLivePreview?.Bitmap != null)
-            {
-                _screenshotImage.Source = _scrollLivePreview.Bitmap;
-            }
-
-            _scrollController.LatestTileCaptured += OnScrollLatestTileCaptured;
-            _screenshotImage.Opacity = 1;
-            _screenshotImage.Visibility = Visibility.Visible;
-            ClearScrollCaptureHole();
-            UpdateLayout();
-            Log.Info(
-                "Snip scroll UI: keep live selection preview (window-capture; avoid white hole)",
-                GetType());
-        }
-        else
-        {
-            // SW_HIDE path (#89/#90): hide frozen screenshot before hole so DWM does not
-            // flash white over the still-painted bitmap (#87); overlay will hide shortly.
-            _screenshotImage.Opacity = 0;
-            _screenshotImage.Visibility = Visibility.Collapsed;
-            UpdateLayout();
-            Dispatcher.Invoke(() => { }, System.Windows.Threading.DispatcherPriority.Render);
-
-            if (!ApplyScrollCaptureHole())
-            {
-                _screenshotImage.Opacity = 1;
-                _screenshotImage.Visibility = Visibility.Visible;
-                Log.Warn(
-                    "Snip scroll: selection hole not applied (full-client or invalid); showing screenshot again; wheel uses Z-order underlay",
-                    GetType());
-            }
-        }
-
-        _scrollController.Begin();
-
-        if (!keepFrozenPreview)
-        {
-            // ShowOverlay may trigger another layout; re-apply hole so hit-test region stays punched.
-            _ = ApplyScrollCaptureHole();
-        }
-    }
-
-    private bool ApplyScrollCaptureHole()
-    {
-        var hwnd = TryGetHwnd();
-        if (hwnd == IntPtr.Zero)
-        {
-            return false;
-        }
-
-        int clientW = Math.Max(1, (int)Math.Round(_logicalSize.Width * _dpiScale));
-        int clientH = Math.Max(1, (int)Math.Round(_logicalSize.Height * _dpiScale));
-        if (Win32WindowRegion.TryGetClientSize(hwnd, out int cw, out int ch))
-        {
-            clientW = cw;
-            clientH = ch;
-        }
-
-        var hole = DpiCoordinateMapping.DipSelectionToClientHole(
-            _selection,
-            _logicalSize,
-            clientW,
-            clientH);
-
-        return Win32WindowRegion.ApplySelectionHole(
-            hwnd, clientW, clientH, hole.X, hole.Y, hole.Width, hole.Height);
-    }
-
-    private void ClearScrollCaptureHole()
-    {
-        var hwnd = TryGetHwnd();
-        if (hwnd == IntPtr.Zero)
-        {
-            return;
-        }
-
-        Win32WindowRegion.Clear(hwnd);
-    }
-
-    private async Task StopScrollCaptureAsync()
-    {
-        try
-        {
-            var ctl = _scrollController;
-            if (ctl == null || !ctl.IsActive)
-            {
-                return;
-            }
-
-            await ctl.StopCapturingAsync().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow StopScrollCaptureAsync: {ex.Message}", ex, GetType());
-            EnsureScrollUiRecovered();
-        }
-    }
-
-    private async Task FinishScrollCaptureAndConfirmAsync()
-    {
-        try
-        {
-            var ctl = _scrollController;
-            if (ctl == null || (!ctl.IsActive && !ctl.HasTiles))
-            {
-                return;
-            }
-
-            if (ctl.IsActive)
-            {
-                await ctl.StopCapturingAsync().ConfigureAwait(true);
-            }
-
-            if (ctl.TileCount < 1)
-            {
-                return;
-            }
-
-            var stitched = await ctl.StitchAsync().ConfigureAwait(true);
-            if (stitched.PixelWidth < 1 || stitched.PixelHeight < 1)
-            {
-                return;
-            }
-
-            ApplyStitchedScrollResult(stitched);
-            _scrollController = null;
-            await DoConfirmAsync().ConfigureAwait(true);
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow FinishScrollCaptureAndConfirmAsync: {ex.Message}", ex, GetType());
-            EnsureScrollUiRecovered();
-        }
-    }
-
-    private async Task<System.Windows.Media.Imaging.WriteableBitmap> StitchScrollTilesForExportAsync()
-    {
-        try
-        {
-            var ctl = _scrollController;
-            if (ctl == null || (!ctl.IsActive && !ctl.HasTiles))
-            {
-                return null;
-            }
-
-            if (ctl.IsActive)
-            {
-                await ctl.StopCapturingAsync().ConfigureAwait(true);
-            }
-
-            if (ctl.TileCount < 1)
-            {
-                return null;
-            }
-
-            var stitched = await ctl.StitchAsync().ConfigureAwait(true);
-            if (stitched.PixelWidth < 1 || stitched.PixelHeight < 1)
-            {
-                return null;
-            }
-
-            ApplyStitchedScrollResult(stitched);
-            _scrollController = null;
-            return stitched;
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow StitchScrollTilesForExportAsync: {ex.Message}", ex, GetType());
-            EnsureScrollUiRecovered();
-            return null;
-        }
-    }
-
-    private void OnScrollCapturingStopped(int tileCount)
-    {
-        try
-        {
-            _toolbar.SetScrollCaptureActive(false);
-            if (tileCount > 0)
-            {
-                // Keep selection hole closed (frozen overlay) but leave the stopped hint
-                // card visible until stitch / discard. Esc now discards frames only.
-                ClearScrollCaptureHole();
-                if (_source != null)
-                {
-                    _screenshotImage.Source = (System.Windows.Media.Imaging.BitmapSource)_scrollLivePreview?.Bitmap ?? BitmapPreview.ForOverlay(_source);
-                    _annoCanvas.SourceBitmap = _source;
-                    _screenshotImage.Opacity = 1;
-                    _screenshotImage.Visibility = Visibility.Visible;
-                }
-
-                _inputCatcher.IsHitTestVisible = true;
-                _annoCanvas.IsHitTestVisible = true;
-                _toolbar.IsHitTestVisible = true;
-                UpdateSelectionVisuals();
-                _toolbar.SetScrollTilesPending(true);
-            }
-            else
-            {
-                RestorePassthroughUi();
-                _toolbar.SetScrollTilesPending(false);
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow OnScrollCapturingStopped: {ex.Message}", ex, GetType());
-            EnsureScrollUiRecovered();
-        }
-    }
-
-    /// <summary>
-    /// Discard captured scroll tiles without closing the snip session (Esc after stop).
-    /// </summary>
-    private async Task DiscardScrollTilesAsync()
-    {
-        try
-        {
-            var ctl = _scrollController;
-            if (ctl == null)
-            {
-                return;
-            }
-
-            await ctl.CancelAsync().ConfigureAwait(true);
-            _toolbar.SetScrollTilesPending(false);
-            _toolbar.SetScrollCaptureActive(false);
-            _scrollController = null;
-            RestorePassthroughUi();
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow DiscardScrollTilesAsync: {ex.Message}", ex, GetType());
-            EnsureScrollUiRecovered();
-            _scrollController = null;
-        }
-    }
-
-    private void ApplyStitchedScrollResult(System.Windows.Media.Imaging.WriteableBitmap stitched)
-    {
-        _source = stitched;
-
-        double newW = _source.PixelWidth / _dpiScale;
-        double newH = _source.PixelHeight / _dpiScale;
-        _selection = new Rect(0, 0, newW, newH);
-        _hasSelection = true;
-
-        _screenshotImage.Source = stitched;
-        _annoCanvas.SourceBitmap = stitched;
-        _annoCanvas.SourceDpiScale = _dpiScale;
-        _annoCanvas.SourceOffset = new Point(0, 0);
-        _toolbar.SetScrollTilesPending(false);
-        RestorePassthroughUi();
-    }
-
-    private void OnScrollCaptureCancelled()
-    {
-        try
-        {
-            RestorePassthroughUi();
-            _toolbar.SetScrollCaptureActive(false);
-            _toolbar.SetScrollTilesPending(false);
-            _scrollController = null;
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow OnScrollCaptureCancelled: {ex.Message}", ex, GetType());
-            EnsureScrollUiRecovered();
-            _scrollController = null;
-        }
-    }
-
-    private void OnScrollLatestTileCaptured(ScrollTilePixels tile)
-    {
-        _scrollLivePreview?.BlitTile(tile);
-    }
-
-    private void RestorePassthroughUi()
-    {
-        _scrollLivePreview?.Reset();
-        _scrollLivePreview = null;
-        ClearScrollCaptureHole();
-        _dimPath.IsHitTestVisible = false;
-        if (_source != null)
-        {
-            _screenshotImage.Source = BitmapPreview.ForOverlay(_source);
-            _annoCanvas.SourceBitmap = _source;
-            _screenshotImage.Opacity = 1;
-            _screenshotImage.Visibility = Visibility.Visible;
-        }
-
-        _inputCatcher.IsHitTestVisible = true;
-        _annoCanvas.IsHitTestVisible = true;
-        _toolbar.IsHitTestVisible = true;
-        UpdateSelectionVisuals();
-    }
-
-    private void EnsureScrollUiRecovered()
-    {
-        try
-        {
-            _toolbar.SetScrollCaptureActive(false);
-            _toolbar.SetScrollTilesPending(false);
-            ClearScrollCaptureHole();
-            RestorePassthroughUi();
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow EnsureScrollUiRecovered: {ex.Message}", ex, GetType());
-        }
-    }
-
-    private IntPtr TryGetHwnd()
-    {
-        try
-        {
-            return new WindowInteropHelper(this).Handle;
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow TryGetHwnd failed: {ex.Message}", ex, GetType());
-            return IntPtr.Zero;
-        }
-    }
-
-    // -----------------------------------------------------------------------------------
     //  Output
     // -----------------------------------------------------------------------------------
     private void Cancel()
@@ -1398,6 +978,7 @@ public sealed class SnipWindow : Window
         CancelGifSessionDiscard();
         try
         {
+            DetachScrollController(_scrollController);
             _scrollController?.Cancel();
         }
         catch (Exception ex)
@@ -1413,18 +994,6 @@ public sealed class SnipWindow : Window
     }
 
     /// <summary>
-    /// Stops a running GIF recording and throws the frames away (cancel / close
-    /// paths). Without this the background capture loop keeps grabbing the
-    /// screen until its frame cap and the session's CTS is never released.
-    /// </summary>
-    private void CancelGifSessionDiscard()
-    {
-        var session = _gifSession;
-        _gifSession = null;
-        session?.Dispose();
-    }
-
-    /// <summary>
     /// Renders the selection plus annotations into a fresh bitmap whose size
     /// equals the selection's size in physical pixels.
     /// With no annotations, returns a <see cref="CroppedBitmap"/> only (no
@@ -1432,82 +1001,6 @@ public sealed class SnipWindow : Window
     /// </summary>
     private BitmapSource BuildResultBitmap(Rect selection)
         => SnipExportComposer.BuildResultBitmap(_source, _annoCanvas, selection, _dpiScale);
-
-    private void OnRecordGifToggled(object sender, EventArgs e)
-    {
-        try
-        {
-            if (_gifSession is { IsRunning: true })
-            {
-                _ = StopAndSaveGifAsync();
-            }
-            else if (_hasSelection)
-            {
-                StartGifRecording();
-            }
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow GIF toggle failed: {ex.Message}", ex, GetType());
-        }
-    }
-
-    private void StartGifRecording()
-    {
-        var physicalRect = DpiCoordinateMapping.DipSelectionToPhysical(
-            _selection,
-            _logicalSize,
-            _physicalBounds);
-        _gifSession = new GifRecordingSession(physicalRect, _captureService);
-        _gifSession.Start();
-        Log.Info($"Snip GIF recording started ({physicalRect.Width}x{physicalRect.Height})", GetType());
-    }
-
-    private async Task StopAndSaveGifAsync()
-    {
-        var session = _gifSession;
-        _gifSession = null;
-        if (session == null)
-        {
-            return;
-        }
-
-        try
-        {
-            byte[] gif = await session.StopAndEncodeAsync().ConfigureAwait(true);
-            if (gif == null)
-            {
-                ShowOverlayMessageBox(
-                    Properties.Resources.gif_error,
-                    Properties.Resources.tip_record_gif,
-                    MessageBoxButton.OK,
-                    MessageBoxImage.Warning);
-                return;
-            }
-
-            string dir = string.IsNullOrWhiteSpace(_settings.SaveDirectory)
-                ? SnipSettings.DefaultSaveFolder
-                : _settings.SaveDirectory;
-            System.IO.Directory.CreateDirectory(dir);
-            string path = System.IO.Path.Combine(dir, GifRecordingSession.BuildFileName());
-            await System.IO.File.WriteAllBytesAsync(path, gif).ConfigureAwait(true);
-            ShowOverlayMessageBox(
-                $"{Properties.Resources.gif_saved}: {path}",
-                Properties.Resources.tip_record_gif,
-                MessageBoxButton.OK,
-                MessageBoxImage.Information);
-            Log.Info($"Snip GIF saved: {path} ({gif.Length} bytes, {session.FrameCount} frames)", GetType());
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"Snip GIF save failed: {ex.Message}", ex, GetType());
-            ShowOverlayMessageBox(
-                $"{Properties.Resources.gif_error}: {ex.Message}",
-                Properties.Resources.tip_record_gif,
-                MessageBoxButton.OK,
-                MessageBoxImage.Warning);
-        }
-    }
 
     private async Task DoConfirmAsync()
     {
@@ -2019,116 +1512,6 @@ public sealed class SnipWindow : Window
         }
     }
 
-    private async Task DoSaveAsync()
-    {
-        if (!_hasSelection || _exportBusy)
-        {
-            return;
-        }
-
-        DismissSessionChild(restoreOverlay: false);
-        try
-        {
-            var built = await BuildAndEncodeAsync().ConfigureAwait(true);
-            if (built == null)
-            {
-                return;
-            }
-
-            var dialog = new Microsoft.Win32.SaveFileDialog
-            {
-                Title = Properties.Resources.save_dialog_title,
-                DefaultExt = ".png",
-                FileName = ScreenshotFileSaver.BuildFileName(),
-                Filter = Properties.Resources.save_dialog_filter,
-                AddExtension = true,
-                OverwritePrompt = true,
-            };
-            if (dialog.ShowDialog() != true)
-            {
-                return;
-            }
-
-            var path = dialog.FileName;
-            var format = PngEncoder.FormatFromPath(path);
-            if (format == ImageFileFormat.Png)
-            {
-                await File.WriteAllBytesAsync(path, built.Value.Png).ConfigureAwait(true);
-            }
-            else
-            {
-                await PngEncoder.EncodeToFileAsync(built.Value.Bitmap, path, format).ConfigureAwait(true);
-            }
-
-            Result = new EditResult
-            {
-                Outcome = EditOutcome.Saved,
-                Selection = _selection,
-                Annotations = _annoCanvas.Items.ToArray(),
-                Result = built.Value.Bitmap,
-                PngBytes = built.Value.Png,
-                SavedPath = path,
-            };
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow DoSaveAsync failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
-        }
-
-        Close();
-    }
-
-    /// <summary>
-    /// Composites the selection on the UI thread (RenderTargetBitmap only when
-    /// annotations exist; otherwise a CroppedBitmap), then PNG-encodes on the
-    /// thread pool. Full-res source is always used — OCR / translate / save must
-    /// not see the overlay preview downsample.
-    /// </summary>
-    private async Task<(BitmapSource Bitmap, byte[] Png)?> BuildAndEncodeAsync(bool includePng = true)
-    {
-        if (!_hasSelection || _exportBusy)
-        {
-            return null;
-        }
-
-        _exportBusy = true;
-        Cursor = Cursors.Wait;
-        try
-        {
-            if (_scrollController is { HasTiles: true } or { IsActive: true })
-            {
-                var stitched = await StitchScrollTilesForExportAsync().ConfigureAwait(true);
-                if (stitched == null)
-                {
-                    return null;
-                }
-            }
-
-            var bmp = BuildResultBitmap(_selection);
-
-            // PaddleOCR reads the bitmap directly; only the WeChat engine needs the
-            // encoded PNG (it writes a temp file). Skipping the encode here saves
-            // ~50–200 ms and one full-frame copy per capture.
-            var png = includePng
-                ? await PngEncoder.EncodeAsync(bmp).ConfigureAwait(true)
-                : null;
-            return (bmp, png);
-        }
-        catch (Exception ex)
-        {
-            Log.Exception($"SnipWindow BuildAndEncodeAsync failed: {ex.Message}", ex, GetType());
-            Result ??= new EditResult { Outcome = EditOutcome.Cancelled };
-            Close();
-            return null;
-        }
-        finally
-        {
-            _exportBusy = false;
-            Cursor = Cursors.Cross;
-        }
-    }
-
     // -----------------------------------------------------------------------------------
     //  Cleanup
     // -----------------------------------------------------------------------------------
@@ -2145,6 +1528,7 @@ public sealed class SnipWindow : Window
 
         try
         {
+            DetachScrollController(_scrollController);
             _scrollController?.Cancel();
         }
         catch (Exception ex)
@@ -2179,21 +1563,11 @@ public sealed class SnipWindow : Window
         string hex = SnipSettings.FormatColorHex(stroke);
         _settings.LastStrokeColorHex = hex;
         _settings.LastStrokeWidth = width;
-        _ = Task.Run(() =>
-        {
-            try
-            {
-                SnipSettingsPersister.Persist(
-                [
-                    SnipSettingsPersister.OptionPatch.Text("LastStrokeColorHex", hex),
-                    SnipSettingsPersister.OptionPatch.Number("LastStrokeWidth", width),
-                ]);
-            }
-            catch
-            {
-                // Best-effort persistence of last brush style.
-            }
-        });
+        SnipSettingsPersister.SchedulePersist(
+        [
+            SnipSettingsPersister.OptionPatch.Text("LastStrokeColorHex", hex),
+            SnipSettingsPersister.OptionPatch.Number("LastStrokeWidth", width),
+        ]);
     }
 
     private void UpdateMagnifierAt(Point dipPoint)
